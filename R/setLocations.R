@@ -23,6 +23,8 @@ setDat <- setDat %>%
                                                          from = 'deg_dec_min', 
                                                          to = 'dec_deg')))
 
+# write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"))
+
 nAm <- ne_countries(scale = "large")
 
 #critical habitat shape file
