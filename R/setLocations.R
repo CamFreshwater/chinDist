@@ -33,7 +33,6 @@ ch84 <- spTransform(ch, CRS("+proj=longlat +datum=WGS84"))
 
 ## Plot set locations
 setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) + 
-  # coord_fixed(xlim = c(-128, -125), ylim = c(47, 50), ratio = 1.3) + 
   coord_fixed(xlim = c(-128.5, -123), ylim = c(48.25, 51), ratio = 1.3) + 
   geom_polygon(color = "black", fill = "gray80") +
   geom_point(data = setDat, aes(x = long2, y = lat2),
@@ -46,8 +45,8 @@ setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) +
         strip.background = element_rect(colour="white", fill="white"),
         legend.position=c(0.2, 0.15))
 
-# png(here::here("figs", "setMap.png"), height = 5, width = 7, units = "in", 
-#     res = 400)
+# png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7, 
+#     units = "in", res = 400)
 setMap
 # dev.off()
 
@@ -55,12 +54,15 @@ setMap
 
 ## Plot heat map of catch data
 
-# Merge catch and fish data
-locDat <- setDat %>% 
-  select(event, date, lat = lat2, long = long2) 
-indDat <- chinDat %>% 
-  select(fish, event, fl, circ, clip) %>% 
-  left_join(., locDat, by = "event")
+# Sum chinook catch data
+count <- chinDat %>%
+  group_by(event) %>%
+  summarise(nChin = n())
+# Add lat/longs from set data to catch data
+catchDat <- setDat %>%
+  select(event, date, lat = lat2, long = long2) %>%
+  left_join(., count, by = "event") %>%
+  replace_na(list(nChin = 0))
 
 ggplot(catchDat) +
   stat_density2d(aes(x = long, y = lat, fill = ..level..), 
@@ -75,22 +77,40 @@ ggplot(catchDat) +
   geom_polygon(data = ch84, aes(x = long, y = lat, group = group), 
                colour = "red", fill = NA)
 
-## ALT VERSION (doesn't account for effort as well)
-# Sum chinook catch data
-# count <- chinDat %>% 
-#   group_by(event) %>% 
-#   summarise(nChin = n())
-# # Add lat/longs from set data to catch data
-# catchDat <- setDat %>% 
-#   select(event, date, lat = lat2, long = long2) %>% 
-#   left_join(., count, by = "event") %>% 
-#   replace_na(list(nChin = 0))
-# 
-# ggplot(indDat) +
-#   stat_density_2d(aes(x = long, y = lat, fill = ..level..), 
-#                   geom = "polygon",
-#                   alpha = 0.5) +
-#   scale_fill_gradient(low = "green", high = "red") +
-#   scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-#   geom_point(aes(x = long, y = lat))
-# 
+# ALT VERSION (doesn't account for effort as well)
+# Merge catch and fish data
+locDat <- setDat %>%
+  select(event, date, lat = lat2, long = long2)
+indDat <- chinDat %>%
+  select(fish, event, fl, circ, clip) %>% 
+  mutate(size = case_when(
+    fl > 75 ~ "large",
+    TRUE ~ "medium"
+  ))  %>% 
+  left_join(., locDat, by = "event")
+
+p <- ggplot(indDat) +
+  stat_density_2d(aes(x = long, y = lat, fill = ..level..),
+                  geom = "polygon",
+                  alpha = 0.5) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+  geom_point(data = locDat, aes(x = long, y = lat)) +
+  lims(x = c(-126.3, -125.3), y = c(48.35, 49.25)) +
+  coord_fixed(ratio = 1.3) +
+  geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
+               color = "black", fill = "gray80") +
+  samSim::theme_sleekX()
+
+png(here::here("figs", "maps", "hatcheryMap.png"), height = 5, width = 7,
+    units = "in", res = 400)
+p +
+  facet_wrap(~clip)
+dev.off()
+
+
+png(here::here("figs", "maps", "sizeMap.png"), height = 5, width = 7,
+    units = "in", res = 400)
+p +
+  facet_wrap(~size)
+dev.off()
