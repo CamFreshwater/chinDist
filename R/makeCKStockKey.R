@@ -9,4 +9,5 @@ stockKey <- adDat %>%
   select(STOCK_1, REGION_1, HSS_REGION_1) %>% 
   distinct() 
 
-write.csv(stockKey, here::here("data", "chinookStockKey.csv"))
+write.csv(stockKey, here::here("data", "chinookStockKey.csv"), 
+          row.names = FALSE)

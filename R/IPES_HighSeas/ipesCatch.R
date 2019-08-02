@@ -15,7 +15,7 @@ ipesDat <- read.csv(here::here("data", "highSeas", "ipesChinook2017_19.csv")) %>
   rename(lat = START_LATITUDE, long = START_LONGITUDE, year = TRIP_YEAR)
 
 ## Plot set locations to constrain subsequent analyses
-nAm <- ne_countries(scale = "medium")
+nAm <- ne_countries(scale = "large")
 
 # trim to near Brooks
 trimDat <- ipesDat %>% 
@@ -36,19 +36,27 @@ p +
   geom_point(data = trimDat, aes(x = long, y = lat, color = as.factor(year)),
              inherit.aes = FALSE)
   
-summDat <- trimDat %>% 
+summDat <- ipesDat %>% 
   group_by(EVENT_DATE) %>% 
   summarize(catch = n()) %>% 
   mutate(highCatch = case_when(
     catch > 4 ~ "yes",
     TRUE ~ "no"
-  ))
+  )) 
 
-trimDat2 <- left_join(trimDat, summDat, by = "EVENT_DATE")
-
-p + 
-  geom_point(data = trimDat2, aes(x = long, y = lat, 
-                                  color = as.factor(highCatch)),
-             inherit.aes = FALSE)
-
+catchDat <- ipesDat %>% 
+  select(EVENT_DATE, lat, long) %>% 
+  distinct() %>% 
+  left_join(., summDat, by = "EVENT_DATE")
+  
+ggplot(catchDat) +
+  stat_density2d(aes(x = long, y = lat, fill = ..level..), 
+                 geom = "polygon",
+                 alpha = 0.5) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+  geom_point(aes(x = long, y = lat)) +
+  lims(x = c(-129.5, -123), y = c(48, 52)) +
+  geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
+               color = "black", fill = "gray80") 
 ## Evidence of high catches near Lippey Point
