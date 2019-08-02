@@ -74,8 +74,6 @@ dev.off()
 adDatTrim2 <- adDat %>% 
   group_by(REGION_1) %>%
   filter(n() > 4) %>% 
-         # ,
-         # !REGION_1 == "PUGET SOUND") %>% 
   mutate(HSS_REGION_1 = fct_recode(HSS_REGION_1, 
                                OREGON_NC = "OREGON NORTH & CENTRAL")) %>% 
   ungroup()
