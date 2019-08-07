@@ -36,18 +36,58 @@ hotMap <- function(fishDat, longRange = c(-129.5, -123),
     scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
     lims(x = longRange, y = latRange) +
     geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-                 color = "black", fill = "gray80") 
-  if (facet == "month") {
+                 color = "black", fill = "gray80") + 
+    samSim::theme_sleekX()
+  if (!is.null(facet)) {
+    if (facet == "month") {
+      nSize <- fishDat %>% 
+        group_by(month) %>% 
+        tally()
+      p <- p +
+        facet_wrap(~month) 
+    }
+    if (facet == "year") {
+      nSize <- fishDat %>% 
+        group_by(year) %>% 
+        tally()
+      p <- p +
+        facet_wrap(~year) 
+    }
     p <- p +
-      facet_wrap(~month)
-  } 
+      geom_text(data = nSize, 
+                aes(x = -Inf, y = min(latRange), label = n), 
+                vjust = 0, hjust = -1)
+  }
   return(p)
 }
   
-hotMap(chin, longRange = c(-140, -120), latRange = c(47, 57))
+hotMap(chin, longRange = c(-138, -120), latRange = c(47, 58.5))
 
-
-upFr <- chin %>% 
-  filter(reg == "UPFR")
-
-hotMap(upFr, longRange = c(-140, -120), latRange = c(47, 57), facet = "month") 
+## Iterate across regions of interest 
+regions <- c("UPFR", "MUFR", "LWFR-F", "SOTH", "NOTH", "LWTH", "SOMN", "NOMN",
+             "ECVI")
+for (x in seq_along(regions)) {
+  datJuv <- chin %>% 
+    filter(reg == regions[x],
+           fl < 250)
+  pp <- hotMap(datJuv, longRange = c(-138, -120), latRange = c(47, 58.5), 
+         facet = "month") +
+    ggtitle(regions[x])
+  pdf(here::here("figs", "highSeasCatch", "stockSpecific", "juv", 
+                 paste(regions[x], "Juv.pdf", sep = "")),
+      height = 7, width = 8)
+  print(pp)
+  dev.off()
+  
+  datAd <- chin %>% 
+    filter(reg == regions[x],
+           fl > 250)
+  pp2 <- hotMap(datAd, longRange = c(-138, -120), latRange = c(47, 58.5), 
+               facet = "month") +
+    ggtitle(regions[x])
+  pdf(here::here("figs", "highSeasCatch", "stockSpecific", "adult", 
+                 paste(regions[x], "Adult.pdf", sep = "")),
+      height = 7, width = 8)
+  print(pp2)
+  dev.off()
+}
