@@ -34,40 +34,37 @@ barkCK <- bark %>%
                            "PURSE SEINE" = "PURSE SEINE (VIKING SPIRIT)"))
 
 # How many events with juvenile chinook captured?
-barkCKTrim <- barkCK %>% 
-  filter(count > 0,
-         !is.na(LONGITUDE),
-         !is.na(LATITUDE))
-
-barkCKTrim %>% 
+barkCK %>% 
+  filter(count > 0) %>% 
   tally()
+
+barkCK %>% 
+  group_by(GEAR) %>% 
+  tally()
+
+## Plot catch locations for CK
+#disaggregate by counts so that density can be plotted
+mapCK <- barkCK %>% 
+  filter(!is.na(LATITUDE), !is.na(LONGITUDE)) %>% 
+  mutate(ids = map(count, seq_len)) %>% 
+  unnest() %>% 
+  select(ID_NUM, LATITUDE:day, ids) 
 
 # map specs
 nAm <- map_data("world") %>% 
-  filter(region %in% c("Canada", "USA"), 
-         long > -126, long < -124.5,
-         lat > 48.75, lat < 49.5)
-nAm <- ne_countries(scale = "large")
+  filter(region %in% c("Canada", "USA"))
 longRange = c(-126, -124.5)#range(bark$LONGITUDE, na.rm = T)
 latRange = c(48.75, 49.5)#range(bark$LATITUDE, na.rm = T)
 
-ggplot(barkCKTrim) +
-  # stat_density2d(aes(x = LONGITUDE, y = LATITUDE, fill = ..level..), 
-  #                geom = "polygon",
-  #                alpha = 0.5) +
-  geom_point(aes(x = LONGITUDE, y = LATITUDE), 
-              inherit.aes = FALSE, width = 0.1, height = 0.1) + 
-  # scale_fill_gradient(low = "green", high = "red") +
-  # scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  # lims(x = longRange, y = latRange) +
+ggplot(mapCK) +
+  stat_density2d(aes(x = LONGITUDE, y = LATITUDE, fill = ..level..),
+                 geom = "polygon", alpha = 0.5) +
+  # geom_point(aes(x = LONGITUDE, y = LATITUDE), 
+  #             inherit.aes = FALSE, width = 0.1, height = 0.1) + 
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
   geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
                color = "black", fill = "gray80") + 
+  lims(x = longRange, y = latRange) +
   samSim::theme_sleekX()
 
-
-ggplot() +
-  geom_map(data=shape_map, map=shape_map, aes(long, lat, map_id=region)) +
-  geom_map(
-    data=filter(prop.test, season=="DJF"),
-    map=shape_map, aes(fill=prop.mega, map_id=megaregion)
-  )
