@@ -44,7 +44,9 @@ barkCKTrim %>%
 
 # map specs
 nAm <- map_data("world") %>% 
-  filter(region %in% c("Canada", "USA"))
+  filter(region %in% c("Canada", "USA"), 
+         long > -126, long < -124.5,
+         lat > 48.75, lat < 49.5)
 nAm <- ne_countries(scale = "large")
 longRange = c(-126, -124.5)#range(bark$LONGITUDE, na.rm = T)
 latRange = c(48.75, 49.5)#range(bark$LATITUDE, na.rm = T)
@@ -57,7 +59,15 @@ ggplot(barkCKTrim) +
               inherit.aes = FALSE, width = 0.1, height = 0.1) + 
   # scale_fill_gradient(low = "green", high = "red") +
   # scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  lims(x = longRange, y = latRange) +
-  geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
+  # lims(x = longRange, y = latRange) +
+  geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
                color = "black", fill = "gray80") + 
   samSim::theme_sleekX()
+
+
+ggplot() +
+  geom_map(data=shape_map, map=shape_map, aes(long, lat, map_id=region)) +
+  geom_map(
+    data=filter(prop.test, season=="DJF"),
+    map=shape_map, aes(fill=prop.mega, map_id=megaregion)
+  )
