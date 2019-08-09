@@ -108,7 +108,6 @@ write.csv(barkFishTrim, here::here("data", "hargreaves",
           row.names = FALSE)
 
 
-minRelJulian <- as.POSIXlt(barkCWT$FIRST_REL, format = "%m/%d/%Y")$yday
 # maxRelJulian <- barkCWT$LAST_REL %>% 
   # strsplit(., "/") %>% 
   # do.call(rbind, .) %>% 
