@@ -104,31 +104,29 @@ barkFishTrim <- barkFish %>%
          pres = PRESERV)
 
 write.csv(barkFishTrim, here::here("data", "hargreaves", 
-                                   "barkleyFish_cleaned.csv"), row.names = FALSE)
+                                   "barkleyFish_cleaned.csv"), 
+          row.names = FALSE)
 
 
-minDates <- barkCWT$FIRST_REL %>%
-  # mutate_all(funs(na_if(.,""))) %>% 
-  strsplit(., "/") %>% 
-  do.call(rbind, .) %>% 
-  as.data.frame() %>% 
-  select(minRelMonth = V1, minRelDay = V2)
-relDates <- strsplit(barkCWT$LAST_REL, "/") %>% 
-  do.call(rbind, .) %>% 
-  as.data.frame() %>% 
-  select(maxRelMonth = V1, maxRelDay = V2, relYear = V3) %>% 
-  cbind(minDates, .)
+minRelJulian <- as.POSIXlt(barkCWT$FIRST_REL, format = "%m/%d/%Y")$yday
+# maxRelJulian <- barkCWT$LAST_REL %>% 
+  # strsplit(., "/") %>% 
+  # do.call(rbind, .) %>% 
+  # as.data.frame() %>% 
+  # select(minRelMonth = V1, minRelDay = V2)
 
 barkCWTTrim <- barkCWT %>% 
+  mutate(fishNumber = paste(ID_NUM, FISH_NUM, sep = "_"),
+         minRelJulian = as.POSIXlt(FIRST_REL, format = "%m/%d/%Y")$yday,
+         maxRelJulian = as.POSIXlt(LAST_REL, format = "%m/%d/%Y")$yday) %>% 
   filter(ID_NUM %in% goodSets,
          SPECIES == "CHINOOK SALMON SMOLT") %>% 
   left_join(., sampDate2, by = "ID_NUM") %>% 
-  mutate(fishNumber = paste(ID_NUM, FISH_NUM, sep = "_")) %>% 
   select(id = ID_NUM, fishNumber, species = SPECIES,
          lat = LATITUDE, long = LONGITUDE, year:time, fl = LENGTH, 
          tagCode = TAG_CODE, broodYr = BROOD_YEAR, hatchery = HATCHERY,
-         relSite = REL_SITE, reg = PROV_STATE, minRel = FIRST_REL, 
-         maxRel = LAST_REL, pres = PRESERV)
+         relSite = REL_SITE, reg = PROV_STATE, minRelJulian, maxRelJulian,
+         pres = PRESERV)
 
 write.csv(barkCWTTrim, here::here("data", "hargreaves", 
-                                   "barkleyCWT_cleaned.csv"), row.names = FALSE)
+                                  "barkleyCWT_cleaned.csv"), row.names = FALSE)
