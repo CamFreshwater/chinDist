@@ -34,9 +34,9 @@ hotMap <- function(fishDat, longRange = c(-129.5, -123),
                    alpha = 0.5) +
     scale_fill_gradient(low = "green", high = "red") +
     scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+    geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
+             color = "black", fill = "gray80") + 
     lims(x = longRange, y = latRange) +
-    geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-                 color = "black", fill = "gray80") + 
     samSim::theme_sleekX()
   if (!is.null(facet)) {
     if (facet == "month") {
@@ -91,3 +91,17 @@ for (x in seq_along(regions)) {
   print(pp2)
   dev.off()
 }
+
+
+## Focus on CR spring
+chin %>% 
+  filter(agg == "COLUMBIA-SNAKE") %>% 
+  select(reg) %>% 
+  distinct()
+
+juvCR <- chin %>% 
+  filter(reg %in% c("MID COL-SP", "UP COL-SP", "UPPER COLUMBIA-SP", 
+                    "UPPER COLUMBIA-SU/F", "MID COLUMBIA-SP", "SNAKE-SP/SU"),
+         fl > 150, fl < 400)
+
+hotMap(juvCR, longRange = c(-132, -124.5), latRange = c(48, 52))
