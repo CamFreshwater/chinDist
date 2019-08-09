@@ -1,11 +1,14 @@
-## Catch data from Hargreaves sampling
+## Clean catch data from Hargreaves sampling in Barkley Sound
 # August 7, 2019
+# See text files for details
 
 library(tidyverse)
 library(ggplot2)
-library(ggmap)
 
-bark <- read.csv(here::here("data", "hargreavesData", "barkleySetLogs.csv"), 
+
+### CLEAN SET DATA
+
+bark <- read.csv(here::here("data", "hargreaves", "barkleySetLogs.csv"), 
                     stringsAsFactors = FALSE)
 
 temp <- strsplit(bark$DATE_TIME_ISO8601, "T")
@@ -15,14 +18,18 @@ sampTime <- lapply(temp, function(x) x[2]) %>%
   as.data.frame() %>% 
   rename(time = V1)
 
+julDay <- sapply(temp, function(x) as.POSIXlt(x[1], format = "%Y-%m-%d")$yday)
+
 sampDate <- sapply(temp, function(x) strsplit(x[1], "-")) %>% 
   do.call(rbind, .) %>% 
   as.data.frame() %>% 
+  mutate(julianDay = julDay) %>% 
   rename(year = V1, month = V2, day = V3) %>% 
   cbind(., sampTime)
 
-barkCK <- bark %>% 
+barkSets <- bark %>% 
   cbind(sampDate) %>% 
+  filter(!is.na(month)) %>% 
   select(ID_NUM:LONGITUDE, year:time, count = S_CHINOOK1, 
          countLength = S_CHINOOK2,
          countExamined = S_CHINOOK3, countBite = S_CHINOOK4,
@@ -31,40 +38,97 @@ barkCK <- bark %>%
                            "PURSE SEINE" = "PURSE SEINE (TAHLOK)", 
                            "PURSE SEINE" = "PURSE SEINE (KETA)",
                            "PURSE SEINE" = "PURSE SEINE (KYNOC)",
-                           "PURSE SEINE" = "PURSE SEINE (VIKING SPIRIT)"))
+                           "PURSE SEINE" = "PURSE SEINE (VIKING SPIRIT)"),
+         month = as.factor(month),
+         chinookPresent = case_when(
+           count > 0 ~ "Y",
+           count == 0 ~ "N"
+         ))
+
+sampDate2 <- barkSets %>% 
+  select(ID_NUM, year:time)
 
 # How many events with juvenile chinook captured?
-barkCK %>% 
+barkSets %>% 
   filter(count > 0) %>% 
   tally()
 
-barkCK %>% 
+barkSets %>% 
   group_by(GEAR) %>% 
   tally()
 
-## Plot catch locations for CK
-#disaggregate by counts so that density can be plotted
-mapCK <- barkCK %>% 
-  filter(!is.na(LATITUDE), !is.na(LONGITUDE)) %>% 
-  mutate(ids = map(count, seq_len)) %>% 
-  unnest() %>% 
-  select(ID_NUM, LATITUDE:day, ids) 
+## Sampling breakdown
+plotGear <- barkSets %>% 
+  group_by(GEAR, month, chinookPresent) %>% 
+  tally(name = "nn")
 
-# map specs
-nAm <- map_data("world") %>% 
-  filter(region %in% c("Canada", "USA"))
-longRange = c(-126, -124.5)#range(bark$LONGITUDE, na.rm = T)
-latRange = c(48.75, 49.5)#range(bark$LATITUDE, na.rm = T)
+ggplot(plotGear, aes(x = as.factor(month), y = nn, fill = chinookPresent)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~GEAR)
+# majority capture by purse seine and CMBS (beach seine) in May-July
 
-ggplot(mapCK) +
-  stat_density2d(aes(x = LONGITUDE, y = LATITUDE, fill = ..level..),
-                 geom = "polygon", alpha = 0.5) +
-  # geom_point(aes(x = LONGITUDE, y = LATITUDE), 
-  #             inherit.aes = FALSE, width = 0.1, height = 0.1) + 
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
-               color = "black", fill = "gray80") + 
-  lims(x = longRange, y = latRange) +
-  samSim::theme_sleekX()
+barkSets %>% 
+  filter(GEAR %in% c("100' CMBS", "150' CMBS", "PURSE SEINE")) %>% 
+  select(PURPOSE) %>% 
+  distinct()
+# ABORTED, ID ERROR, REPEATED and EXPLORATORY should likely be removed
 
+barkSetsTrim <- barkSets %>% 
+  filter(GEAR %in% c("100' CMBS", "150' CMBS", "PURSE SEINE"),
+         !PURPOSE %in% c("ABORTED", "ID ERROR, REPEATED"),
+         !is.na(LATITUDE)) %>% 
+  select(id = ID_NUM, gear = GEAR, purpose = PURPOSE, location = LOCATION,
+         lat = LATITUDE, long = LONGITUDE, year:chinookPresent)
+
+write.csv(barkSetsTrim, here::here("data", "hargreaves", 
+                                 "barkleySets_cleaned.csv"), row.names = FALSE)
+
+
+### CLEAN FISH LENGTH AND CWT DATA
+barkFish <- read.csv(here::here("data", "hargreaves", "barkleyNonPredator.csv"),
+                     stringsAsFactors = FALSE, na.strings = "")
+barkCWT <- read.csv(here::here("data", "hargreaves", "barkleyCWTRecovery.csv"),
+                    stringsAsFactors = FALSE, na.strings = "")
+
+#sets kept based on gear and comments
+goodSets <- unique(barkSetsTrim$id)
+
+barkFishTrim <- barkFish %>% 
+  filter(ID_NUM %in% goodSets,
+         SPECIES == "CHINOOK SALMON SMOLT") %>% 
+  left_join(., sampDate2, by = "ID_NUM") %>% 
+  mutate(fishNumber = paste(ID_NUM, FISH_NUM, sep = "_")) %>% 
+  select(id = ID_NUM, fishNumber, species = SPECIES,
+         lat = LATITUDE, long = LONGITUDE, year:time, fl = LENGTH, 
+         weight = WEIGHT, bitemark = BITEMARK, CWT, marked = MARKED, 
+         pres = PRESERV)
+
+write.csv(barkFishTrim, here::here("data", "hargreaves", 
+                                   "barkleyFish_cleaned.csv"), row.names = FALSE)
+
+
+minDates <- barkCWT$FIRST_REL %>%
+  # mutate_all(funs(na_if(.,""))) %>% 
+  strsplit(., "/") %>% 
+  do.call(rbind, .) %>% 
+  as.data.frame() %>% 
+  select(minRelMonth = V1, minRelDay = V2)
+relDates <- strsplit(barkCWT$LAST_REL, "/") %>% 
+  do.call(rbind, .) %>% 
+  as.data.frame() %>% 
+  select(maxRelMonth = V1, maxRelDay = V2, relYear = V3) %>% 
+  cbind(minDates, .)
+
+barkCWTTrim <- barkCWT %>% 
+  filter(ID_NUM %in% goodSets,
+         SPECIES == "CHINOOK SALMON SMOLT") %>% 
+  left_join(., sampDate2, by = "ID_NUM") %>% 
+  mutate(fishNumber = paste(ID_NUM, FISH_NUM, sep = "_")) %>% 
+  select(id = ID_NUM, fishNumber, species = SPECIES,
+         lat = LATITUDE, long = LONGITUDE, year:time, fl = LENGTH, 
+         tagCode = TAG_CODE, broodYr = BROOD_YEAR, hatchery = HATCHERY,
+         relSite = REL_SITE, reg = PROV_STATE, minRel = FIRST_REL, 
+         maxRel = LAST_REL, pres = PRESERV)
+
+write.csv(barkCWTTrim, here::here("data", "hargreaves", 
+                                   "barkleyCWT_cleaned.csv"), row.names = FALSE)

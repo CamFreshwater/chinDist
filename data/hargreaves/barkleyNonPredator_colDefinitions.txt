@@ -1,0 +1,20 @@
+Column Name				Column Definition
+ID_NUM					The sampling event unique reference number; used to cross-reference with set log data.
+DATE_TIME_ISO8601		The local date and time, in ISO 8601 format, when the sampling event began and optionally when the sampling event ended (i.e. when value is expressed as a ISO 8601 time interval). (Copy of set log data for convenience.)
+AREA					A calculated category field used to aggregate the sampling events by four groups of LOCATIONS. (Copy of set log data for convenience.)
+TIME_PER				A calculated category field used to aggregate the sampling events by two-week date periods. (Copy of set log data for convenience.)
+LATITUDE				The latitude, in decimal degrees ISO 6709 format, of the place where the sampling occurred (likely NAD 83 datum or NAD 27 datum). (Copy of set log data for convenience.)
+LONGITUDE				The longitude, in decimal degrees ISO 6709 format, of the place where the sampling occurred (likely NAD 83 datum or NAD 27 datum). (Copy of set log data for convenience.)
+SPECIES					The species common name of the fish that was sampled. In the case of salmon species, it will also include the life stage of the fish (SMOLT, JUVENILE, ADULT).
+SCIENTIFIC_NAME			The species scientific name of the fish that was sampled.
+SPECIES_URN_LSID		The species universal resource name (based on the Life Sciences Identifier provided by the World Registry of Marine Species) of the fish that was sampled based.
+LIFE_STAGE_URN_LABEL	The universal resource name and label for the development stage of the fish that was sampled. Based on the controlled vocabulary maintained by the British Oceanographic Data Centre (http://vocab.nerc.ac.uk/collection/S11/current/).
+FISH_NUM				The ordinal number of the fish that was sampled for the same species within the sampling event.
+LENGTH					The length in millimeters of the fish that was sampled. For salmon species it is a fork length, for other species it is typically a total length.
+WEIGHT					The weight in grams of the whole fish that was sampled. A null value indicates that no weight was obtained. The weight was typically obtained via measurement on an electronic balance but in some cases was calculated from the length using a length-to-weight relationship and indicated as such in the REMARKS column.
+BITEMARK				Indicates whether evidence of predator bite marks was observed on the fish that was sampled.
+CWT						Indicates whether a missing adipose fin (indicating that a coded-wire tag had been applied) was observed on the fish that was sampled. Applies to salmon species only. 
+MARKED					Indicates whether an external marking (e.g. hot wire brand) previously applied by the researcher was observed on the fish that was sampled. Applies to salmon species only. 
+PRESERV					The form of tissue preservation had been applied to the fish that was sampled, sometime prior to sampling. (Impacts the calibration of length and weight measurements.) "N"= none (i.e. the fish was measured shortly after capture). "F"=formaldehyde solution, likely 10%.
+REMARKS					The explanatory comments associated with the examination as recorded on the field sheet. Often contains information on the stomach contents of the fish, where "FLUSHED:" indicates that the contents of the stomach were displaced out through the mouth using water from a tube inserted via the mouth, and where "DISSECTED:" indicates that the contents were obtained by surgical removal from the fish.
+NOTE					A calculated field to map BITEMARK, CWT field data to display convenient labels, where "BM" indicates a TRUE value in the BITEMARK column, where "CWT" indicates a TRUE value in the CWT column, and where "BM/CWT" indicates a TRUE value in both the BITEMARK and CWT columns.
