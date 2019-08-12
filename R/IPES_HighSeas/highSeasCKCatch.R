@@ -100,8 +100,10 @@ chin %>%
   distinct()
 
 juvCR <- chin %>% 
+  # focus on spring/summer run
   filter(reg %in% c("MID COL-SP", "UP COL-SP", "UPPER COLUMBIA-SP", 
-                    "UPPER COLUMBIA-SU/F", "MID COLUMBIA-SP", "SNAKE-SP/SU"),
+                    "UPPER COLUMBIA-SU/F", "MID COLUMBIA-SP", "SNAKE-SP/SU",
+                    "UPPER WILLAMETTE", "UP WILLAMETTE"),
          fl > 150, fl < 400)
 
 hotMap(juvCR, longRange = c(-132, -124.5), latRange = c(48, 52))
