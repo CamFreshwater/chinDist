@@ -7,6 +7,8 @@ library(tidyverse)
 library(ggplot2)
 library(ggmap)
 
+source(here::here("R", "functions", "hotMapFunc.R"))
+
 chinRaw <- read.csv(here::here("data", "highSeas", "fullChinookHS.csv"), 
                     stringsAsFactors = FALSE) %>% 
   filter(
@@ -23,43 +25,8 @@ chin <- chinRaw %>%
   mutate(month =  fct_relevel(as.factor(month), "FEB", "MAR", "APR", "MAY", 
                               "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"))
 
-hotMap <- function(fishDat, longRange = c(-129.5, -123), 
-                   latRange = c(48, 52), facet = NULL) {
-  nAm <- map_data("world") %>% 
-    filter(region %in% c("Canada", "USA"))
-  
-  p <- ggplot(fishDat) +
-    stat_density2d(aes(x = long, y = lat, fill = ..level..), 
-                   geom = "polygon",
-                   alpha = 0.5) +
-    scale_fill_gradient(low = "green", high = "red") +
-    scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-    geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
-             color = "black", fill = "gray80") + 
-    lims(x = longRange, y = latRange) +
-    samSim::theme_sleekX()
-  if (!is.null(facet)) {
-    if (facet == "month") {
-      nSize <- fishDat %>% 
-        group_by(month) %>% 
-        tally()
-      p <- p +
-        facet_wrap(~month) 
-    }
-    if (facet == "year") {
-      nSize <- fishDat %>% 
-        group_by(year) %>% 
-        tally()
-      p <- p +
-        facet_wrap(~year) 
-    }
-    p <- p +
-      geom_text(data = nSize, 
-                aes(x = -Inf, y = min(latRange), label = n), 
-                vjust = 0, hjust = -1)
-  }
-  return(p)
-}
+# write.csv(chin, here::here("data", "highSeas", "cleanChinook.csv"), 
+#           row.names = FALSE)
   
 hotMap(chin, longRange = c(-138, -120), latRange = c(47, 58.5))
 
