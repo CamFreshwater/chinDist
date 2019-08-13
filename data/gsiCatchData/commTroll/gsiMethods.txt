@@ -1,0 +1,33 @@
+Summary of methods used to collect WCVI commercial troll genetic stock identification samples
+
+Described in South Coast draft document written in 2011 by Karin Mathias (never published).
+
+Outline
+- Area G GSI sampling has occurred annually since 2002 w/ intermittent changes in objectives and methodologies
+- Principle goals were to: 
+	1. Estimate catch composition independently of PSC Chinook model which uses estimates based on CWT recoveries from 1979-82 (changes since then in fishery timing, catch sizes, and relative abundance of different stocks)
+	2. Stock migration pattern and timing information to avoid stocks of concern
+
+Sampling Methods
+- At-sea 
+	- Collected by on-board observers who sampled first 25-50 fish daily regardless of size/marking; additional 25-50 would be sampled if the vessel changed PFMA
+	- In early and recent years bulk vials were used (>1 plug per vial) separated by mark/size; in some intermediate years individual vials were used
+	- Biological and bridge log data were collected simultaneously
+	- Occasionally harvesters were also asked to collect DNA plugs
+- Dockside/plant-sampling
+	- MRP aims to sample 20% of Area G catch for the presence of CWTs by PFMA and stat week; fish with CWTs are biologically sampled
+	- MRP sample was sub-sampled for DNA resulting in rates that varied widely with staff resources and catch levels (min. 1%, generally 2% of catch by month and PFMA)
+	- Larger sample sizes and improved representativeness due to sampling of a larger number of vessels
+	- Only sampled non-clipped Chinook from 2002-2005 to reduce costs, but up to 40% of AFC catch could not be associated with CWTs (due to low marking rates)
+	- Since 2005 total catch is sub-sampled and rate increased to 4%, but no biological data collected
+	- Samples collected to be representative of month/opening and catch region but higher effort typically occurred at start in case of future closures
+	- When possible processing plant samples were collected from single vessels rather than mixed vessel offloads in common totes 
+- Sample selection
+	- DNA plugs were sub-sampled as proportionately as possible to catch by month and PFMA
+	- GSI results rolled up to catch region
+	- When samples were stored in bulk vials, plugs were randomly selected from the vials
+	- In certain instances scales (unclear when) were used as an alternative to plugs; 100-400 scales per month/catch region
+- Stock composition
+	- 47 regional populations simplified into 10 groups that match the geographic regions to which 30 PSC model stock groups are assigned plus an additional group for all CA stocks
+	- Catch summarized for 11 groups and multiplied by percentage of that group in the same to give actual numbers of Chinook caught by month/catch region, then summed across months and regions to give a total catch by group
+	- Catch percentages then compared to PSC model stock groups
