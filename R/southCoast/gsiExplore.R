@@ -1,7 +1,7 @@
 ## Explore southcoast GSI Access database
 # Provided by Bryan Rusch Aug 19, 2019
 
-library(RODBC)
+library(RODBC); library(tidyverse)
 
 # Access database saved locally to work computer
 file_path <- "C:/Users/FRESHWATERC/Documents/chinook/southCoastDatabase/southCoastGSICatch.accdb"
@@ -10,7 +10,9 @@ con <- odbcConnectAccess2007(file_path)
 # Check out table names
 sqlTables(con, tableType = "TABLE")$TABLE_NAME
 
-# Useful queries provided by Bryan
+# Import majority of data directly from tables because they aren't linked with
+# one another, limiting the utility of SQL queries that include joins
+# all catch/effort data
 catchQry <- "SELECT [Area G FOS Catch Estimates].ESTIMATE_TYPE, 
                     [Area G FOS Catch Estimates].LICENCE_AREA, 
                     [Area G FOS Catch Estimates].OPNG_CAT, 
@@ -36,47 +38,42 @@ catchQry <- "SELECT [Area G FOS Catch Estimates].ESTIMATE_TYPE,
 areaCatch <- sqlQuery(con, catchQry)
 head(areaCatch)
 
-gsiQry <- "SELECT [Area G Commercial Stock Comp Control Table].[CHINOOK YEAR],
-                  [Area G Commercial Stock Comp Control Table].[FISHING YEAR], 
-                  [Area G Commercial Stock Comp Control Table].[FISHING MONTH], 
-                  [Area G Commercial Stock Comp Control Table].CATCH_REGION, 
-                  [Area G Catch by Year, Month and Region].SumOfCHINOOK_KEPT, 
-                  [Region 3 Sample Results].[Region 3 Code], 
-                  [Region 3 Sample Results].Estimate, 
-                  [Region 3 Sample Results].SD, 
-                  ([Estimate]/100)*[SumOFCHINOOK_KEPT] AS Catch, 
-                  (([SD]/100)*[SumOfCHINOOK_KEPT])^2 AS CatchVar
-           FROM [Area G Commercial Stock Comp Control Table]
-           INNER JOIN [Region 3 Sample Results] 
-           ON [Area G Commercial Stock Comp Control Table].[Sample ID] = 
-              [Region 3 Sample Results].[Sample ID]) 
-           WHERE ((([Area G Commercial Stock Comp Control Table].[Direct Sample])=Yes));
-"
-reg3 <- sqlQuery(con, gsiQry)
-head(reg3)
+# all gsi samples
+sampInvQry <- "SELECT *
+               FROM [Sample Inventory]"
+sampInv <- sqlQuery(con, sampInvQry) %>% 
+  select(-F14, -F15, -F16) %>% 
+  rename_all(list(~make.names(.))) %>% #get rid of spaces in col names
+  filter(!Fishery == "Area G Subleg")
+trimSampInv <- sampInv %>% 
+  select(Sample.ID, Vial.ID, Year, Fishery, Catch.Region, Catch.Area, 
+         Month.Name, Lab.Reported.N)
 
+# stock composition data
+stockCompQry <- "SELECT *
+                 FROM [Stock Level Results] 
+                 INNER JOIN [Stocks with Region Codes]
+                 ON [Stock Level Results].[Stock Code] = 
+                  [Stocks with Region Codes].[Stock Code];"
+stockComp <- sqlQuery(con, stockCompQry) %>% 
+  rename_all(list(~make.names(.))) %>% 
+  left_join(., trimSampInv, by = "Sample.ID") 
+# %>% 
+  # select(Sample.ID:SD, Stock.Name:Lab.Reported.N)
 
+dum <- stockComp %>% filter(is.na(Year))
+dum71 <- stockComp %>% filter(Sample.ID == "71")
 
-# gsiQry <- "SELECT [Area G Commercial Stock Comp Control Table].[CHINOOK YEAR],
-#                   [Area G Commercial Stock Comp Control Table].[FISHING YEAR], 
-#                   [Area G Commercial Stock Comp Control Table].[FISHING MONTH], 
-#                   [Area G Commercial Stock Comp Control Table].CATCH_REGION, 
-#                   [Area G Catch by Year, Month and Region].SumOfCHINOOK_KEPT, 
-#                   [Region 3 Sample Results].[Region 3 Code], 
-#                   [Region 3 Sample Results].Estimate, 
-#                   [Region 3 Sample Results].SD, 
-#                   ([Estimate]/100)*[SumOFCHINOOK_KEPT] AS Catch, 
-#                   (([SD]/100)*[SumOfCHINOOK_KEPT])^2 AS CatchVar
-#            FROM [Area G Catch by Year, Month and Region] 
-#             INNER JOIN ([Area G Commercial Stock Comp Control Table] 
-#             INNER JOIN [Region 3 Sample Results] 
-#             ON [Area G Commercial Stock Comp Control Table].[Sample ID] = 
-#               [Region 3 Sample Results].[Sample ID]) 
-#             ON ([Area G Catch by Year, Month and Region].CATCH_REGION = 
-#               [Area G Commercial Stock Comp Control Table].CATCH_REGION) 
-#             AND ([Area G Catch by Year, Month and Region].[FISHING MONTH] = 
-#               [Area G Commercial Stock Comp Control Table].[FISHING MONTH]) 
-#             AND ([Area G Catch by Year, Month and Region].[FISHING YEAR] = 
-#               [Area G Commercial Stock Comp Control Table].[FISHING YEAR])
-#            WHERE ((([Area G Commercial Stock Comp Control Table].[Direct Sample])=Yes));
-# "
+dum %>% 
+  filter(is.na(Vial.ID)) %>% 
+  select(Sample.ID) %>% 
+  distinct()
+
+regQry <- "SELECT *
+           FROM [Region 2 Sample Results] 
+           INNER JOIN [Region 2 Stock Names] 
+           ON [Region 2 Sample Results].[Region 2 Code] = 
+            [Region 2 Stock Names].Region2Code;"
+regComp <- sqlQuery(con, regQry) %>% 
+  rename_all(list(~make.names(.))) %>% 
+  select(Sample.ID, Region2Code, Region2Name, Estimate, SD)
