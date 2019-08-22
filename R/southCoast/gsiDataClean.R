@@ -37,7 +37,7 @@ stockComp <- sqlQuery(con, stockCompQry) %>%
   rename(catchReg = Catch.Region, month = Month.Code, year = Year) %>% 
   mutate(catchReg = as.character(catchReg)) %>% 
   filter(Fishery == "Area G Com") 
-yrs <- unique(stockComp$Year)
+yrs <- unique(stockComp$year)
 
 # confirm one sample collected per catch region, year, and month
 # dum <- stockComp %>%
@@ -48,9 +48,11 @@ yrs <- unique(stockComp$Year)
 
 # region key to reference stocks at different roll ups
 reg1Qry <- "SELECT *
-           FROM [Region 1 Stock Names];"
+            FROM [Region 1 Stock Names];"
 reg1 <- sqlQuery(con, reg1Qry) %>% 
   select(-ID)
+# frNameQry <- "SELECT *
+#               FROM [Fraser Stock Grouping Names]"
 reg2Qry <- "SELECT *
            FROM [Stocks with Region Codes]
            LEFT JOIN [Region 2 Stock Names]
@@ -96,7 +98,16 @@ catchQry <- "SELECT [Area G FOS Catch Estimates].ESTIMATE_TYPE,
 "
 areaCatch <- sqlQuery(con, catchQry) %>% 
   rename_all(list(~make.names(.))) %>%
-  filter(FISHING.YEAR %in% yrs)
+  filter(FISHING.YEAR %in% yrs,
+         !VESSELS_OP > 200) #remove one entry with unrealistically high effort
+
+#summary of how catch/effort data is distributed through time
+# fosSumm <- areaCatch %>% 
+#   group_by(CATCH_REGION, FISHING.MONTH, FISHING.YEAR, MGMT_AREA) %>% 
+#   tally(name = "daysWithData")
+# 
+# write.csv(fosSumm, here::here("data", "gsiCatchData", "commTroll", 
+#                               "fosSummary.csv"))
 
 #summarize catches by area, month and year to match GSI data
 sumCatch <- areaCatch %>% 
@@ -109,18 +120,26 @@ sumCatch <- areaCatch %>%
   mutate(catchReg = as.character(catchReg))
 head(sumCatch)
 
+# # catch/effort coverage
+# ggplot(sumCatch, aes(x = month, y = sumCatch, color = catchReg)) +
+#   geom_line() +
+#   facet_wrap(~year)
+# ggplot(sumCatch, aes(x = month, y = sumEffort, color = catchReg)) +
+#   geom_line() +
+#   facet_wrap(~year)
+
 # combine monthly summed catches w/ monthly GSI to calculate stock specific 
 # catches (divide by 100 since they're percentages currently)
 stockCatch <- stockComp %>% 
   left_join(., sumCatch, by = c("catchReg", "month", "year")) %>% 
-  mutate(meanCatch = (Estimate / 100) * sumCatch,
-         varCatch = ((SD / 100) * sumCatch)^2) %>%
-  mutate(meanCPUE = meanCatch / sumEffort,
-         varCPUE = varCatch * (sumEffort^-2),
-         Stock = as.character(Stock)) %>% 
+  mutate(estCatch = (Estimate / 100) * sumCatch,
+         varCatch = ((SD / 100) * sumCatch)^2,
+         Stock = as.character(Stock),
+         samplePpn = Lab.Reported.N / sumCatch) %>% 
   left_join(., trimRegKey, by = "Stock") %>% 
-  select(catchReg, month, year, meanCatch, varCatch, meanCPUE, varCPUE, Stock, 
-         Region1Name, Region2Name, Region1Code:FraserGroupCode)
+  select(catchReg, month, year, sumEffort, labN = Lab.Reported.N, samplePpn,
+         estCatch, varCatch, Stock, Region1Name, Region2Name, 
+         Region1Code:FraserGroupCode)
 
 write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
                                  "stockCatch_WCVI.csv"), row.names = FALSE)
