@@ -1,5 +1,8 @@
-## Explore southcoast GSI Access database
+## Clean data from southcoast GSI Access database
 # Provided by Bryan Rusch Aug 19, 2019
+# Note: the tables within the access database are not joined, limiting the
+# utility of multitable queries; to ensure repeatability the majority of data
+# cleaning occurs after tables have been imported to R
 
 library(RODBC); library(tidyverse); library(ggplot2)
 
@@ -10,9 +13,7 @@ con <- odbcConnectAccess2007(file_path)
 # Check out table names
 sqlTables(con, tableType = "TABLE")$TABLE_NAME
 
-# Import majority of data directly from tables because they aren't linked with
-# one another, limiting the utility of SQL queries that include joins
-
+## Import various datatables
 # all gsi samples
 sampInvQry <- "SELECT *
                FROM [Sample Inventory]"
@@ -45,6 +46,7 @@ yrs <- unique(stockComp$Year)
 #   group_by(Catch.Region, Year, Month.Name) %>%
 #   tally()
 
+# region key to reference stocks at different roll ups
 reg1Qry <- "SELECT *
            FROM [Region 1 Stock Names];"
 reg1 <- sqlQuery(con, reg1Qry) %>% 
@@ -67,7 +69,6 @@ trimRegKey <- regKey %>%
   select(Stock, Region1Name, Region2Name)
 
 # write.csv(regKey, here::here("data", "southcoastStockKey.csv"), row.names = F)
-
 
 # all catch/effort data
 catchQry <- "SELECT [Area G FOS Catch Estimates].ESTIMATE_TYPE, 
@@ -114,12 +115,12 @@ stockCatch <- stockComp %>%
   left_join(., sumCatch, by = c("catchReg", "month", "year")) %>% 
   mutate(meanCatch = (Estimate / 100) * sumCatch,
          varCatch = ((SD / 100) * sumCatch)^2) %>%
-  mutate(meanCPUE = meanCatch/sumEffort,
-         varCPUE = varCatch/sumEffort,
+  mutate(meanCPUE = meanCatch / sumEffort,
+         varCPUE = varCatch * (sumEffort^-2),
          Stock = as.character(Stock)) %>% 
   left_join(., trimRegKey, by = "Stock") %>% 
   select(catchReg, month, year, meanCatch, varCatch, meanCPUE, varCPUE, Stock, 
          Region1Name, Region2Name, Region1Code:FraserGroupCode)
 
 write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
-                                 "stockCatch_WCVI.csv"))
+                                 "stockCatch_WCVI.csv"), row.names = FALSE)
