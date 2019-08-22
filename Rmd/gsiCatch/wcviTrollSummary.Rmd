@@ -1,0 +1,14 @@
+---
+title: "WCVI Troll Catch"
+output: html_document
+---
+
+```{r dataAndLibraries, include=FALSE}
+library(tidyverse); library(ggplot2)
+source(here::here("R", "functions", "pooledVar.R"))
+
+catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                             "stockCatch_WCVI.csv"))
+```
+
+Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day. Sampling effort (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn`). 
