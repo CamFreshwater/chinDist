@@ -141,5 +141,12 @@ stockCatch <- stockComp %>%
          estCatch, varCatch, Stock, Region1Name, Region2Name, 
          Region1Code:FraserGroupCode)
 
+dd <- stockCatch %>% 
+  filter(is.na(samplePpn))
+
+ee <- areaCatch %>% 
+  filter(FISHING.YEAR == "2013", 
+  FISHING.MONTH %in% c("6","8"))
+
 write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
                                  "stockCatch_WCVI.csv"), row.names = FALSE)
