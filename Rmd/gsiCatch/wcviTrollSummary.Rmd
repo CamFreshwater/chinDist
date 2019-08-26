@@ -4,11 +4,44 @@ output: html_document
 ---
 
 ```{r dataAndLibraries, include=FALSE}
-library(tidyverse); library(ggplot2)
+library(tidyverse); library(ggplot2); library(ggpubr)
 source(here::here("R", "functions", "pooledVar.R"))
 
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                              "stockCatch_WCVI.csv"))
 ```
 
-Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day. Sampling effort (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn`). 
+Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day (additional data could be interpolated using FOS database). Sampling effort for stock ID (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn)`). 
+
+Sampling effort was considerable
+
+```{r sampleSize}
+catchAgg <- catch %>% 
+  group_by(catchReg, month, year, labN) %>% 
+  mutate(sumCatch = sum(estCatch)) %>% 
+  select(catchReg, month, year, labN, sumEffort, sumCatch) %>% 
+  mutate(cpue = sumCatch / sumEffort) %>% 
+  distinct()
+
+ggplot(catchAgg) +
+  geom_bar(aes(x = as.factor(month), y = labN, fill = catchReg), 
+       stat = "identity") +
+  labs(x = "", y = "GSI Samples", fill = "Catch Region") +
+  facet_wrap(~year)
+```
+
+
+Although west coast fishery currently occurs in August and early September (constrained by interior Fraser coho initially, then steelhead), until recently effort peaked in May. Conversely CPUE, ignoring stock composition, peaked later in summer (July/August) depending on catch region.
+
+```{r plotEffort, warning=FALSE}
+eff <- ggplot(catchAgg, aes(x = as.factor(month), y = sumEffort, 
+                            color = catchReg)) +
+  geom_boxplot() +
+  labs(x = "", y = "Monthly Effort (boat days)", color = "Catch Region")
+cpue <- ggplot(catchAgg, aes(x = as.factor(month), y = cpue, 
+                             color = catchReg)) +
+  geom_boxplot() +
+  labs(x = "Month", y = "CPUE (Chinook per boat day)", color = "Catch Region")
+ggarrange(eff, cpue, ncol = 1, nrow = 2, common.legend = TRUE)
+```
+
