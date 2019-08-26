@@ -100,10 +100,13 @@ areaCatch <- sqlQuery(con, catchQry) %>%
   rename_all(list(~make.names(.))) %>%
   filter(FISHING.YEAR %in% yrs,
          !VESSELS_OP > 200) #remove one entry with unrealistically high effort
+# write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll", 
+#                                 "fosCatch.csv"))
+
 
 #summary of how catch/effort data is distributed through time
-# fosSumm <- areaCatch %>% 
-#   group_by(CATCH_REGION, FISHING.MONTH, FISHING.YEAR, MGMT_AREA) %>% 
+# fosSumm <- areaCatch %>%
+#   group_by(CATCH_REGION, FISHING.MONTH, FISHING.YEAR, MGMT_AREA) %>%
 #   tally(name = "daysWithData")
 # 
 # write.csv(fosSumm, here::here("data", "gsiCatchData", "commTroll", 

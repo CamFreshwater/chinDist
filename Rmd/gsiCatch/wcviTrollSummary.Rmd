@@ -7,13 +7,15 @@ output: html_document
 library(tidyverse); library(ggplot2); library(ggpubr)
 source(here::here("R", "functions", "pooledVar.R"))
 
+fosCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                                "fosCatch.csv"))
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                              "stockCatch_WCVI.csv"))
 ```
 
-Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day (additional data could be interpolated using FOS database). Sampling effort for stock ID (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn)`). 
+Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day (additional data could be interpolated using FOS database). 
 
-Sampling effort was considerable
+Sampling effort was considerable and approximately proportional to catch. Sampling effort for stock ID (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn)`). 
 
 ```{r sampleSize}
 catchAgg <- catch %>% 
@@ -30,18 +32,29 @@ ggplot(catchAgg) +
   facet_wrap(~year)
 ```
 
-
-Although west coast fishery currently occurs in August and early September (constrained by interior Fraser coho initially, then steelhead), until recently effort peaked in May. Conversely CPUE, ignoring stock composition, peaked later in summer (July/August) depending on catch region.
+Although the west coast troll fishery currently occurs in August and early September (constrained by interior Fraser coho initially, then steelhead), until recently effort peaked in May. Conversely CPUE, ignoring stock composition, peaked later in summer (July/August) depending on catch region.
 
 ```{r plotEffort, warning=FALSE}
 eff <- ggplot(catchAgg, aes(x = as.factor(month), y = sumEffort, 
-                            color = catchReg)) +
+                            fill = catchReg)) +
+  scale_fill_viridis_d() +
   geom_boxplot() +
   labs(x = "", y = "Monthly Effort (boat days)", color = "Catch Region")
 cpue <- ggplot(catchAgg, aes(x = as.factor(month), y = cpue, 
-                             color = catchReg)) +
+                             fill = catchReg)) +
+  scale_fill_viridis_d() +
   geom_boxplot() +
-  labs(x = "Month", y = "CPUE (Chinook per boat day)", color = "Catch Region")
+  labs(x = "Month", y = "CPUE (Chinook per boat day)", fill = "Catch Region")
 ggarrange(eff, cpue, ncol = 1, nrow = 2, common.legend = TRUE)
 ```
 
+Although samples cannot yet be attributed to specific stat areas, catches can. Majority of effort in offshore areas (catch trends, not shown, are similar). Areas 125 and 126 in the north, 123 in the south. Note, however, that 123 effort has declined substantially in recent years.
+
+```{r saCatch, warning=FALSE}
+ggplot(fosCatch, aes(x = as.factor(FISHING.MONTH), y = VESSELS_OP, 
+                             fill = as.factor(MGMT_AREA))) +
+  geom_boxplot() +
+  labs(x = "Month", y = "Effort (boat days)", fill = "Management Area") +
+  scale_fill_viridis_d() +
+  facet_wrap(~CATCH_REGION)
+```
