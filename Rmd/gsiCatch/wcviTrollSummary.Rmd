@@ -28,6 +28,7 @@ catchAgg <- catch %>%
 ggplot(catchAgg) +
   geom_bar(aes(x = as.factor(month), y = labN, fill = catchReg), 
        stat = "identity") +
+    scale_fill_viridis_d() +
   labs(x = "", y = "GSI Samples", fill = "Catch Region") +
   facet_wrap(~year)
 ```
@@ -57,4 +58,59 @@ ggplot(fosCatch, aes(x = as.factor(FISHING.MONTH), y = VESSELS_OP,
   labs(x = "Month", y = "Effort (boat days)", fill = "Management Area") +
   scale_fill_viridis_d() +
   facet_wrap(~CATCH_REGION)
+```
+
+Relative catch contributions depend on how the data are aggregated across time and rolled up regionally. For example absolute catches are, on average, dominated by Columbia River fish in the north and Columbia plus Puget Sound fish in the south. 
+
+```{r aggComp, echo=FALSE}
+reg3Catch <- catch %>% 
+  group_by(catchReg, month, year, Region3Name) %>% 
+  summarize(sumCatch = sum(estCatch)) %>%
+  group_by(catchReg, month, Region3Name) %>% 
+  summarize(meanCatch = mean(sumCatch, na.rm = TRUE))
+
+ggplot(reg3Catch) +
+  geom_bar(aes(x = as.factor(month), y = meanCatch, fill = Region3Name),
+       stat = "identity") +
+    scale_fill_viridis_d() +
+  labs(x = "", y = "Catch", fill = "Region of Origin") +
+  facet_wrap(~catchReg)
+```
+
+These patterns can be visualized more clearly with proportional catches. Again Columbia River and Puget Sound fish are the dominant contributor, however Fraser abundance peaks again in August.
+
+```{r propAggComp, echo = FALSE}
+reg3Prop <- reg3Catch %>% 
+  group_by(catchReg, month) %>% 
+  summarize(totalCatch = sum(meanCatch)) %>% 
+  left_join(reg3Catch, ., by = c("catchReg", "month")) %>% 
+  mutate(propCatch = meanCatch / totalCatch)
+
+ggplot(reg3Prop) +
+  geom_bar(aes(x = as.factor(month), y = propCatch, fill = Region3Name), 
+       stat = "identity") +
+    scale_fill_viridis_d() +
+  labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
+  facet_wrap(~catchReg)
+```
+
+Yet another way to visualize these data are to focus on how the seasonal abundance of a specific aggregate changes through time. Here we see that west coast Vancouver Island stocks tend to peak relatively early and Fraser River stocks relatively late.
+
+```{r propTS, echo = FALSE}
+reg3Month <- catch %>% 
+  group_by(catchReg, Region3Name, month, year) %>%
+  summarize(monthlyCatch = sum(estCatch))
+reg3TS <- catch %>% 
+  group_by(catchReg, Region3Name, year) %>% 
+  summarize(annualCatch = sum(estCatch)) %>% 
+  left_join(reg3Month, ., by = c("catchReg", "Region3Name", "year")) %>% 
+  filter(Region3Name %in% c("Fraser River", "WCVI", "Columbia", 
+                            "Puget Sound")) %>% 
+  mutate(propCatch = monthlyCatch / annualCatch)
+
+ggplot(reg3TS) +
+  geom_boxplot(aes(x = as.factor(month), y = propCatch, fill = Region3Name)) +
+  scale_fill_viridis_d() +
+  labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
+  facet_wrap(~catchReg)
 ```

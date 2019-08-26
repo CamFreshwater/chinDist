@@ -51,6 +51,10 @@ reg1Qry <- "SELECT *
             FROM [Region 1 Stock Names];"
 reg1 <- sqlQuery(con, reg1Qry) %>% 
   select(-ID)
+reg3Qry <- "SELECT *
+            FROM [Region 3 Stock Names];"
+reg3 <- sqlQuery(con, reg3Qry) %>% 
+  select(-ID)
 # frNameQry <- "SELECT *
 #               FROM [Fraser Stock Grouping Names]"
 reg2Qry <- "SELECT *
@@ -61,14 +65,15 @@ reg2Qry <- "SELECT *
 regKey <- sqlQuery(con, reg2Qry) %>%
   rename_all(list(~make.names(.))) %>%
   left_join(., reg1, by = "Region1Code") %>% 
+  left_join(., reg3, by = "Region3Code") %>% 
   mutate(Stock = Stock.Name) %>% 
-  select(Stock.Code, Stock, Region2Name, Region1Name, 
+  select(Stock.Code, Stock, Region2Name, Region1Name, Region3Name, 
          Region1Code:FraserGroupCode)
 head(regKey)
 
 trimRegKey <- regKey %>% 
   mutate(Stock = as.character(Stock)) %>% 
-  select(Stock, Region1Name, Region2Name)
+  select(Stock, Region1Name, Region2Name, Region3Name)
 
 # write.csv(regKey, here::here("data", "southcoastStockKey.csv"), row.names = F)
 
@@ -141,7 +146,7 @@ stockCatch <- stockComp %>%
          samplePpn = Lab.Reported.N / sumCatch) %>% 
   left_join(., trimRegKey, by = "Stock") %>% 
   select(catchReg, month, year, sumEffort, labN = Lab.Reported.N, samplePpn,
-         estCatch, varCatch, Stock, Region1Name, Region2Name, 
+         estCatch, varCatch, Stock, Region1Name, Region2Name, Region3Name,
          Region1Code:FraserGroupCode)
 
 dd <- stockCatch %>% 
