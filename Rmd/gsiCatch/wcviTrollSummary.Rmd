@@ -105,12 +105,58 @@ reg3TS <- catch %>%
   summarize(annualCatch = sum(estCatch)) %>% 
   left_join(reg3Month, ., by = c("catchReg", "Region3Name", "year")) %>% 
   filter(Region3Name %in% c("Fraser River", "WCVI", "Columbia", 
-                            "Puget Sound")) %>% 
+                            "Puget Sound"),
+         catchReg == "SWVI") %>% 
   mutate(propCatch = monthlyCatch / annualCatch)
 
 ggplot(reg3TS) +
   geom_boxplot(aes(x = as.factor(month), y = propCatch, fill = Region3Name)) +
   scale_fill_viridis_d() +
   labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
+  facet_wrap(~Region3Name)
+```
+
+May be important to account for stock-specific variation within a region. As an example focus on individual stocks within Fraser. There are relatively large contributions of South Thompson fish throughout the spring and summer, as well as noticeable contributions of Upper Fraser fish during the summer, but only in NWVI catches. In SWVI almost exclusively dominated by fall Fraser fish.
+
+```{r fraser, echo = FALSE}
+frStocks <- unique(catch$Region1Name)[1:6]
+frCatch <- catch %>% 
+  filter(Region1Name %in% frStocks) %>% 
+  group_by(catchReg, Region1Name, month, year) %>% 
+  summarize(monthlyCatch = sum(estCatch)) %>% 
+  group_by(catchReg, Region1Name, month) %>% 
+  summarize(meanCatch = mean(monthlyCatch, na.rm = TRUE))
+frProp <- frCatch %>% 
+  group_by(catchReg, month) %>% 
+  summarize(totalCatch = sum(meanCatch)) %>% 
+  left_join(frCatch, ., by = c("catchReg", "month")) %>% 
+  mutate(propCatch = meanCatch / totalCatch)
+
+ggplot(frProp) +
+  geom_bar(aes(x = as.factor(month), y = propCatch, fill = Region1Name), 
+       stat = "identity") +
+    scale_fill_viridis_d() +
+  labs(x = "", y = "Proportional Catch", fill = "Management Unit") +
   facet_wrap(~catchReg)
+```
+
+
+
+```{r propTS, echo = FALSE}
+frMonth <- catch %>% 
+  filter(Region1Name %in% frStocks) %>% 
+  group_by(catchReg, Region1Name, month, year) %>%
+  summarize(monthlyCatch = sum(estCatch))
+frTS <- catch %>% 
+  filter(Region1Name %in% frStocks) %>% 
+  group_by(catchReg, Region1Name, year) %>% 
+  summarize(annualCatch = sum(estCatch)) %>% 
+  left_join(frMonth, ., by = c("catchReg", "Region1Name", "year")) %>% 
+  mutate(propCatch = monthlyCatch / annualCatch)
+
+ggplot(frTS %>% filter(catchReg == "NWVI")) +
+  geom_boxplot(aes(x = as.factor(month), y = propCatch, fill = Region1Name)) +
+  scale_fill_viridis_d() +
+  labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
+  facet_wrap(~Region1Name)
 ```
