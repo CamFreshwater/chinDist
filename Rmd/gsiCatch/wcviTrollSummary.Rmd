@@ -116,6 +116,25 @@ ggplot(reg3TS) +
   facet_wrap(~Region3Name)
 ```
 
+Ignoring interannual variation (for now) we can also look at the cumulative proportion of the catch through the calendar year. Note that it may be reasonable to consider alternative time frames such as having the year "end" when the last spawner should have passed through an area. 
+
+```{r cumSum, echo = FALSE}
+reg3CumSum <- reg3Month  %>% 
+  group_by(catchReg, Region3Name, month) %>% 
+  summarize(meanMonthC = mean(monthlyCatch, na.rm = T)) %>% 
+  group_by(catchReg, Region3Name) %>% 
+  mutate(cumCatch = cumsum(meanMonthC)) %>% 
+  filter(Region3Name %in% c("Fraser River", "WCVI", "Columbia", 
+                            "Puget Sound"),
+         catchReg == "SWVI")
+  
+ggplot(reg3CumSum) +
+  geom_line(aes(x = month, y = cumCatch, colour = Region3Name)) +
+  scale_fill_viridis_d() +
+  labs(x = "", y = "Cumulative Catch", fill = "Region of Origin") +
+  facet_wrap(~Region3Name)
+```
+
 May be important to account for stock-specific variation within a region. As an example focus on individual stocks within Fraser. There are relatively large contributions of South Thompson fish throughout the spring and summer, as well as noticeable contributions of Upper Fraser fish during the summer, but only in NWVI catches. In SWVI almost exclusively dominated by fall Fraser fish.
 
 ```{r fraser, echo = FALSE}
@@ -140,7 +159,7 @@ ggplot(frProp) +
   facet_wrap(~catchReg)
 ```
 
-
+Plot cumulative catch, again ignoring interannual variablity, to provide a coarse index of passage through the fishery.
 
 ```{r propTS, echo = FALSE}
 frMonth <- catch %>% 
@@ -159,4 +178,20 @@ ggplot(frTS %>% filter(catchReg == "NWVI")) +
   scale_fill_viridis_d() +
   labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
   facet_wrap(~Region1Name)
+```
+
+```{r frCumSum, echo = FALSE}
+frCumCatch <- frTS %>% 
+  group_by(catchReg, Region1Name, month) %>%
+  summarize(meanPropC = mean(propCatch, na.rm = T)) %>% 
+  group_by(catchReg, Region1Name) %>% 
+  mutate(cumCatch = cumsum(meanPropC))
+
+ggplot(frCumCatch %>% filter(catchReg == "NWVI")) +
+  geom_line(aes(x = month, y = cumCatch, colour = Region1Name)) +
+  scale_colour_viridis_d() +
+  labs(x = "", y = "Cumulative Catch", fill = "Region of Origin") 
+# +
+#   facet_wrap(~Region1Name, scales = "free_y")
+
 ```
