@@ -1,6 +1,6 @@
 ---
 title: "WCVI Troll Catch"
-output: html_document
+output: pdf_document
 ---
 
 ```{r dataAndLibraries, include=FALSE}
@@ -15,9 +15,9 @@ catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 
 Tissues samples were collected from WCVI commercial troll vessels (`r min(catch$year)`-`r max(catch$year)`) and assigned to individual stocks using DFO genetics lab's coastwide baseline. Samples were collected in bulk vials (i.e. multiple muscle plugs per vial) and currently can be assigned to catch region (north or south westcoast VI) and month, but not to statistical area/troll zone or week/day (additional data could be interpolated using FOS database). 
 
-Sampling effort was considerable and approximately proportional to catch. Sampling effort for stock ID (relative to catch) averaged `r mean(catch$samplePpn)` (range `r range(catch$samplePpn)`). 
+Sampling effort was considerable and approximately proportional to catch. Sampling effort for stock ID (relative to catch) averaged `r mean(catch$samplePpn, na.rm = T)` (range `r range(catch$samplePpn, na.rm = T)`). 
 
-```{r sampleSize}
+```{r sampleSize, include=FALSE}
 catchAgg <- catch %>% 
   group_by(catchReg, month, year, labN) %>% 
   mutate(sumCatch = sum(estCatch)) %>% 
@@ -30,34 +30,40 @@ ggplot(catchAgg) +
        stat = "identity") +
     scale_fill_viridis_d() +
   labs(x = "", y = "GSI Samples", fill = "Catch Region") +
-  facet_wrap(~year)
+  facet_wrap(~year) +
+  samSim::theme_sleekX()
 ```
 
 Although the west coast troll fishery currently occurs in August and early September (constrained by interior Fraser coho initially, then steelhead), until recently effort peaked in May. Conversely CPUE, ignoring stock composition, peaked later in summer (July/August) depending on catch region.
 
-```{r plotEffort, warning=FALSE}
+```{r plotEffort, warning=FALSE, include=FALSE}
 eff <- ggplot(catchAgg, aes(x = as.factor(month), y = sumEffort, 
                             fill = catchReg)) +
   scale_fill_viridis_d() +
   geom_boxplot() +
-  labs(x = "", y = "Monthly Effort (boat days)", color = "Catch Region")
+  labs(x = "", y = "Monthly Effort (boat days)", color = "Catch Region") +
+  samSim::theme_sleekX()
 cpue <- ggplot(catchAgg, aes(x = as.factor(month), y = cpue, 
                              fill = catchReg)) +
   scale_fill_viridis_d() +
   geom_boxplot() +
-  labs(x = "Month", y = "CPUE (Chinook per boat day)", fill = "Catch Region")
+  labs(x = "Month", y = "CPUE (Chinook per boat day)", fill = "Catch Region") +
+  samSim::theme_sleekX()
 ggarrange(eff, cpue, ncol = 1, nrow = 2, common.legend = TRUE)
 ```
 
-Although samples cannot yet be attributed to specific stat areas, catches can. Majority of effort in offshore areas (catch trends, not shown, are similar). Areas 125 and 126 in the north, 123 in the south. Note, however, that 123 effort has declined substantially in recent years.
+Although samples cannot yet be attributed to specific stat areas, catches can. Majority of effort in offshore areas (catch trends, not shown, are similar). Areas 125 and 126 in the north, 123 in the south. Note, however, that 123 effort has declined substantially in recent years and areas 24-27 are not shown here due to low effort.
 
 ```{r saCatch, warning=FALSE}
-ggplot(fosCatch, aes(x = as.factor(FISHING.MONTH), y = VESSELS_OP, 
+dum <- fosCatch %>% 
+  filter(MGMT_AREA %in% c("23", "123", "124", "125", "126", "127"))
+ggplot(dum, aes(x = as.factor(FISHING.MONTH), y = VESSELS_OP, 
                              fill = as.factor(MGMT_AREA))) +
   geom_boxplot() +
   labs(x = "Month", y = "Effort (boat days)", fill = "Management Area") +
   scale_fill_viridis_d() +
-  facet_wrap(~CATCH_REGION)
+  facet_wrap(~MGMT_AREA, scales = "free_y") +
+  samSim::theme_sleekX()
 ```
 
 Relative catch contributions depend on how the data are aggregated across time and rolled up regionally. For example absolute catches are, on average, dominated by Columbia River fish in the north and Columbia plus Puget Sound fish in the south. 
@@ -74,10 +80,11 @@ ggplot(reg3Catch) +
        stat = "identity") +
     scale_fill_viridis_d() +
   labs(x = "", y = "Catch", fill = "Region of Origin") +
-  facet_wrap(~catchReg)
+  facet_wrap(~catchReg) + 
+  samSim::theme_sleekX()
 ```
 
-These patterns can be visualized more clearly with proportional catches. Again Columbia River and Puget Sound fish are the dominant contributor, however Fraser abundance peaks again in August.
+These patterns can be visualized more clearly with proportional catches (i.e. the relative contribution of each stock to a given month's catch). Again Columbia River and Puget Sound fish are the dominant contributor, however Fraser abundance is clearly significant in August in the south.
 
 ```{r propAggComp, echo = FALSE}
 reg3Prop <- reg3Catch %>% 
@@ -91,7 +98,8 @@ ggplot(reg3Prop) +
        stat = "identity") +
     scale_fill_viridis_d() +
   labs(x = "", y = "Proportional Catch", fill = "Region of Origin") +
-  facet_wrap(~catchReg)
+  facet_wrap(~catchReg) +
+  samSim::theme_sleekX()
 ```
 
 Yet another way to visualize these data are to focus on how the seasonal abundance of a specific aggregate changes through time. Here we see that west coast Vancouver Island stocks tend to peak relatively early and Fraser River stocks relatively late.
@@ -161,7 +169,7 @@ ggplot(frProp) +
 
 Plot cumulative catch, again ignoring interannual variablity, to provide a coarse index of passage through the fishery.
 
-```{r propTS, echo = FALSE}
+```{r frPropTS, echo = FALSE}
 frMonth <- catch %>% 
   filter(Region1Name %in% frStocks) %>% 
   group_by(catchReg, Region1Name, month, year) %>%

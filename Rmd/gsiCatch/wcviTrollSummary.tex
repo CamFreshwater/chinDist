@@ -1,0 +1,252 @@
+\documentclass[]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\hypersetup{unicode=true,
+            pdftitle={WCVI Troll Catch},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.77,0.63,0.00}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+%%% Use protect on footnotes to avoid problems with footnotes in titles
+\let\rmarkdownfootnote\footnote%
+\def\footnote{\protect\rmarkdownfootnote}
+
+%%% Change title format to be more compact
+\usepackage{titling}
+
+% Create subtitle command for use in maketitle
+\providecommand{\subtitle}[1]{
+  \posttitle{
+    \begin{center}\large#1\end{center}
+    }
+}
+
+\setlength{\droptitle}{-2em}
+
+  \title{WCVI Troll Catch}
+    \pretitle{\vspace{\droptitle}\centering\huge}
+  \posttitle{\par}
+    \author{}
+    \preauthor{}\postauthor{}
+    \date{}
+    \predate{}\postdate{}
+  
+
+\begin{document}
+\maketitle
+
+Tissues samples were collected from WCVI commercial troll vessels
+(2007-2015) and assigned to individual stocks using DFO genetics lab's
+coastwide baseline. Samples were collected in bulk vials (i.e.~multiple
+muscle plugs per vial) and currently can be assigned to catch region
+(north or south westcoast VI) and month, but not to statistical
+area/troll zone or week/day (additional data could be interpolated using
+FOS database).
+
+Sampling effort was considerable and approximately proportional to
+catch. Sampling effort for stock ID (relative to catch) averaged NA
+(range NA, NA).
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{catchAgg <-}\StringTok{ }\NormalTok{catch }\OperatorTok{%>%}\StringTok{ }
+\StringTok{  }\KeywordTok{group_by}\NormalTok{(catchReg, month, year, labN) }\OperatorTok{%>%}\StringTok{ }
+\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{sumCatch =} \KeywordTok{sum}\NormalTok{(estCatch)) }\OperatorTok{%>%}\StringTok{ }
+\StringTok{  }\KeywordTok{select}\NormalTok{(catchReg, month, year, labN, sumEffort, sumCatch) }\OperatorTok{%>%}\StringTok{ }
+\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{cpue =}\NormalTok{ sumCatch }\OperatorTok{/}\StringTok{ }\NormalTok{sumEffort) }\OperatorTok{%>%}\StringTok{ }
+\StringTok{  }\KeywordTok{distinct}\NormalTok{()}
+
+\KeywordTok{ggplot}\NormalTok{(catchAgg) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{geom_bar}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x =} \KeywordTok{as.factor}\NormalTok{(month), }\DataTypeTok{y =}\NormalTok{ labN, }\DataTypeTok{fill =}\NormalTok{ catchReg), }
+       \DataTypeTok{stat =} \StringTok{"identity"}\NormalTok{) }\OperatorTok{+}
+\StringTok{    }\KeywordTok{scale_fill_viridis_d}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{labs}\NormalTok{(}\DataTypeTok{x =} \StringTok{""}\NormalTok{, }\DataTypeTok{y =} \StringTok{"GSI Samples"}\NormalTok{, }\DataTypeTok{fill =} \StringTok{"Catch Region"}\NormalTok{) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{facet_wrap}\NormalTok{(}\OperatorTok{~}\NormalTok{year)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{wcviTrollSummary_files/figure-latex/sampleSize-1.pdf}
+
+Although the west coast troll fishery currently occurs in August and
+early September (constrained by interior Fraser coho initially, then
+steelhead), until recently effort peaked in May. Conversely CPUE,
+ignoring stock composition, peaked later in summer (July/August)
+depending on catch region.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{eff <-}\StringTok{ }\KeywordTok{ggplot}\NormalTok{(catchAgg, }\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x =} \KeywordTok{as.factor}\NormalTok{(month), }\DataTypeTok{y =}\NormalTok{ sumEffort, }
+                            \DataTypeTok{fill =}\NormalTok{ catchReg)) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{scale_fill_viridis_d}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{geom_boxplot}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{labs}\NormalTok{(}\DataTypeTok{x =} \StringTok{""}\NormalTok{, }\DataTypeTok{y =} \StringTok{"Monthly Effort (boat days)"}\NormalTok{, }\DataTypeTok{color =} \StringTok{"Catch Region"}\NormalTok{)}
+\NormalTok{cpue <-}\StringTok{ }\KeywordTok{ggplot}\NormalTok{(catchAgg, }\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x =} \KeywordTok{as.factor}\NormalTok{(month), }\DataTypeTok{y =}\NormalTok{ cpue, }
+                             \DataTypeTok{fill =}\NormalTok{ catchReg)) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{scale_fill_viridis_d}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{geom_boxplot}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{labs}\NormalTok{(}\DataTypeTok{x =} \StringTok{"Month"}\NormalTok{, }\DataTypeTok{y =} \StringTok{"CPUE (Chinook per boat day)"}\NormalTok{, }\DataTypeTok{fill =} \StringTok{"Catch Region"}\NormalTok{)}
+\KeywordTok{ggarrange}\NormalTok{(eff, cpue, }\DataTypeTok{ncol =} \DecValTok{1}\NormalTok{, }\DataTypeTok{nrow =} \DecValTok{2}\NormalTok{, }\DataTypeTok{common.legend =} \OtherTok{TRUE}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{wcviTrollSummary_files/figure-latex/plotEffort-1.pdf}
+
+Although samples cannot yet be attributed to specific stat areas,
+catches can. Majority of effort in offshore areas (catch trends, not
+shown, are similar). Areas 125 and 126 in the north, 123 in the south.
+Note, however, that 123 effort has declined substantially in recent
+years.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{ggplot}\NormalTok{(fosCatch, }\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x =} \KeywordTok{as.factor}\NormalTok{(FISHING.MONTH), }\DataTypeTok{y =}\NormalTok{ VESSELS_OP, }
+                             \DataTypeTok{fill =} \KeywordTok{as.factor}\NormalTok{(MGMT_AREA))) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{geom_boxplot}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{labs}\NormalTok{(}\DataTypeTok{x =} \StringTok{"Month"}\NormalTok{, }\DataTypeTok{y =} \StringTok{"Effort (boat days)"}\NormalTok{, }\DataTypeTok{fill =} \StringTok{"Management Area"}\NormalTok{) }\OperatorTok{+}
+\StringTok{  }\KeywordTok{scale_fill_viridis_d}\NormalTok{() }\OperatorTok{+}
+\StringTok{  }\KeywordTok{facet_wrap}\NormalTok{(}\OperatorTok{~}\NormalTok{CATCH_REGION)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{wcviTrollSummary_files/figure-latex/saCatch-1.pdf}
+
+Relative catch contributions depend on how the data are aggregated
+across time and rolled up regionally. For example absolute catches are,
+on average, dominated by Columbia River fish in the north and Columbia
+plus Puget Sound fish in the south.
+
+\includegraphics{wcviTrollSummary_files/figure-latex/aggComp-1.pdf}
+
+These patterns can be visualized more clearly with proportional catches.
+Again Columbia River and Puget Sound fish are the dominant contributor,
+however Fraser abundance peaks again in August.
+
+\includegraphics{wcviTrollSummary_files/figure-latex/propAggComp-1.pdf}
+
+Yet another way to visualize these data are to focus on how the seasonal
+abundance of a specific aggregate changes through time. Here we see that
+west coast Vancouver Island stocks tend to peak relatively early and
+Fraser River stocks relatively late.
+
+\begin{verbatim}
+## Warning: Removed 20 rows containing non-finite values (stat_boxplot).
+\end{verbatim}
+
+\includegraphics{wcviTrollSummary_files/figure-latex/propTS-1.pdf}
+
+Ignoring interannual variation (for now) we can also look at the
+cumulative proportion of the catch through the calendar year. Note that
+it may be reasonable to consider alternative time frames such as having
+the year ``end'' when the last spawner should have passed through an
+area.
+
+\includegraphics{wcviTrollSummary_files/figure-latex/cumSum-1.pdf}
+
+May be important to account for stock-specific variation within a
+region. As an example focus on individual stocks within Fraser. There
+are relatively large contributions of South Thompson fish throughout the
+spring and summer, as well as noticeable contributions of Upper Fraser
+fish during the summer, but only in NWVI catches. In SWVI almost
+exclusively dominated by fall Fraser fish.
+
+\includegraphics{wcviTrollSummary_files/figure-latex/fraser-1.pdf}
+
+Plot cumulative catch, again ignoring interannual variablity, to provide
+a coarse index of passage through the fishery.
+
+\includegraphics{wcviTrollSummary_files/figure-latex/frPropTS-1.pdf}
+
+\includegraphics{wcviTrollSummary_files/figure-latex/frCumSum-1.pdf}
+
+
+\end{document}
