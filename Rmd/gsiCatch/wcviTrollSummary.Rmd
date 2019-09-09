@@ -165,11 +165,11 @@ Plot cumulative catch, again ignoring interannual variablity, to provide a coars
 frMonth <- catch %>% 
   filter(Region1Name %in% frStocks) %>% 
   group_by(catchReg, Region1Name, month, year) %>%
-  summarize(monthlyCatch = sum(estCatch))
+  summarize(monthlyCatch = sum(estCatch, na.rm = T))
 frTS <- catch %>% 
   filter(Region1Name %in% frStocks) %>% 
   group_by(catchReg, Region1Name, year) %>% 
-  summarize(annualCatch = sum(estCatch)) %>% 
+  summarize(annualCatch = sum(estCatch, na.rm = T)) %>% 
   left_join(frMonth, ., by = c("catchReg", "Region1Name", "year")) %>% 
   mutate(propCatch = monthlyCatch / annualCatch)
 
@@ -182,16 +182,17 @@ ggplot(frTS %>% filter(catchReg == "NWVI")) +
 
 ```{r frCumSum, echo = FALSE}
 frCumCatch <- frTS %>% 
-  group_by(catchReg, Region1Name, month) %>%
-  summarize(meanPropC = mean(propCatch, na.rm = T)) %>% 
+  group_by(month, catchReg, Region1Name) %>% 
+  summarize(meanMonthly = mean(monthlyCatch, na.rm = T),
+            meanAnnual = mean(annualCatch, na.rm = T)) %>% 
+  mutate(meanPropCatch = meanMonthly / meanAnnual) %>% 
   group_by(catchReg, Region1Name) %>% 
-  mutate(cumCatch = cumsum(meanPropC))
+  mutate(cumCatch = cumsum(meanMonthly), 
+         ppnCum = cumsum(meanPropCatch))
 
-ggplot(frCumCatch %>% filter(catchReg == "NWVI")) +
-  geom_line(aes(x = month, y = cumCatch, colour = Region1Name)) +
+ggplot(frCumCatch) +
+  geom_line(aes(x = month, y = ppnCum, colour = Region1Name)) +
   scale_colour_viridis_d() +
-  labs(x = "", y = "Cumulative Catch", fill = "Region of Origin") 
-# +
-#   facet_wrap(~Region1Name, scales = "free_y")
-
+  labs(x = "", y = "Cumulative Catch", fill = "Region of Origin") +
+  facet_wrap(~catchReg)
 ```
