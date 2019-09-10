@@ -11,7 +11,6 @@ library(measurements)
 library(rgdal)
 
 setDat <- read.csv(here::here("data", "taggingData", "setData.csv")) 
-chinDat <- read.csv(here::here("data", "taggingData", "tagChinData.csv"))
 
 # Convert to decimal degrees
 setDat <- setDat %>% 
@@ -56,67 +55,4 @@ setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) +
 png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7,
     units = "in", res = 400)
 setMap
-dev.off()
-
-#-----
-
-## Plot heat map of catch data
-
-# Sum chinook catch data
-count <- chinDat %>%
-  group_by(event) %>%
-  summarise(nChin = n())
-# Add lat/longs from set data to catch data
-catchDat <- setDat %>%
-  select(event, date, lat, long) %>%
-  left_join(., count, by = "event") %>%
-  replace_na(list(nChin = 0))
-
-ggplot(catchDat) +
-  stat_density2d(aes(x = long, y = lat, fill = ..level..), 
-                  geom = "polygon",
-                  alpha = 0.5) +
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  geom_point(aes(x = long, y = lat)) +
-  lims(x = c(-126.3, -125.3), y = c(48.35, 49.2)) +
-  geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-               color = "black", fill = "gray80") 
-
-# ALT VERSION (doesn't account for effort as well)
-# Merge catch and fish data
-locDat <- setDat %>%
-  select(event, date, lat = lat2, long = long2)
-indDat <- chinDat %>%
-  select(fish, event, fl, circ, clip) %>% 
-  mutate(size = case_when(
-    fl > 75 ~ "large",
-    TRUE ~ "medium"
-  ))  %>% 
-  left_join(., locDat, by = "event")
-
-p <- ggplot(indDat) +
-  stat_density_2d(aes(x = long, y = lat, fill = ..level..),
-                  geom = "polygon",
-                  alpha = 0.5) +
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  geom_point(data = locDat, aes(x = long, y = lat)) +
-  lims(x = c(-126.3, -125.3), y = c(48.35, 49.25)) +
-  coord_fixed(ratio = 1.3) +
-  geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-               color = "black", fill = "gray80") +
-  samSim::theme_sleekX()
-
-png(here::here("figs", "maps", "hatcheryMap.png"), height = 5, width = 7,
-    units = "in", res = 400)
-p +
-  facet_wrap(~clip)
-dev.off()
-
-
-png(here::here("figs", "maps", "sizeMap.png"), height = 5, width = 7,
-    units = "in", res = 400)
-p +
-  facet_wrap(~size)
 dev.off()

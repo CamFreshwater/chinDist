@@ -1,0 +1,85 @@
+---
+title: "2019 Field Work Summary"
+output: pdf_document
+---
+
+```{r loadDat, include=FALSE}
+# adjust as desired:
+knitr::opts_chunk$set(
+  fig.asp = 0.618,
+  fig.width = 9,
+  out.width = "6in",
+  fig.path='Figs/', 
+  include=FALSE,
+  echo=FALSE, warning=FALSE, message=FALSE,
+  dpi = 180,
+  fig.align = "center",
+  fig.pos = "htb"
+)
+options(kableExtra.latex.load_packages = FALSE)
+
+library(tidyverse)
+library(ggplot2)
+
+setDat <- read.csv(here::here("data", "taggingData", "cleanSetData.csv")) 
+chinDat <- read.csv(here::here("data", "taggingData", "cleanTagData.csv"))
+```
+
+The primary objective of our 2019 field season was to deploy acoustic telemetry tags that could be used to quantify stock-specific migration rates, depth distribution, and survival of adult Chinook salmon within resident killer whale critical habitat. Acoustics tags will be detected by passive receivers including a sparse grid array deployed along the continental shelf from the Columbia River to the Canadian border (managed by NOAA), a curtain array across Juan de Fuca Strait (OTN), and multiple smaller arrays throughout the Discovery Islands and Fraser River (UBC). Additionally active receivers were deployed opportunistically by DFO personnel during killer whale surveys. Data from receivers is beginning to be downloaded and should be available by late fall. 
+
+The secondary objective of the 2019 field season was to estimate stock-specific abundance of adult Chinook salmon within killer whale critical habitat using catch per unit effort (CPUE) indices. This objective was prioritized below tagging because there were insufficient resources to develop a fully stratified random survey design that could simultaneously account for variation among migrating stocks in spatial and temporal distribution.
+
+We sampled adult Chinook salmon during five multi-day fishing events (July 11-August 24) using a 37-foot commercial troller. Fishing effort was concentrated off shore of Ucluelet at the northern border of resident killer whale critical habitat on the southwest coast of Vancouver Island (Figure 1). All Chinook salmon over 45 cm were landed, measured, sampled for stock identification, and fitted with a PIT tag (for detection in freshwater arrays in the Cowichan and Columbia rivers). A subset of Chinook salmon were tagged with acoustic transmitters with depth sensors that will be detected by the arrays described above. Non-target species (predominantly coho salmon and lingcod) were enumerated. All fish were released immediately following capture. 
+
+```{r setMap, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks."}
+setMap <- readRDS(here::here("generatedData", "setMap.RDS"))
+setMap
+```
+
+```{r summDat}
+landed <- nrow(chinDat)
+tagged <- nrow(chinDat %>% 
+  filter(!is.na(acoustic)))
+```
+
+We landed and biosampled `r landed` maturing or mature Chinook salmon and deployed `r tagged` acoustic tags. Biosampled fish represented a relatively large size range and included both clipped and unclipped individuals.
+
+```{r bioDat, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks.}
+dum <- chinDat %>% 
+  filter(fl > 40)
+
+stat_box_data <- function(y, upper_limit = max(chinDat$fl) * 1.25) {
+  return( 
+    data.frame(
+      y = 0.95 * upper_limit,
+      label = paste('count =', length(y), '\n',
+                    'mean =', round(mean(y), 1), '\n')
+    )
+  )
+}
+
+ggplot(dum, aes(x = clip, y = fl, fill = clip, alpha = 0.1)) +
+  geom_violin(trim = FALSE) +
+  stat_summary(fun.data=mean_sdl, geom="pointrange") +
+  stat_summary(fun.data = stat_box_data, geom = "text", hjust = 0.5, 
+               vjust = 0.9) +
+  scale_fill_viridis_d() +
+  labs(x = "Adipose Clipped", y = "Fork Length") +
+  samSim::theme_sleekX() +
+  theme(legend.position = "none")
+```
+
+We are still awaiting genetic stock identification results and robust estimates of abundance will require more advanced modeling that accounts for sampling effort. However these preliminary data can still be used to visualize differences in spatial distribution among size classes and clipped (i.e. known hatchery origin) vs. unclipped individuals using raw catch data.
+
+```{r setMap, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks."}
+setMap <- readRDS(here::here("generatedData", "setMap.RDS"))
+setMap
+```
+
+
+
+ As a result, catch data are biased towards areas within the critical habitat with high densities of salmon. Nevertheless, by pairing these data with existing stock identified catch data from South Coast we will be able to develop relatively robust estimate of stock-specific distributions. 
+
+Note that because there were insufficient resources to develop a fully stratified random sampling design that could account for 
+
+ 
