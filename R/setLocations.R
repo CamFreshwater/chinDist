@@ -22,9 +22,11 @@ setDat <- setDat %>%
          long2 = -1 * as.numeric(measurements::conv_unit(long, 
                                                          from = 'deg_dec_min', 
                                                          to = 'dec_deg')),
-         julDay = as.POSIXlt(date, format = "%d/%m/%Y")$yday)
+         julDay = as.POSIXlt(date, format = "%d/%m/%Y")$yday) %>% 
+  select(event, set, date, julDay, lat = lat2, long = long2, time)
 
-write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"))
+# write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
+#           row.names = FALSE)
 
 nAm <- ne_countries(scale = "large")
 
@@ -38,16 +40,18 @@ ch84 <- spTransform(ch, CRS("+proj=longlat +datum=WGS84"))
 setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) + 
   coord_fixed(xlim = c(-127, -124.5), ylim = c(48, 49.25), ratio = 1.3) + 
   geom_polygon(color = "black", fill = "gray80") +
-  geom_point(data = setDat, aes(x = long2, y = lat2, fill = set),
+  geom_point(data = setDat, aes(x = long, y = lat, fill = julDay),
              inherit.aes = FALSE, shape = 21) +
   viridis::scale_fill_viridis(option = "magma") +
   geom_polygon(data = ch84, aes(x = long, y = lat, group = group), 
                colour = "red", fill = NA) +
-  labs(x = "Longitude", y = "Latitude") +
+  labs(x = "Longitude", y = "Latitude", fill = "Julian Day") +
   samSim::theme_sleekX(legendSize = 0.8) +
   theme(strip.text.x = element_blank(),
         strip.background = element_rect(colour="white", fill="white"),
         legend.position=c(0.1, 0.2))
+# saveRDS(setMap, here::here("generatedData", "setMap.RDS"))
+
 
 png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7,
     units = "in", res = 400)
@@ -64,7 +68,7 @@ count <- chinDat %>%
   summarise(nChin = n())
 # Add lat/longs from set data to catch data
 catchDat <- setDat %>%
-  select(event, date, lat = lat2, long = long2) %>%
+  select(event, date, lat, long) %>%
   left_join(., count, by = "event") %>%
   replace_na(list(nChin = 0))
 
@@ -77,9 +81,7 @@ ggplot(catchDat) +
   geom_point(aes(x = long, y = lat)) +
   lims(x = c(-126.3, -125.3), y = c(48.35, 49.2)) +
   geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-               color = "black", fill = "gray80") +
-  geom_polygon(data = ch84, aes(x = long, y = lat, group = group), 
-               colour = "red", fill = NA)
+               color = "black", fill = "gray80") 
 
 # ALT VERSION (doesn't account for effort as well)
 # Merge catch and fish data

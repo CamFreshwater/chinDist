@@ -14,22 +14,22 @@ calcWt <- function(length, girth) {
 }
 
 locDat <- setDat %>%
-  select(event, date, lat = lat2, long = long2)
+  select(event, date, lat, long)
 
 indDat <- chinDat %>%
-  mutate(pit = paste(pitLeader, pitID, sep = "")) %>%
-  select(fish, event, fl, circ, clip, dna, acoustic, pit)
-indDat[which(indDat$pit == "NANA"), ]$pit <- NA
-# write.csv(indDat, here::here("data", "taggingData", "trimTagData.csv"), 
-#           row.names = FALSE)
-
-indDat <- indFull %>%
-  mutate(size = case_when(
-    fl > 75 ~ "large",
-    TRUE ~ "medium"
-  ),
-  wt = calcWt(fl, circ)) %>% 
+  mutate(pit = paste(pitLeader, pitID, sep = ""),
+         size = case_when(
+           fl > 75 ~ "large",
+           fl < 55 ~ "sublegal",
+           TRUE ~ "medium"
+         ),
+         wt = calcWt(fl, circ)) %>%
+  select(fish, event, fl, circ, wt, size, clip, dna, acoustic, pit) %>% 
   left_join(., locDat, by = "event")
+indDat[which(indDat$pit == "NANA"), ]$pit <- NA
+
+# write.csv(indDat, here::here("data", "taggingData", "cleanTagData.csv"),
+#           row.names = FALSE)
 
 indDat %>% 
   group_by(clip, size) %>% 
