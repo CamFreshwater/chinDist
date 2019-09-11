@@ -25,41 +25,64 @@ chinHeat <- ggplot(chinDat) +
   geom_point(data = setDat, aes(x = long, y = lat), alpha = 0.4) +
   coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
               expand = TRUE) +
-  labs(x = "Longitude", ylab = "Latitude") +
+  labs(x = "Longitude", y = "Latitude", fill = "Relative\nAbundance") +
   samSim::theme_sleekX()
 
-chinHeat +
+chinHeatSize <- chinHeat +
   facet_wrap(~size)
+chinHeatClip <- chinHeat +
+  facet_wrap(~clip)
+
+# saveRDS(chinHeat, here::here("generatedData", "heatMap.RDS"))
+# saveRDS(chinHeatSize, here::here("generatedData", "heatMapSize.RDS"))
+# saveRDS(chinHeatClip, here::here("generatedData", "heatMapClip.RDS"))
 
 ## First pass on version that better accounts for zero sets, but need to double 
 # check how effort is rolled in
 
-count <- chinDat %>%
-  group_by(event, clip) %>%
-  summarise(nChin = n())
-# Add lat/longs from set data to catch data
-catchDat <- setDat %>%
-  select(event, date, lat, long) %>%
-  left_join(., count, by = "event") %>%
-  replace_na(list(nChin = 0))
+# blankCount1 <- setDat %>% 
+#   select(event) %>% 
+#   mutate(clip = "Y")
+# blankCount <- blankCount1 %>% 
+#   mutate(clip = "N") %>% 
+#   rbind(., blankCount1) 
+# 
+# count <- chinDat %>%
+#   group_by(event, clip) %>%
+#   summarise(nChin = n()) %>% 
+#   full_join(., blankCount, by = c("event", "clip")) %>% 
+#   arrange(event) %>% 
+#   replace_na(list(nChin = 0))
+# 
+# # Add lat/longs from set data to catch data
+# catchDat <- setDat %>%
+#   select(event, date, lat, long) %>%
+#   full_join(count, ., by = "event") 
 
-chinHeat2 <- ggplot(catchDat, aes(x = long, y = lat, color = nChin)) +
-  geom_point(aes(color = nChin), shape = "") +
-  stat_density2d(aes(fill = ..level..), 
-                 # n = 100, 
-                 contour = TRUE, 
-                 geom = "polygon") +
-  scale_color_continuous(guide = FALSE) +
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  lims(x = c(-130, -124), y = c(48, 52)) +
-  geom_polygon(data = wCan, aes(x = long, y = lat, group = group),
-               color = "black", fill = "gray80") +
-  # geom_point(data = setDat, aes(x = long, y = lat), inherit.aes = FALSE) +
-  coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
-              expand = TRUE) +
-  labs(x = "Longitude", ylab = "Latitude") +
-  samSim::theme_sleekX()
+## non-sensical (0s aren't showing up making it equivalent to plotting raw 
+# tagging data)
+# chinHeat2 <- ggplot(catchDat %>% filter(clip == "N"), 
+#                     aes(x = long, y = lat, color = nChin)) +
+#   geom_point(aes(color = nChin), shape = "") +
+#   stat_density2d(aes(fill = ..level..), 
+#                  # n = 100, 
+#                  contour = TRUE, 
+#                  geom = "polygon") +
+#   scale_color_continuous(guide = FALSE) +
+#   scale_fill_gradient(low = "green", high = "red") +
+#   scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+#   lims(x = c(-130, -124), y = c(48, 52)) +
+#   geom_polygon(data = wCan, aes(x = long, y = lat, group = group),
+#                color = "black", fill = "gray80") +
+#   # geom_point(data = setDat, aes(x = long, y = lat), inherit.aes = FALSE) +
+#   coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
+#               expand = TRUE) +
+#   labs(x = "Longitude", ylab = "Latitude") +
+#   samSim::theme_sleekX() 
+# 
+# yy <- catchDat %>% filter(clip == "N")
+# xx <- catchDat %>% filter(clip == "Y")
+
 
 ## Old buggy version with polygon issues
 

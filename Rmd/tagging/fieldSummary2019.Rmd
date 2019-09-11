@@ -42,9 +42,9 @@ tagged <- nrow(chinDat %>%
   filter(!is.na(acoustic)))
 ```
 
-We landed and biosampled `r landed` maturing or mature Chinook salmon and deployed `r tagged` acoustic tags. Biosampled fish represented a relatively large size range and included both clipped and unclipped individuals.
+We landed and biosampled `r landed` maturing or mature Chinook salmon and deployed `r tagged` acoustic tags. Biosampled fish represented a relatively large size range and included both clipped and unclipped individuals. On average, unclipped fish were larger than clipped, although these differences were not significant (Figure 2).
 
-```{r bioDat, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks.}
+```{r bioDat, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks."}
 dum <- chinDat %>% 
   filter(fl > 40)
 
@@ -69,11 +69,18 @@ ggplot(dum, aes(x = clip, y = fl, fill = clip, alpha = 0.1)) +
   theme(legend.position = "none")
 ```
 
-We are still awaiting genetic stock identification results and robust estimates of abundance will require more advanced modeling that accounts for sampling effort. However these preliminary data can still be used to visualize differences in spatial distribution among size classes and clipped (i.e. known hatchery origin) vs. unclipped individuals using raw catch data.
+We are still awaiting genetic stock identification results and robust estimates of abundance will require more advanced modeling that accounts for sampling effort. However these preliminary data can still be used to visualize differences in spatial distribution among size classes or clipped (i.e. known hatchery origin) vs. unclipped individuals using raw catch data.
 
-```{r setMap, include=TRUE, fig.cap="Study area with trolling locations (points) colored by fishing date. The red polygon represents the newly designated resident killer whale habitat including La Perouse and Swiftsure banks."}
-setMap <- readRDS(here::here("generatedData", "setMap.RDS"))
-setMap
+For example, initial catch data suggest a greater proportion of large individuals (>75 cm) are found offshore, while smaller maturing sublegal fish are distributed further south and east (Figure 3). Conversely the spatial distributions of clipped and unclipped fish were similar.
+
+```{r heatMap2, include=TRUE, fig.cap="Catch distributions of different size classes of Chinook salmon. Points represent individual sets."}
+chinHeatSize <- readRDS(here::here("generatedData", "heatMapSize.RDS"))
+chinHeatSize
+```
+
+```{r heatMap3, include=TRUE, fig.cap="Catch distributions of adipose clipped and unclipped Chinook salmon. Points represent individual sets. Note that "}
+chinHeatClip <- readRDS(here::here("generatedData", "heatMapClip.RDS"))
+chinHeatClip
 ```
 
 
