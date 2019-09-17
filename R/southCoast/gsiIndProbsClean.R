@@ -23,8 +23,7 @@ id <- data.frame(t(matrix(unlist(strsplit(as.vector(datRaw$sampleID),
             statArea %in% c("Area126", "Area126NWVI") ~ "126",
             statArea %in% c("Area127", "Area127NWVI") ~ "127",
             statArea %in% c("Area026") ~ "26",
-            statArea %in% c("Area24", "Area_24", "Area124_24", 
-                            "Area_24xgill") ~ "24",
+            statArea %in% c("Area24", "Area_24", "Area_24xgill") ~ "24",
             TRUE ~ as.character(statArea)),
          abbYear = sapply(strsplit(as.character(year), '[()]'), 
                        function(x) (x)[2]),
@@ -39,12 +38,42 @@ dat <- cbind(id, datRaw) %>%
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127", 
                           "Area124_24"))
 
+## Summarize samples and incorporate catch data
+catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                             "fosCatch.csv"), 
+                  stringsAsFactors = FALSE) %>% 
+  group_by(MGMT_AREA, FISHING.YEAR, FISHING.MONTH) %>% 
+  summarize(catch = sum(CHINOOK_KEPT), boatDays = sum(VESSELS_OP)) %>% 
+  rename(statArea = "MGMT_AREA", year = "FISHING.YEAR", 
+         month = "FISHING.MONTH") %>% 
+  ungroup() %>% 
+  mutate(statArea = as.character(statArea), 
+         year = as.character(year))
+
 temp <- dat %>% 
   group_by(statArea, year, month) %>% 
   tally()
-
-summDat <- expand.grid(unique(dat$statArea), unique(dat$year), unique(dat$month)) %>%
+summDat <- expand.grid(unique(dat$statArea), unique(dat$year), 
+                       unique(dat$month)) %>%
   rename("statArea" = Var1, "year" = Var2, "month" = Var3) %>% 
   left_join(., temp, by = c("statArea", "year", "month")) %>% 
-  replace_na(list(n = 0))
+  replace_na(list(n = 0)) %>% 
+  left_join(., catch, by = c("statArea", "year", "month")) %>% 
+  mutate(sampPpn = n / catch)
 
+## Distribution of samples and sampling effort
+ggplot(summDat, aes(x = as.factor(month), y = n)) +
+  geom_boxplot() +
+  facet_wrap(~statArea, scales = "free_y") +
+  theme_bw()
+
+ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
+  geom_boxplot() +
+  facet_wrap(~statArea, scales = "free_y") +
+  theme_bw()
+
+
+## Sampling proportion exceeds 100% because at least some samples are from Taaq
+# fishery; ideally include effort or at least catch from that sector
+summDat %>% 
+  filter(sampPpn > 1)
