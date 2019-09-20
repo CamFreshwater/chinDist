@@ -36,7 +36,46 @@ dat <- cbind(id, datRaw) %>%
   select(-sampleID, -abbYear) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127", 
-                          "Area124_24"))
+                          "Area124_24")) %>% 
+  select(-stockCode1, -stockCode2, -stockCode3, -stockCode4, -stockCode5) %>% 
+  mutate(tempFish = paste(statArea, year, gear, jDay, fishNum, sep = "_"))
+
+
+# collapse into regional groupings
+stockKey <- read.csv(here::here("data", "southcoastStockKey.csv"), 
+                     stringsAsFactors = FALSE) %>% 
+  select(-Stock.Code, -Region1Code, -Region2Code, -Region3Code, 
+         -FraserGroupCode)
+
+gatherProbs <- dat %>% 
+  select(tempFish, prob1, prob2, prob3, prob4, prob5) %>% 
+  gather(., key = "probClass", value = "prob", -tempFish) %>% 
+  arrange(tempFish)
+
+gatherStocks <- dat %>% 
+  select(tempFish, stock1, stock2, stock3, stock4, stock5) %>% 
+  gather(., key = "stockClass", value = "Stock", -tempFish) %>% 
+  left_join(., stockKey, by = "Stock") %>% 
+  arrange(tempFish) %>% 
+  cbind(., gatherProbs %>% select(-tempFish))
+
+reg3 <- gatherStocks %>% 
+  select(-Region2Name, -Region1Name) %>% 
+  group_by(tempFish, Region3Name) %>% 
+  summarize(aggProb = sum(prob)) %>% 
+  arrange(tempFish, desc(aggProb))
+
+fishSeq <- unique(reg3$tempFish)
+temp <- NULL
+for(i in seq_along(fishSeq)) {
+  dum <- reg3 %>% 
+    filter(tempFish == fishSeq[i]) %>% 
+    mutate(Region = NA)
+  for(j in 1:nrow(dum)) {
+    dum$Region[j] <- paste("Region", j, sep = " ")
+  }
+  temp <- rbind(temp, dum)
+}
 
 ## Summarize samples and incorporate catch data
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
