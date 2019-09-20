@@ -25,7 +25,7 @@ setDatFull <- setDat1 %>%
          julDay = as.POSIXlt(date, format = "%d/%m/%Y")$yday)
 
 setDat <- setDatFull %>% 
-  select(event, set, date, julDay, lat = startLat, long = startLong, time)
+  dplyr::select(event, set, date, julDay, lat = startLat, long = startLong, time)
 
 # write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
 #           row.names = FALSE)
@@ -53,6 +53,7 @@ setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) +
   theme(strip.text.x = element_blank(),
         strip.background = element_rect(colour="white", fill="white"),
         legend.position=c(0.1, 0.2))
+setMap
 # saveRDS(setMap, here::here("generatedData", "setMap.RDS"))
 
 
@@ -130,13 +131,14 @@ hab <- st_read(
   st_transform(32610)
 
 setPts <- distDat %>% 
-  select(set, startLat, startLong) %>% 
-  st_as_sf(., coords = c("startLong", "startLat"), crs = 32610) 
-#set CRS to 4326 to match ch84 file which is WGS84 (shape file originally in 
-#NAD83)
+  dplyr::select(set, startLat, startLong) %>% 
+  st_as_sf(., coords = c("startLong", "startLat"), crs = 4326) %>%  
+  st_transform(., crs = 32610)  
+#set CRS to 4326 to match ch84 file which is WGS84, then convert to UTM for 
+#finer scale res
 
 #make grid
-grid_5 <- st_make_grid(hab, cellsize = c(500,0 5000)) %>% 
+grid_5 <- st_make_grid(hab, cellsize = c(7500, 7500)) %>% 
   st_sf(grid_id = 1:length(.))
 
 # make labels
@@ -145,80 +147,15 @@ grid_lab <- st_centroid(grid_5) %>%
 
 ggplot() +
   geom_sf(data = hab, fill = 'white', lwd = 0.05) +
-  geom_sf(data = setPts, color = 'red', size = 1.7) + 
+  geom_sf(data = setPts, color = 'red', size = 1.7) +
   geom_sf(data = grid_5, fill = 'transparent', lwd = 0.3) +
   geom_text(data = grid_lab, aes(x = X, y = Y, label = grid_id), size = 2) +
   coord_sf(datum = NA)  +
   labs(x = "") +
   labs(y = "")
 
-
-
-library(sf)
-library(ggplot2)
-
-# read nc polygon data and transform to UTM 
-nc <- st_read(system.file('shape/nc.shp', package = 'sf')) %>%
-  st_transform(32617)
-
-# random sample of 5 points
-pts <- st_sample(nc, size = 5) %>% st_sf
-
-# create 50km grid - here you can substitute 200 for 50000
-grid_50 <- st_make_grid(nc, cellsize = c(50000, 50000)) %>% 
-  st_sf(grid_id = 1:length(.))
-
-# create labels for each grid_id
-grid_lab <- st_centroid(grid_50) %>% 
-  cbind(st_coordinates(.))
-
-# view the sampled points, polygons and grid
-ggplot() +
-  geom_sf(data = nc, fill = 'white', lwd = 0.05) +
-  geom_sf(data = pts, color = 'red', size = 1.7) + 
-  geom_sf(data = grid_50, fill = 'transparent', lwd = 0.3) +
-  geom_text(data = grid_lab, aes(x = X, y = Y, label = grid_id), size = 2) +
-  coord_sf(datum = NA)  +
-  labs(x = "") +
-  labs(y = "")
-
-# which grid square is each point in?
-pts %>% st_join(grid_50, join = st_intersects) %>% as.data.frame
-
-
-
-
-
-
-
-
-### read shapefile
-library(rgdal)
-shp <- readOGR(here::here("data", "exampleData", "nybb_13a"), layer = "nybb")
-
-proj4string(shp)  # units us-ft
-
-### define coordinates and convert to SpatialPointsDataFrame
-poi <- data.frame(x=c(919500, 959500, 1019500, 1049500, 1029500, 989500),
-                  y=c(130600, 150600, 180600, 198000, 248000, 218000),
-                  id="A", stringsAsFactors=F)
-coordinates(poi) <- ~ x + y
-proj4string(poi) <- proj4string(shp)
-
-### define SpatialGrid object
-bb <- bbox(shp)
-cs <- c(3.28084, 3.28084)*6000  # cell size 6km x 6km (for illustration)
-# 1 ft = 3.28084 m
-cc <- bb[, 1] + (cs/2)  # cell offset
-cd <- ceiling(diff(t(bb))/cs)  # number of cells per direction
-grd <- GridTopology(cellcentre.offset=cc, cellsize=cs, cells.dim=cd)
-grd
-# cellcentre.offset 923018 129964
-# cellsize           19685  19685
-# cells.dim              8      8
-
-sp_grd <- SpatialGridDataFrame(grd,
-                               data=data.frame(id=1:prod(cd)),
-                               proj4string=CRS(proj4string(shp)))
-summary(sp_grd)
+# id which grid different points are in
+setPts %>% 
+  st_join(grid_5, join = st_intersects) %>% 
+  as.data.frame()
 
