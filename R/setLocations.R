@@ -3,12 +3,11 @@
 
 library(tidyverse)
 library(ggplot2)
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(rnaturalearthhires)
 library(ggmap)
 library(measurements)
 library(rgdal)
+library(sf)
+library(raster)
 
 setDat1 <- read.csv(here::here("data", "taggingData", "setData.csv")) 
 
@@ -16,34 +15,26 @@ setDat1 <- read.csv(here::here("data", "taggingData", "setData.csv"))
 setDatFull <- setDat1 %>% 
   mutate(startLat = paste(latDegreeStart, latMinuteStart, sep = " "),
          startLong = paste(longDegreeStart, longMinuteStart, sep = " ")) %>% 
-  mutate(startLat = as.numeric(measurements::conv_unit(startLat, 
-                                                       from = 'deg_dec_min',
-                                                       to = 'dec_deg')),
-         startLong = -1 * as.numeric(measurements::conv_unit(startLong, 
-                                                         from = 'deg_dec_min', 
-                                                         to = 'dec_deg')),
+  mutate(startLat = as.numeric(conv_unit(startLat, from = 'deg_dec_min',
+                                         to = 'dec_deg')),
+         startLong = -1 * as.numeric(conv_unit(startLong, from = 'deg_dec_min',
+                                               to = 'dec_deg')),
          julDay = as.POSIXlt(date, format = "%d/%m/%Y")$yday)
 
-setDat <- setDatFull %>% 
-  dplyr::select(event, set, date, julDay, lat = startLat, long = startLong, time)
-
-# write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
-#           row.names = FALSE)
-
-nAm <- ne_countries(scale = "large")
+wCan <- map_data("world", region = "canada") %>%
+  filter(long < -110)
 
 #critical habitat shape file
 ch <- readOGR(here::here("data", "criticalHabitatShapeFiles"), 
              layer = "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016")
 #transform to WGS84
-ch84 <- spTransform(ch, CRS("+proj=longlat +datum=WGS84"))
-
+ch84 <- sp::spTransform(ch, CRS("+proj=longlat +datum=WGS84"))
 
 ## Plot set locations
-setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) + 
+setMap <- ggplot(data = wCan, mapping = aes(x = long, y = lat, group = group)) + 
   coord_fixed(xlim = c(-127, -124.5), ylim = c(48, 49.25), ratio = 1.3) + 
   geom_polygon(color = "black", fill = "gray80") +
-  geom_point(data = setDat, aes(x = long, y = lat, fill = julDay),
+  geom_point(data = setDatFull, aes(x = startLong, y = startLat, fill = julDay),
              inherit.aes = FALSE, shape = 21) +
   viridis::scale_fill_viridis(option = "magma") +
   geom_polygon(data = ch84, aes(x = long, y = lat, group = group), 
@@ -55,7 +46,6 @@ setMap <- ggplot(data = nAm, mapping = aes(x = long, y = lat, group = group)) +
         legend.position=c(0.1, 0.2))
 setMap
 # saveRDS(setMap, here::here("generatedData", "setMap.RDS"))
-
 
 png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7,
     units = "in", res = 400)
@@ -73,64 +63,29 @@ distDat <- setDatFull %>%
   filter(!is.na(latDegreeEnd)) %>% 
   mutate(endLat = paste(latDegreeEnd, latMinuteEnd, sep = " "),
          endLong = paste(longDegreeEnd, longMinuteEnd, sep = " ")) %>% 
-  mutate(endLat = as.numeric(measurements::conv_unit(endLat,
-                                                from = 'deg_dec_min',
-                                                to = 'dec_deg')),
-         endLong = -1 * as.numeric(measurements::conv_unit(endLong,
-                                                    from = 'deg_dec_min',
-                                                    to = 'dec_deg')),
+  mutate(endLat = as.numeric(conv_unit(endLat, from = 'deg_dec_min',
+                                       to = 'dec_deg')),
+         endLong = -1 * as.numeric(conv_unit(endLong, from = 'deg_dec_min',
+                                             to = 'dec_deg')),
          setDist = mapply(lat_a = startLat, lon_a = startLong,
                           lat_b = endLat, lon_b = endLong,
                           FUN = dist_geo)) %>% 
-  select(event, set, date, time, julDay, startLat, startLong, endLat, endLong,
-         setDist)
+  dplyr::select(set, endLat, endLong, setDist)
 
-# distDat %>% 
-#   filter(!setDist > 5000) %>% 
-#   summarize(mean = mean(setDist),
-#             sd = sd(setDist),
-#             max = max(setDist),
-#             min = min(setDist))
+distDat %>%
+  filter(!setDist > 5000) %>%
+  summarize(mean = mean(setDist),
+            sd = sd(setDist),
+            max = max(setDist),
+            min = min(setDist))
 #start w/ 5
-
-wCan <- map_data("world", region = "canada") %>%
-  filter(long < -110)
-
-# sets <- 
-ggplot(distDat) +
-  geom_point(aes(x = startLong, y = startLat), alpha = 0.4) +
-  lims(x = c(-130, -124), y = c(48, 52)) +
-  geom_polygon(data = wCan, aes(x = long, y = lat, group = group),
-               color = "black", fill = "gray80") +
-  coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
-              expand = TRUE) +
-  labs(x = "Longitude", y = "Latitude", fill = "Relative\nAbundance") +
-  theme_bw()
-
-  
-## Option 1:  
-library(sf)
-library(raster)
-
-grid <- ch_sf %>% 
-  st_make_grid(cellsize = 0.1, what = "centers") %>% # grid of points
-  st_intersection(ch_sf)     
-
-ggplot() +
-  geom_sf(data = ch_sf) +
-  geom_sf(data = grid) +
-  geom_point(data = distDat, aes(x = startLong, y = startLat), alpha = 0.4)
-
-## Option 2:
-
-
 
 hab <- st_read(
   here::here("data", "criticalHabitatShapeFiles",
              "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016.shp")) %>% 
   st_transform(32610)
 
-setPts <- distDat %>% 
+setPts <- setDatFull %>% 
   dplyr::select(set, startLat, startLong) %>% 
   st_as_sf(., coords = c("startLong", "startLat"), crs = 4326) %>%  
   st_transform(., crs = 32610)  
@@ -138,24 +93,37 @@ setPts <- distDat %>%
 #finer scale res
 
 #make grid
-grid_5 <- st_make_grid(hab, cellsize = c(7500, 7500)) %>% 
-  st_sf(grid_id = 1:length(.))
+grid75 <- st_make_grid(hab, cellsize = c(7500, 7500)) %>% 
+  st_sf(gridID = 1:length(.))
 
 # make labels
-grid_lab <- st_centroid(grid_5) %>% 
+grid_lab <- st_centroid(grid75) %>% 
   cbind(st_coordinates(.))
 
-ggplot() +
+griddedMap <- ggplot() +
   geom_sf(data = hab, fill = 'white', lwd = 0.05) +
   geom_sf(data = setPts, color = 'red', size = 1.7) +
-  geom_sf(data = grid_5, fill = 'transparent', lwd = 0.3) +
-  geom_text(data = grid_lab, aes(x = X, y = Y, label = grid_id), size = 2) +
+  geom_sf(data = grid75, fill = 'transparent', lwd = 0.3) +
+  geom_text(data = grid_lab, aes(x = X, y = Y, label = gridID), size = 2) +
   coord_sf(datum = NA)  +
   labs(x = "") +
   labs(y = "")
 
+# png(here::here("figs", "maps", "griddedMap_7.5Cells.png"), height = 5, 
+#     width = 7, units = "in", res = 400)
+griddedMap
+# dev.off()
+
 # id which grid different points are in
-setPts %>% 
-  st_join(grid_5, join = st_intersects) %>% 
+gridCells <- setPts %>% 
+  st_join(grid75, join = st_intersects) %>% 
   as.data.frame()
 
+setDat <- setDatFull %>%
+  left_join(., distDat, by = "set") %>% 
+  left_join(., gridCells, by = "set") %>% 
+  dplyr::select(event, set, time, date, julDay, gridID, lat = startLat, 
+                long = startLong, setDist)
+
+# write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
+#           row.names = FALSE)
