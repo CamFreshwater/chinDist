@@ -4,12 +4,72 @@
 library(tidyverse)
 library(ggplot2)
 library(maps)
+library(sf)
 
 ## Sampling data
 setDat <- read.csv(here::here("data", "taggingData", "cleanSetData.csv")) 
 chinDat <- read.csv(here::here("data", "taggingData", "cleanTagData.csv"))
+## Gridded map data
+gridDatList <- readRDS(here::here("generatedData", "mapGridData.RDS"))
+## Habitat shape file
+hab <- st_read(
+  here::here("data", "criticalHabitatShapeFiles",
+             "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016.shp")) %>% 
+  st_transform(32610)
 
 
+## Calculate CPUE for each set
+blankCount1 <- setDat %>%
+  select(event) %>%
+  mutate(clip = "Y")
+blankCount <- blankCount1 %>%
+  mutate(clip = "N") %>%
+  rbind(., blankCount1)
+
+count <- chinDat %>%
+  group_by(event, clip) %>%
+  summarise(nChin = n()) %>%
+  full_join(., blankCount, by = c("event", "clip")) %>%
+  arrange(event) %>%
+  replace_na(list(nChin = 0))
+
+# Add lat/longs from set data to catch data
+cpue <- setDat %>%
+  # select(event, date, lat, long) %>%
+  full_join(count, ., by = "event") %>% 
+  group_by(gridID, clip) %>% 
+  summarize(nChin = sum(nChin),
+            nSets = length(unique(set))) %>% 
+  mutate(cpue = nChin / nSets)
+
+## New version 
+#Based on 7.5 x 7.5 km grid (to adjust size use setLocations.R)
+grid75 <- gridDatList[["grid"]]
+gridLab <- gridDatList[["labels"]]
+setGrids <- gridDatList[["setCells"]]
+
+ggplot() +
+  geom_sf(data = hab, fill = 'white', lwd = 0.05) +
+  # geom_sf(data = setPts, color = 'red', size = 1.7) +
+  geom_sf(data = grid75, fill = 'transparent', lwd = 0.3) +
+  geom_text(data = gridLab, aes(x = X, y = Y, label = gridID), size = 2) +
+  coord_sf(datum = NA)  +
+  labs(x = "") +
+  labs(y = "")
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Old version used in draft reports (no grid)
 wCan <- map_data("world", region = "canada") %>%
   filter(long < -110)
 

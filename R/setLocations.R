@@ -44,13 +44,12 @@ setMap <- ggplot(data = wCan, mapping = aes(x = long, y = lat, group = group)) +
   theme(strip.text.x = element_blank(),
         strip.background = element_rect(colour="white", fill="white"),
         legend.position=c(0.1, 0.2))
-setMap
 # saveRDS(setMap, here::here("generatedData", "setMap.RDS"))
 
-png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7,
-    units = "in", res = 400)
+# png(here::here("figs", "maps", "setMap.png"), height = 5, width = 7,
+#     units = "in", res = 400)
 setMap
-dev.off()
+# dev.off()
 
 
 ### Generate grid based on average set distance
@@ -118,6 +117,11 @@ griddedMap
 gridCells <- setPts %>% 
   st_join(grid75, join = st_intersects) %>% 
   as.data.frame()
+
+## Save gridded map data to export to heatMaps.R for further plotting
+# gridDatList <- list(grid75, grid_lab, gridCells)
+# names(gridDatList) <- c("grid", "labels", "setCells")
+# saveRDS(gridDatList, here::here("generatedData", "mapGridData.RDS"))
 
 setDat <- setDatFull %>%
   left_join(., distDat, by = "set") %>% 
