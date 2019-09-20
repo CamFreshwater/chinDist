@@ -5,9 +5,6 @@ library(tidyverse)
 library(ggplot2)
 library(ggmap)
 library(measurements)
-library(rgdal)
-library(sf)
-library(raster)
 
 setDat1 <- read.csv(here::here("data", "taggingData", "setData.csv")) 
 
@@ -79,55 +76,65 @@ distDat %>%
             min = min(setDist))
 #start w/ 5
 
-hab <- st_read(
-  here::here("data", "criticalHabitatShapeFiles",
-             "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016.shp")) %>% 
-  st_transform(32610)
-
-setPts <- setDatFull %>% 
-  dplyr::select(set, startLat, startLong) %>% 
-  st_as_sf(., coords = c("startLong", "startLat"), crs = 4326) %>%  
-  st_transform(., crs = 32610)  
-#set CRS to 4326 to match ch84 file which is WGS84, then convert to UTM for 
-#finer scale res
-
-#make grid
-grid75 <- st_make_grid(hab, cellsize = c(7500, 7500)) %>% 
-  st_sf(gridID = 1:length(.))
-
-# make labels
-grid_lab <- st_centroid(grid75) %>% 
-  cbind(st_coordinates(.))
-
-griddedMap <- ggplot() +
-  geom_sf(data = hab, fill = 'white', lwd = 0.05) +
-  geom_sf(data = setPts, color = 'red', size = 1.7) +
-  geom_sf(data = grid75, fill = 'transparent', lwd = 0.3) +
-  geom_text(data = grid_lab, aes(x = X, y = Y, label = gridID), size = 2) +
-  coord_sf(datum = NA)  +
-  labs(x = "") +
-  labs(y = "")
-
-# png(here::here("figs", "maps", "griddedMap_7.5Cells.png"), height = 5, 
-#     width = 7, units = "in", res = 400)
-griddedMap
-# dev.off()
-
-# id which grid different points are in
-gridCells <- setPts %>% 
-  st_join(grid75, join = st_intersects) %>% 
-  as.data.frame()
-
-## Save gridded map data to export to heatMaps.R for further plotting
-# gridDatList <- list(grid75, grid_lab, gridCells)
-# names(gridDatList) <- c("grid", "labels", "setCells")
-# saveRDS(gridDatList, here::here("generatedData", "mapGridData.RDS"))
-
 setDat <- setDatFull %>%
-  left_join(., distDat, by = "set") %>% 
-  left_join(., gridCells, by = "set") %>% 
-  dplyr::select(event, set, time, date, julDay, gridID, lat = startLat, 
+  left_join(., distDat, by = "set") %>%
+  dplyr::select(event, set, time, date, julDay, lat = startLat,
                 long = startLong, setDist)
+
+write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
+          row.names = FALSE)
+
+## One way to add grid but discarded in favor of integrated approach in 
+# newHeatMaps.R
+# hab <- st_read(
+#   here::here("data", "criticalHabitatShapeFiles",
+#              "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016.shp")) %>% 
+#   st_transform(32610)
+# 
+# setPts <- setDatFull %>% 
+#   dplyr::select(set, startLat, startLong) %>% 
+#   st_as_sf(., coords = c("startLong", "startLat"), crs = 4326) %>%  
+#   st_transform(., crs = 32610)  
+# #set CRS to 4326 to match ch84 file which is WGS84, then convert to UTM for 
+# #finer scale res
+# 
+# #make grid
+# grid75 <- st_make_grid(hab, cellsize = c(7500, 7500)) %>% 
+#   st_sf(gridID = 1:length(.))
+# 
+# # make labels
+# grid_lab <- st_centroid(grid75) %>% 
+#   cbind(st_coordinates(.))
+# 
+# griddedMap <- ggplot() +
+#   geom_sf(data = hab, fill = 'white', lwd = 0.05) +
+#   geom_sf(data = setPts, color = 'red', size = 1.7) +
+#   geom_sf(data = grid75, fill = 'transparent', lwd = 0.3) +
+#   geom_text(data = grid_lab, aes(x = X, y = Y, label = gridID), size = 2) +
+#   coord_sf(datum = NA)  +
+#   labs(x = "") +
+#   labs(y = "")
+# 
+# # png(here::here("figs", "maps", "griddedMap_7.5Cells.png"), height = 5, 
+# #     width = 7, units = "in", res = 400)
+# griddedMap
+# # dev.off()
+# 
+# # id which grid different points are in
+# gridCells <- setPts %>% 
+#   st_join(grid75, join = st_intersects) %>% 
+#   as.data.frame()
+# 
+# ## Save gridded map data to export to heatMaps.R for further plotting
+# # gridDatList <- list(grid75, grid_lab, gridCells)
+# # names(gridDatList) <- c("grid", "labels", "setCells")
+# # saveRDS(gridDatList, here::here("generatedData", "mapGridData.RDS"))
+# 
+# setDat <- setDatFull %>%
+#   left_join(., distDat, by = "set") %>% 
+#   left_join(., gridCells, by = "set") %>% 
+#   dplyr::select(event, set, time, date, julDay, gridID, lat = startLat, 
+#                 long = startLong, setDist)
 
 # write.csv(setDat, here::here("data", "taggingData", "cleanSetData.csv"),
 #           row.names = FALSE)

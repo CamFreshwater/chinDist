@@ -1,193 +1,63 @@
-## Heat maps of raw catch data
-#Sep. 10, 2019
+## Heat maps of catch per unit effort data
+#Sep. 20, 2019
 
-library(tidyverse)
+#Second pass using tips from 
+#http://www.robert-hickman.eu/post/getis-ord-heatmaps-tutorial/
+
 library(ggplot2)
-library(maps)
+library(ggmap)
+library(measurements)
+library(rgdal)
 library(sf)
+library(raster)
+library(tidyverse)
 
-## Sampling data
+## First calculate catch for set data
 setDat <- read.csv(here::here("data", "taggingData", "cleanSetData.csv")) 
 chinDat <- read.csv(here::here("data", "taggingData", "cleanTagData.csv"))
-## Gridded map data
-gridDatList <- readRDS(here::here("generatedData", "mapGridData.RDS"))
-## Habitat shape file
+
+# convert set data to spatial
+setPts <- setDat %>% 
+  select(event, lat, long) %>% 
+  st_as_sf(., coords = c("long", "lat"), crs = 4326) %>%  
+  cbind(., st_coordinates(.))
+
+#convert ind. data to spatial
+chinTrim <- chinDat %>%
+  select(event, lat, long, clip) %>% 
+  st_as_sf(., coords = c("long", "lat"), crs = 4326) %>%  
+  cbind(., st_coordinates(.))
+
+# habitat shape file
 hab <- st_read(
   here::here("data", "criticalHabitatShapeFiles",
              "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016.shp")) %>% 
-  st_transform(32610)
+  st_transform(4326)
 
+# create equidistant bins from shape file
+hex_points <- spsample(as_Spatial(hab), type = "hexagonal", cellsize = 0.04)
+hex_polygons <- HexPoints2SpatialPolygons(hex_points) %>%
+  st_as_sf(crs = st_crs(setPts))
 
-## Calculate CPUE for each set
-blankCount1 <- setDat %>%
-  select(event) %>%
-  mutate(clip = "Y")
-blankCount <- blankCount1 %>%
-  mutate(clip = "N") %>%
-  rbind(., blankCount1)
+# eventually add clip vs. unclip, size classes and hatcheries
+hex_polygons <- hex_polygons %>% 
+  mutate(effort = lengths(st_intersects(hex_polygons, setPts)),
+         catch = lengths(st_intersects(hex_polygons, chinTrim)),
+         cpue = catch / effort)
 
-count <- chinDat %>%
-  group_by(event, clip) %>%
-  summarise(nChin = n()) %>%
-  full_join(., blankCount, by = c("event", "clip")) %>%
-  arrange(event) %>%
-  replace_na(list(nChin = 0))
+nonZero <- hex_polygons %>% 
+  filter(effort > 0) 
 
-# Add lat/longs from set data to catch data
-cpue <- setDat %>%
-  # select(event, date, lat, long) %>%
-  full_join(count, ., by = "event") %>% 
-  group_by(gridID, clip) %>% 
-  summarize(nChin = sum(nChin),
-            nSets = length(unique(set))) %>% 
-  mutate(cpue = nChin / nSets)
+p2 <- ggplot() +
+  geom_sf(data = hex_polygons) +
+  geom_sf(data = nonZero, aes(fill = cpue)) +
+  scale_fill_viridis_c(option = "magma", "CPUE") +
+  theme_void() 
+plot(p2)
 
-## New version 
-#Based on 7.5 x 7.5 km grid (to adjust size use setLocations.R)
-grid75 <- gridDatList[["grid"]]
-gridLab <- gridDatList[["labels"]]
-setGrids <- gridDatList[["setCells"]]
+# ggplot() +
+#   geom_sf(data = hex_polygons) +
+#   geom_sf(data = nonZero, aes(fill = effort)) +
+#   scale_fill_viridis_c(option = "magma", "effort") +
+#   theme_void()
 
-ggplot() +
-  geom_sf(data = hab, fill = 'white', lwd = 0.05) +
-  # geom_sf(data = setPts, color = 'red', size = 1.7) +
-  geom_sf(data = grid75, fill = 'transparent', lwd = 0.3) +
-  geom_text(data = gridLab, aes(x = X, y = Y, label = gridID), size = 2) +
-  coord_sf(datum = NA)  +
-  labs(x = "") +
-  labs(y = "")
-
-
-
-
-
-
-
-
-
-
-
-
-
-## Old version used in draft reports (no grid)
-wCan <- map_data("world", region = "canada") %>%
-  filter(long < -110)
-
-chinHeat <- ggplot(chinDat) +
-  stat_density2d(aes(x = long, y = lat, fill = stat(level)), 
-                 geom = "polygon",
-                 alpha = 0.5) +
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-  lims(x = c(-130, -124), y = c(48, 52)) +
-  geom_polygon(data = wCan, aes(x = long, y = lat, group = group),
-               color = "black", fill = "gray80") +
-  geom_point(data = setDat, aes(x = long, y = lat), alpha = 0.4) +
-  coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
-              expand = TRUE) +
-  labs(x = "Longitude", y = "Latitude", fill = "Relative\nAbundance") +
-  samSim::theme_sleekX()
-
-chinHeatSize <- chinHeat +
-  facet_wrap(~size)
-chinHeatClip <- chinHeat +
-  facet_wrap(~clip)
-
-# saveRDS(chinHeat, here::here("generatedData", "heatMap.RDS"))
-# saveRDS(chinHeatSize, here::here("generatedData", "heatMapSize.RDS"))
-# saveRDS(chinHeatClip, here::here("generatedData", "heatMapClip.RDS"))
-
-## First pass on version that better accounts for zero sets, but need to double 
-# check how effort is rolled in
-
-# blankCount1 <- setDat %>% 
-#   select(event) %>% 
-#   mutate(clip = "Y")
-# blankCount <- blankCount1 %>% 
-#   mutate(clip = "N") %>% 
-#   rbind(., blankCount1) 
-# 
-# count <- chinDat %>%
-#   group_by(event, clip) %>%
-#   summarise(nChin = n()) %>% 
-#   full_join(., blankCount, by = c("event", "clip")) %>% 
-#   arrange(event) %>% 
-#   replace_na(list(nChin = 0))
-# 
-# # Add lat/longs from set data to catch data
-# catchDat <- setDat %>%
-#   select(event, date, lat, long) %>%
-#   full_join(count, ., by = "event") 
-
-## non-sensical (0s aren't showing up making it equivalent to plotting raw 
-# tagging data)
-# chinHeat2 <- ggplot(catchDat %>% filter(clip == "N"), 
-#                     aes(x = long, y = lat, color = nChin)) +
-#   geom_point(aes(color = nChin), shape = "") +
-#   stat_density2d(aes(fill = ..level..), 
-#                  # n = 100, 
-#                  contour = TRUE, 
-#                  geom = "polygon") +
-#   scale_color_continuous(guide = FALSE) +
-#   scale_fill_gradient(low = "green", high = "red") +
-#   scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-#   lims(x = c(-130, -124), y = c(48, 52)) +
-#   geom_polygon(data = wCan, aes(x = long, y = lat, group = group),
-#                color = "black", fill = "gray80") +
-#   # geom_point(data = setDat, aes(x = long, y = lat), inherit.aes = FALSE) +
-#   coord_fixed(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.2), ratio = 1.3,
-#               expand = TRUE) +
-#   labs(x = "Longitude", ylab = "Latitude") +
-#   samSim::theme_sleekX() 
-# 
-# yy <- catchDat %>% filter(clip == "N")
-# xx <- catchDat %>% filter(clip == "Y")
-
-
-## Old buggy version with polygon issues
-
-## Spatial files
-# nAm <- ne_countries(scale = "large")
-# #critical habitat shape file
-# ch <- readOGR(here::here("data", "criticalHabitatShapeFiles"), 
-#               layer = "Proposed_RKW_CriticalHabitat update_SWVI_CSAS2016")
-# ch84 <- spTransform(ch, CRS("+proj=longlat +datum=WGS84"))
-
-## Plot heat map of catch data
-
-# Sum chinook catch data
-# count <- chinDat %>%
-#   group_by(event) %>%
-#   summarise(nChin = n())
-# # Add lat/longs from set data to catch data
-# catchDat <- setDat %>%
-#   select(event, date, lat, long) %>%
-#   left_join(., count, by = "event") %>%
-#   replace_na(list(nChin = 0))
-# 
-# ggplot(catchDat) +
-#   stat_density2d(aes(x = long, y = lat, fill = stat(level)), 
-#                  geom = "polygon",
-#                  alpha = 0.5) +
-#   scale_fill_gradient(low = "green", high = "red") +
-#   scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-#   geom_point(aes(x = long, y = lat)) +
-#   geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-#                color = "black", fill = "gray80") +
-#   lims(x = c(-126.3, -125.3), y = c(48.35, 49.4))
-# 
-# 
-# # ALT VERSION (doesn't account for effort as well)
-# # Merge catch and fish data
-# ggplot(chinDat) +
-#   stat_density_2d(aes(x = long, y = lat, fill = ..level..),
-#                   geom = "polygon",
-#                   alpha = 0.5) +
-#   scale_fill_gradient(low = "green", high = "red") +
-#   scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
-#   geom_point(data = setDat, aes(x = long, y = lat)) +
-#   coord_map(xlim = c(-126.3, -125.3), ylim = c(48, 49.5)) +
-#   geom_polygon(data = nAm, aes(x = long, y = lat, group = group), 
-#              color = "black", fill = "gray80", inherit.aes = FALSE)
-#   coord_cartesian(xlim = c(-126.3, -125.3), ylim = c(48.35, 49.5))
-#   # lims(x = c(-126.3, -125.3), y = c(48.35, 49.5)) 
