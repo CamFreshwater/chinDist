@@ -30,3 +30,5 @@ myNotes.*
 scripts/*cache*
 *.o
 *.so
+
+R/defunct/
