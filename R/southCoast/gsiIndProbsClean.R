@@ -114,5 +114,7 @@ ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
 
 ## Sampling proportion exceeds 100% because at least some samples are from Taaq
 # fishery; ideally include effort or at least catch from that sector
-summDat %>% 
+dum2 <- summDat %>% 
   filter(sampPpn > 1)
+
+sum(dum2$n)
