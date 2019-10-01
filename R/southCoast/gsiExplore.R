@@ -1,7 +1,7 @@
 ## Explore catch data from southcoast GSI
 # August 22, 2019
 # Goal is to identify stock-specific catches in NWVI and SWVI at monthly 
-# and yearly time scales
+# and yearly time scales (largely deprecated in favor of wcviTrollSummary.Rmd)
 
 library(tidyverse); library(ggplot2)
 source(here::here("R", "functions", "pooledVar.R"))
@@ -42,21 +42,19 @@ ggplot(bcCatch, aes(x = as.factor(month), y = regCPUE, fill = catchReg)) +
   facet_wrap(~Region1Name, scales = "free_y")
 
 
-
 ## Bootstrap BC stocks to account for sampling uncertainty 
 # TO BE COMPLETED
-annualBCCatch <- bcCatch %>% 
-  group_by(Region1Name, catchReg, month) %>% 
-  summarize(meanRegCatch = mean(regCatch),
-            pooledRegCatchVar = pooledVar(regCatchVar, labN))
-
-bcList <- split(annualBCCatch[1:2,], seq(nrow(annualBCCatch[1:2,])))
-
-simOut <- lapply(bcList, function(x) {
- data.frame(Region1Name = x$Region1Name,
-            catchReg = x$catchReg,
-            month = x$month,
-            trial = seq(from = 1, to = 10000, by = 1),
-            catch = rnorm(10000, x$meanRegCatch, x$pooledRegCatchVar^2))
-})
-
+# annualBCCatch <- bcCatch %>% 
+#   group_by(Region1Name, catchReg, month) %>% 
+#   summarize(meanRegCatch = mean(regCatch),
+#             pooledRegCatchVar = pooledVar(regCatchVar, labN))
+# 
+# bcList <- split(annualBCCatch[1:2,], seq(nrow(annualBCCatch[1:2,])))
+# 
+# simOut <- lapply(bcList, function(x) {
+#  data.frame(Region1Name = x$Region1Name,
+#             catchReg = x$catchReg,
+#             month = x$month,
+#             trial = seq(from = 1, to = 10000, by = 1),
+#             catch = rnorm(10000, x$meanRegCatch, x$pooledRegCatchVar^2))
+# })
