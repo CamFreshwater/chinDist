@@ -78,27 +78,41 @@ for(i in seq_along(fishSeq)) {
 }
 
 ## Summarize samples and incorporate catch data
-catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                             "fosCatch.csv"), 
+#monthly catches
+# catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+#                              "fosCatch.csv"),
+#                   stringsAsFactors = FALSE) %>%
+#   group_by(MGMT_AREA, FISHING.YEAR, FISHING.MONTH) %>%
+#   summarize(catch = sum(CHINOOK_KEPT), boatDays = sum(VESSELS_OP)) %>% 
+#   rename(statArea = "MGMT_AREA", year = "FISHING.YEAR", 
+#          month = "FISHING.MONTH") %>% 
+#   ungroup() %>% 
+#   mutate(statArea = as.character(statArea), 
+#          year = as.character(year))
+
+#daily catches
+catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                             "dailyCatch_WCVI.csv"),
                   stringsAsFactors = FALSE) %>% 
-  group_by(MGMT_AREA, FISHING.YEAR, FISHING.MONTH) %>% 
-  summarize(catch = sum(CHINOOK_KEPT), boatDays = sum(VESSELS_OP)) %>% 
-  rename(statArea = "MGMT_AREA", year = "FISHING.YEAR", 
-         month = "FISHING.MONTH") %>% 
-  ungroup() %>% 
-  mutate(statArea = as.character(statArea), 
-         year = as.character(year))
+  rename(statArea = area) %>% 
+  mutate(statArea = as.character(statArea),
+         year = as.character(year),
+         jDay = as.character(jDay)) %>% 
+  select(-catchReg)
 
 temp <- dat %>% 
-  group_by(statArea, year, month) %>% 
-  tally()
+  group_by(statArea, year, month, jDay) %>% 
+  tally() 
+
 summDat <- expand.grid(unique(dat$statArea), unique(dat$year), 
-                       unique(dat$month)) %>%
-  rename("statArea" = Var1, "year" = Var2, "month" = Var3) %>% 
-  left_join(., temp, by = c("statArea", "year", "month")) %>% 
+                       unique(dat$month), unique(dat$jDay)) %>%
+  rename("statArea" = Var1, "year" = Var2, "month" = Var3, "jDay" = Var4) %>% 
+  left_join(., temp, by = c("statArea", "year", "jDay", "month")) %>% 
   replace_na(list(n = 0)) %>% 
-  left_join(., catch, by = c("statArea", "year", "month")) %>% 
-  mutate(sampPpn = n / catch)
+  left_join(., catch, by = c("statArea", "year", "jDay", "month")) %>% 
+  mutate(sampPpn = n / catch) %>% 
+  filter(!is.na(catch))
+  
 
 ## Distribution of samples and sampling effort
 ggplot(summDat, aes(x = as.factor(month), y = n)) +
@@ -114,6 +128,7 @@ ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
 
 ## Sampling proportion exceeds 100% because at least some samples are from Taaq
 # fishery; ideally include effort or at least catch from that sector
+## Double check this...
 dum2 <- summDat %>% 
   filter(sampPpn > 1)
 

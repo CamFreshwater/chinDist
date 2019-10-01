@@ -165,20 +165,20 @@ write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll",
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
                                            format="%Y-%m-%d"))) %>% 
-  group_by(CATCH_REGION, FISHING.MONTH, jDay, FISHING.YEAR) %>% 
-  summarize(sumCatch = sum(CHINOOK_KEPT),
-            sumEffort = sum(VESSELS_OP)) %>% 
-  select(catchReg = CATCH_REGION, year = FISHING.YEAR, month = FISHING.MONTH,
-         jDay, sumCatch, sumEffort) %>%
-  filter(!sumEffort == 0) %>% 
+  group_by(CATCH_REGION, MGMT_AREA, FISHING.MONTH, jDay, FISHING.YEAR) %>% 
+  summarize(catch = sum(CHINOOK_KEPT),
+            boatDays = sum(VESSELS_OP)) %>% 
+  select(catchReg = CATCH_REGION, area = MGMT_AREA, year = FISHING.YEAR, 
+         month = FISHING.MONTH, jDay, catch, boatDays) %>%
+  # filter(!boatDays == 0) %>% 
   ungroup() %>% 
   mutate(catchReg = as.character(catchReg),
-         sumCPUE = sumCatch / sumEffort)
+         sumCPUE = catch / boatDays)
 
-# write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll", 
-#                                  "dailyCatch_WCVI.csv"), row.names = FALSE)
+write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
+                                 "dailyCatch_WCVI.csv"), row.names = FALSE)
 
-ggplot(data = dailyCatch) +
+ggplot(data = dailyCatch %>% filter(!boatDays == 0)) +
   geom_point(aes(x = jDay, y = sumCPUE)) +
   facet_wrap(~catchReg) +
   samSim::theme_sleekX()
