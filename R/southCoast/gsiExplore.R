@@ -8,9 +8,11 @@ source(here::here("R", "functions", "pooledVar.R"))
 
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                              "stockCatch_WCVI.csv"))
+# areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+#                                  "fosCatch.csv"))
 
 regCatch <- catch %>% 
-  group_by(Region2Name, catchReg, month, year, sumEffort, labN) %>% 
+  group_by(Region3Name, catchReg, month, year, sumEffort, labN) %>% 
   summarize(regCatch = sum(estCatch),
             regCatchVar = sum(varCatch)) %>% 
   mutate(regCPUE = regCatch / sumEffort,
@@ -18,13 +20,11 @@ regCatch <- catch %>%
 
 ggplot(regCatch, aes(x = as.factor(month), y = regCatch, fill = catchReg)) +
   geom_boxplot() +
-  facet_wrap(~Region2Name, scales = "free_y")
+  facet_wrap(~Region3Name, scales = "free_y")
 
 ggplot(regCatch, aes(x = as.factor(month), y = regCPUE, fill = catchReg)) +
   geom_boxplot() +
-  facet_wrap(~Region2Name, scales = "free_y")
-
-xx <- rnorm(1000, 0, (3.56^2))
+  facet_wrap(~Region3Name, scales = "free_y")
 
 ## Focus on BC stocks
 bcStocks <- unique(catch$Region2Name)[c(1:3, 5:7)]
