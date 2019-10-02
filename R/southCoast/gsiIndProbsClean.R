@@ -63,19 +63,25 @@ reg3 <- gatherStocks %>%
   select(-Region2Name, -Region1Name) %>% 
   group_by(tempFish, Region3Name) %>% 
   summarize(aggProb = sum(prob)) %>% 
-  arrange(tempFish, desc(aggProb))
+  arrange(tempFish, desc(aggProb)) %>% 
+  right_join(dat %>% 
+              select(tempFish, statArea, year, gear, jDay, fishNum, date, 
+                     month),
+             .,
+             by = "tempFish")
 
-fishSeq <- unique(reg3$tempFish)
-temp <- NULL
-for(i in seq_along(fishSeq)) {
-  dum <- reg3 %>% 
-    filter(tempFish == fishSeq[i]) %>% 
-    mutate(Region = NA)
-  for(j in 1:nrow(dum)) {
-    dum$Region[j] <- paste("Region", j, sep = " ")
-  }
-  temp <- rbind(temp, dum)
-}
+# fishSeq <- unique(reg3$tempFish)
+# temp <- NULL
+# for(i in seq_along(fishSeq)) {
+#   dum <- reg3 %>% 
+#     filter(tempFish == fishSeq[i]) %>%
+#     mutate(Region = NA)
+#   for(j in 1:nrow(dum)) {
+#     dum$Region[j] <- paste("Region", j, sep = " ")
+#   }
+#   temp <- rbind(temp, dum)
+# }
+
 
 ## Summarize samples and incorporate catch data
 #monthly catches

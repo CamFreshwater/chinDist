@@ -162,6 +162,9 @@ write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll",
 
 ## Generate aggregate catch by Julian Day to match individual data from genetics
 # lab
+areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                                 "fosCatch.csv"))
+
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
                                            format="%Y-%m-%d"))) %>% 
@@ -175,11 +178,19 @@ dailyCatch <- areaCatch %>%
   mutate(catchReg = as.character(catchReg),
          sumCPUE = catch / boatDays)
 
-write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.csv"), row.names = FALSE)
+# write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
+#                                  "dailyCatch_WCVI.csv"), row.names = FALSE)
 
 ggplot(data = dailyCatch %>% filter(!boatDays == 0)) +
   geom_point(aes(x = jDay, y = sumCPUE)) +
   facet_wrap(~catchReg) +
   samSim::theme_sleekX()
 
+
+## Check anomalously large CPUE
+# dailyCatch %>% 
+#   filter(sumCPUE > 900)
+# 
+# areaCatch %>% 
+#   filter(AREA_NAME == "management area 123", FISHING.YEAR == "2013", 
+#          FISHING.MONTH == "5")
