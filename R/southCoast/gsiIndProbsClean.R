@@ -13,7 +13,7 @@ datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 id <- data.frame(t(matrix(unlist(strsplit(as.vector(datRaw$sampleID), 
                                           split = " ")),
                         nrow = 5, ncol = length(datRaw$sampleID)))) %>% 
-  rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4, 
+  dplyr::rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4, 
          "fishNum" = X5) %>% 
   mutate(statArea = case_when(
             statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
@@ -30,7 +30,8 @@ id <- data.frame(t(matrix(unlist(strsplit(as.vector(datRaw$sampleID),
          year = paste("20", abbYear, sep = ""),
          date = as.Date(as.numeric(as.character(jDay)), 
                         origin = as.Date(paste(year, "01", "01", sep = "-"))),
-         month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")))
+         month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
+         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
 
 dat <- cbind(id, datRaw) %>% 
   select(-sampleID, -abbYear) %>% 
@@ -62,15 +63,15 @@ gatherStocks <- dat %>%
 reg3 <- gatherStocks %>% 
   select(-Region2Name, -Region1Name) %>% 
   group_by(tempFish, Region3Name) %>% 
-  summarize(aggProb = sum(prob)) %>% 
-  arrange(tempFish, desc(aggProb)) %>% 
+  dplyr::summarize(aggProb = sum(prob)) %>% 
+  dplyr::arrange(tempFish, desc(aggProb)) %>% 
   right_join(dat %>% 
-              select(tempFish, statArea, year, gear, jDay, fishNum, date, 
-                     month),
+              select(tempFish, statArea, year, month, week, jDay, gear, fishNum,
+                     date),
              .,
              by = "tempFish") %>% 
   mutate(Region = NA) %>% 
-  rename(regName = Region3Name)
+  dplyr::rename(regName = Region3Name)
 
 fishSeq <- unique(reg3$tempFish)
 for(i in seq_along(fishSeq)) {
@@ -81,6 +82,8 @@ for(i in seq_along(fishSeq)) {
                                                            sep = " ")
   }
 }
+# write.csv(reg3, here::here("data", "gsiCatchData", "commTroll",
+#                            "reg3RollUpCatchProb.csv"))
 
 dum <- reg3 %>% 
   filter(Region == "Region 1",
@@ -95,39 +98,61 @@ dum2 <- reg3 %>%
 # catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 #                              "fosCatch.csv"),
 #                   stringsAsFactors = FALSE) %>%
-#   group_by(MGMT_AREA, FISHING.YEAR, FISHING.MONTH) %>%
-#   summarize(catch = sum(CHINOOK_KEPT), boatDays = sum(VESSELS_OP)) %>% 
-#   rename(statArea = "MGMT_AREA", year = "FISHING.YEAR", 
-#          month = "FISHING.MONTH") %>% 
-#   ungroup() %>% 
-#   mutate(statArea = as.character(statArea), 
+#   dplyr::group_by(MGMT_AREA, FISHING.YEAR, FISHING.MONTH) %>%
+#   dplyr::summarize(catch = sum(CHINOOK_KEPT), boatDays = sum(VESSELS_OP)) %>%
+#   dplyr::rename(statArea = "MGMT_AREA", year = "FISHING.YEAR",
+#          month = "FISHING.MONTH") %>%
+#   ungroup() %>%
+#   mutate(statArea = as.character(statArea),
 #          year = as.character(year))
 
 #daily catches
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                              "dailyCatch_WCVI.csv"),
                   stringsAsFactors = FALSE) %>% 
-  rename(statArea = area) %>% 
-  mutate(statArea = as.character(statArea),
-         year = as.character(year),
-         jDay = as.character(jDay)) %>% 
+  dplyr::rename(statArea = area) %>% 
+  mutate(date = as.Date(as.numeric(as.character(jDay)), 
+                        origin = as.Date(paste(year, "01", "01", sep = "-"))),
+         month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
+         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d"))) %>% 
   select(-catchReg)
 
-temp <- dat %>% 
-  group_by(statArea, year, month, jDay) %>% 
-  tally() 
+weeklyCatch <- catch %>%
+  select(-jDay, - date, -sumCPUE) %>% 
+  dplyr::group_by(statArea, year, month, week) %>% 
+  dplyr::summarize(weeklyCatch = sum(catch),
+            weeklyEffort = sum(boatDays))
 
-summDat <- expand.grid(unique(dat$statArea), unique(dat$year), 
-                       unique(dat$month), unique(dat$jDay)) %>%
-  rename("statArea" = Var1, "year" = Var2, "month" = Var3, "jDay" = Var4) %>% 
-  left_join(., temp, by = c("statArea", "year", "jDay", "month")) %>% 
-  replace_na(list(n = 0)) %>% 
-  left_join(., catch, by = c("statArea", "year", "jDay", "month")) %>% 
-  mutate(sampPpn = n / catch) %>% 
-  filter(!is.na(catch))
-  
+reg3Catch <- reg3 %>% 
+  mutate(statArea = as.numeric(as.character(statArea)),
+         year = as.numeric(as.character(year))) %>% 
+  full_join(., 
+            weeklyCatch, 
+            by = c("statArea", "year", "week", "month"))
 
 ## Distribution of samples and sampling effort
+weekSamples <- dat %>% 
+  group_by(statArea, year, month, week) %>% 
+  tally() %>% 
+  ungroup() %>%
+  mutate(statArea = as.numeric(as.character(statArea)),
+         year = as.numeric(as.character(year)),
+         month = as.numeric(as.character(month)),
+         week = as.numeric(as.character(week)))
+hist(weekSamples$n, breaks = 30)
+
+summDat <- expand.grid(unique(dat$statArea), unique(dat$year), 
+                       unique(dat$month), unique(dat$week)) %>%
+  dplyr::rename("statArea" = Var1, "year" = Var2, "month" = Var3, 
+                "week" = Var4) %>%
+  mutate(statArea = as.numeric(as.character(statArea)),
+         year = as.numeric(as.character(year))) %>% 
+  full_join(., weekSamples, by = c("statArea", "year", "week", "month")) %>% 
+  full_join(., catch, by = c("statArea", "year", "week", "month")) %>% 
+  replace_na(list(n = 0)) %>% 
+  mutate(sampPpn = n / catch) %>% 
+  filter(!boatDays == 0)
+
 ggplot(summDat, aes(x = as.factor(month), y = n)) +
   geom_boxplot() +
   facet_wrap(~statArea, scales = "free_y") +
@@ -137,7 +162,6 @@ ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
   geom_boxplot() +
   facet_wrap(~statArea, scales = "free_y") +
   theme_bw()
-
 
 ## Sampling proportion exceeds 100% because at least some samples are from Taaq
 # fishery; ideally include effort or at least catch from that sector
