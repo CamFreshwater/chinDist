@@ -73,24 +73,22 @@ reg3 <- gatherStocks %>%
   mutate(Region = NA) %>% 
   dplyr::rename(regName = Region3Name)
 
-fishSeq <- unique(reg3$tempFish)
-for(i in seq_along(fishSeq)) {
-  dum <- reg3 %>%
-    filter(tempFish == fishSeq[i])
-  for(j in 1:nrow(dum)) {
-    reg3[reg3$tempFish == fishSeq[i], ]$Region[j] <- paste("Region", j, 
-                                                           sep = " ")
-  }
-}
+reg3 <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                    "reg3RollUpCatchProb.csv")) %>% 
+  select(-X)
+
+## Code snippet to add regional identifiers
+# fishSeq <- unique(reg3$tempFish)
+# for(i in seq_along(fishSeq)) {
+#   dum <- reg3 %>%
+#     filter(tempFish == fishSeq[i])
+#   for(j in 1:nrow(dum)) {
+#     reg3[reg3$tempFish == fishSeq[i], ]$Region[j] <- paste("Region", j, 
+#                                                            sep = " ")
+#   }
+# }
 # write.csv(reg3, here::here("data", "gsiCatchData", "commTroll",
 #                            "reg3RollUpCatchProb.csv"))
-
-dum <- reg3 %>% 
-  filter(Region == "Region 1",
-         aggProb < 0.5)
-dum2 <- reg3 %>% 
-  filter(tempFish %in% dum$tempFish) %>% 
-  select(year, regName, aggProb, Region)
 
 
 ## Summarize samples and incorporate catch data
@@ -106,7 +104,7 @@ dum2 <- reg3 %>%
 #   mutate(statArea = as.character(statArea),
 #          year = as.character(year))
 
-#daily catches
+#weekly catches
 catch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                              "dailyCatch_WCVI.csv"),
                   stringsAsFactors = FALSE) %>% 
@@ -139,7 +137,7 @@ weekSamples <- dat %>%
          year = as.numeric(as.character(year)),
          month = as.numeric(as.character(month)),
          week = as.numeric(as.character(week)))
-hist(weekSamples$n, breaks = 30)
+# hist(weekSamples$n, breaks = 30)
 
 summDat <- expand.grid(unique(dat$statArea), unique(dat$year), 
                        unique(dat$month), unique(dat$week)) %>%
@@ -148,18 +146,17 @@ summDat <- expand.grid(unique(dat$statArea), unique(dat$year),
   mutate(statArea = as.numeric(as.character(statArea)),
          year = as.numeric(as.character(year))) %>% 
   full_join(., weekSamples, by = c("statArea", "year", "week", "month")) %>% 
-  full_join(., catch, by = c("statArea", "year", "week", "month")) %>% 
+  full_join(., weeklyCatch, by = c("statArea", "year", "week", "month")) %>% 
   replace_na(list(n = 0)) %>% 
-  mutate(sampPpn = n / catch) %>% 
-  filter(!boatDays == 0)
+  mutate(sampPpn = n / weeklyCatch) %>% 
+  filter(statArea %in% unique(reg3$statArea)) #constrain to focal stat areas
 
-ggplot(summDat, aes(x = as.factor(month), y = n)) +
-  geom_boxplot() +
+ggplot(summDat, aes(x = week, y = sampPpn)) +
+  geom_point() +
   facet_wrap(~statArea, scales = "free_y") +
   theme_bw()
-
-ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
-  geom_boxplot() +
+ggplot(summDat, aes(x = week, y = n)) +
+  geom_point() +
   facet_wrap(~statArea, scales = "free_y") +
   theme_bw()
 
@@ -168,5 +165,11 @@ ggplot(summDat, aes(x = as.factor(month), y = sampPpn)) +
 ## Double check this...
 dum2 <- summDat %>% 
   filter(sampPpn > 1)
+write.csv(dum2, here::here("data", "gsiCatchData", "commTroll", 
+                           "missingCatchData.csv"), row.names = FALSE)
 
-sum(dum2$n)
+summDat %>% 
+  filter(statArea %in% c("24", "26"), 
+         n > 0)
+reg3 %>% 
+  filter(statArea %in% c("24", "26"))
