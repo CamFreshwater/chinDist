@@ -43,9 +43,9 @@ id <- datRaw$szLineInfo %>%
     week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
 
 #Calculate total summed probability for each sample
-dum <- dat %>% 
+dum <- datRaw %>% 
   group_by(szLineInfo) %>%
-  summarize(totalProb = sum(prob))
+  summarize(totalProb = sum(dProb))
 
 #Merge id vector with original data frame and trim
 dat <- cbind(id, datRaw) %>% 
@@ -59,6 +59,8 @@ dat <- cbind(id, datRaw) %>%
                           "Area124_24")) %>% 
   left_join(., stockKey, by = "stock") #add southcoast regional groupings
 
+dat %>% 
+  
 
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat %>% 
@@ -117,7 +119,8 @@ summDat <- weeklyCatch %>%
             by = c("statArea", "year", "week", "month")) %>% 
   replace_na(list(nSampled = 0)) %>% 
   mutate(sampPpn = nSampled / weeklyCatch) %>% 
-  filter(statArea %in% unique(reg3$statArea)) #constrain to focal stat areas
+  filter(statArea %in% unique(reg3$statArea)) %>% #constrain to focal stat areas
+  distinct()
 
 ggplot(summDat, aes(x = week, y = sampPpn)) +
   geom_point() +
