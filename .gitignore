@@ -32,3 +32,4 @@ scripts/*cache*
 *.so
 
 R/defunct/
+data/gsiCatchData/commTroll/defunct/
