@@ -5,7 +5,21 @@
 
 require(tidyverse)
 require(rethinking)
+library(tidyverse)
+library(modelr)
+library(tidybayes)
+library(ggplot2)
+library(ggstance)
+library(ggridges)
+library(cowplot)
+library(rstan)
+library(brms)
+library(ggrepel)
+library(RColorBrewer)
+library(gganimate)
 
+rstan_options (auto_write=TRUE)
+options (mc.cores=parallel::detectCores ()) # Run on multiple cores
 
 ## First simulate five year's composition with three stocks
 N <- 500 #total sample number
@@ -23,14 +37,20 @@ dat <- data.frame(
 trueMat <- matrix(NA, nrow = N_yr, ncol = K + 1)
 trueMat[ , 1] <- yrs
 for (i in seq_along(yrs)) {
-  error <- runif(nStocks, 0.0001, 0.9999)
+  error <- runif(K, 0.0001, 0.9999)
   # generate error
   trueMat[i, 2:4] <- round(samSim::ppnAgeErr(ppnStocks, 0.1, error), digits = 2)
-  simStocks <- sample(1:3, size = 100, prob = ppnI, replace = T)
+  simStocks <- sample(1:3, size = 100, prob = trueMat[i, 2:4], replace = T)
   dat[dat$year == yrs[i], ]$stock <- simStocks
 }
 
+### BRMS ###
+m_stk = brm(stock ~ 1, data = dat, family = categorical, seed = 58393)
+m_stk2 = brm(stock ~ (1|year), data = dat, family = categorical)
 
+
+
+### RETHINKING ###
 ## Poisson multinomial 
 datWide <- dat %>% 
   group_by(year, stock) %>% 
@@ -165,63 +185,3 @@ exp(k[1])/(exp(k[1])+exp(k[2]))
 
 
 
-### brms example
-library(tidyverse)
-library(modelr)
-library(tidybayes)
-library(ggplot2)
-library(ggstance)
-library(ggridges)
-library(cowplot)
-library(rstan)
-library(brms)
-library(ggrepel)
-library(RColorBrewer)
-library(gganimate)
-
-
-rstan_options (auto_write=TRUE)
-options (mc.cores=parallel::detectCores ()) # Run on multiple cores
-
-set.seed (3875)
-
-ir <- data.frame (scale(iris[, -5]), Species=iris[, 5])
-
-system.time(
-  b2 <- brm(Species ~ Petal.Length + Petal.Width + Sepal.Length + Sepal.Width, 
-  data=ir,
-  family="categorical", 
-  chains=3, iter=3000, warmup=600,
-  prior=c(set_prior("normal (0, 8)")))
-)
-
-mtcars_clean = mtcars %>%
-  mutate(cyl = factor(cyl))
-m_cyl = brm(cyl ~ mpg, data = mtcars_clean, family = categorical, seed = 58393)
-
-# generate 
-tibble(mpg = 21) %>%
-  add_fitted_draws(m_cyl) %>%
-  median_qi(.value)
-
-data_plot = mtcars_clean %>%
-  ggplot(aes(x = mpg, y = cyl, color = cyl)) +
-  geom_point() +
-  scale_color_brewer(palette = "Dark2", name = "cyl")
-
-fit_plot = mtcars_clean %>%
-  data_grid(mpg = seq_range(mpg, n = 101)) %>%
-  # we can use the `value` argument to give the column with values of 
-  # transformed linear predictors a more precise name and the 
-  # `category` argument to give the column with category labels
-  # a more precise name
-  add_fitted_draws(m_cyl, value = "P(cyl | mpg)", category = "cyl") %>%
-  ggplot(aes(x = mpg, y = `P(cyl | mpg)`, color = cyl)) +
-  stat_lineribbon(aes(fill = cyl), alpha = 1/5) +
-  scale_color_brewer(palette = "Dark2") +
-  scale_fill_brewer(palette = "Dark2")
-
-plot_grid(ncol = 1, align = "v",
-          data_plot,
-          fit_plot
-)
