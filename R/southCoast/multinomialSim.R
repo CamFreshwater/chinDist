@@ -160,3 +160,68 @@ m_pois <- map2stan(
 logistic(coef(m_binom))
 k <- as.numeric(coef(m_pois))
 exp(k[1])/(exp(k[1])+exp(k[2]))
+
+
+
+
+
+### brms example
+library(tidyverse)
+library(modelr)
+library(tidybayes)
+library(ggplot2)
+library(ggstance)
+library(ggridges)
+library(cowplot)
+library(rstan)
+library(brms)
+library(ggrepel)
+library(RColorBrewer)
+library(gganimate)
+
+
+rstan_options (auto_write=TRUE)
+options (mc.cores=parallel::detectCores ()) # Run on multiple cores
+
+set.seed (3875)
+
+ir <- data.frame (scale(iris[, -5]), Species=iris[, 5])
+
+system.time(
+  b2 <- brm(Species ~ Petal.Length + Petal.Width + Sepal.Length + Sepal.Width, 
+  data=ir,
+  family="categorical", 
+  chains=3, iter=3000, warmup=600,
+  prior=c(set_prior("normal (0, 8)")))
+)
+
+mtcars_clean = mtcars %>%
+  mutate(cyl = factor(cyl))
+m_cyl = brm(cyl ~ mpg, data = mtcars_clean, family = categorical, seed = 58393)
+
+# generate 
+tibble(mpg = 21) %>%
+  add_fitted_draws(m_cyl) %>%
+  median_qi(.value)
+
+data_plot = mtcars_clean %>%
+  ggplot(aes(x = mpg, y = cyl, color = cyl)) +
+  geom_point() +
+  scale_color_brewer(palette = "Dark2", name = "cyl")
+
+fit_plot = mtcars_clean %>%
+  data_grid(mpg = seq_range(mpg, n = 101)) %>%
+  # we can use the `value` argument to give the column with values of 
+  # transformed linear predictors a more precise name and the 
+  # `category` argument to give the column with category labels
+  # a more precise name
+  add_fitted_draws(m_cyl, value = "P(cyl | mpg)", category = "cyl") %>%
+  ggplot(aes(x = mpg, y = `P(cyl | mpg)`, color = cyl)) +
+  stat_lineribbon(aes(fill = cyl), alpha = 1/5) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2")
+
+plot_grid(ncol = 1, align = "v",
+          data_plot,
+          fit_plot
+)
