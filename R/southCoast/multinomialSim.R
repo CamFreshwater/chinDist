@@ -3,8 +3,8 @@
 # recover with models 
 ## Oct. 4 2019
 
-require(tidyverse)
-require(rethinking)
+library(tidyverse)
+library(rethinking)
 library(tidyverse)
 library(modelr)
 library(tidybayes)
@@ -16,7 +16,6 @@ library(rstan)
 library(brms)
 library(ggrepel)
 library(RColorBrewer)
-library(gganimate)
 
 rstan_options (auto_write=TRUE)
 options (mc.cores=parallel::detectCores ()) # Run on multiple cores
@@ -87,22 +86,81 @@ m_mult1 <- map2stan(
   data=list(stock=dat$stock), chains=3 , cores=3 )
 precis(m_mult1)
 inv_logit(coef(m_mult1))
-
 #coef * 2 and 3 gives same results as brms
 
 
 ## Practice with brms and tidybayes
 
+## Extract draws
+get_variables(m_stk2)
+
 m_stk2 %>% 
   spread_draws(r_year__mu2[condition, term]) %>% 
   #condition corresponds to level adn term the estimated parameter
   head(10)
+m_stk2 %>%
+  gather_draws(b_mu2_Intercept, b_mu3_Intercept) %>%
+  median_hdi()
+m_stk2 %>% 
+  spread_draws(r_year__mu2[condition, term]) %>% 
+  median_hdi() %>% 
+  select(condition)
 
+#calculate mean within each year (i.e. overall intercept plus year-specific
+#effect)
+m_stk2 %>% 
+  spread_draws(b_mu2_Intercept, r_year__mu2[condition, ]) %>%
+  median_qi(yearly_mean = b_mu2_Intercept + r_year__mu2)
 
-# Posterior estimates 
+#plot means 
+m_stk2 %>% 
+  spread_draws(b_mu2_Intercept, r_year__mu2[year, ]) %>%
+  median_qi(yearly_mean = b_mu2_Intercept + r_year__mu2) %>% 
+  ggplot(aes(y = year, x = yearly_mean, xmin = .lower, xmax = .upper)) +
+  geom_pointintervalh()
+
+#as above but with multiple probability levels
+m_stk2 %>% 
+  spread_draws(b_mu2_Intercept, r_year__mu2[year, ]) %>%
+  median_qi(yearly_mean = b_mu2_Intercept + r_year__mu2,
+            .width = c(.95, .5)) %>% 
+  ggplot(aes(y = year, x = yearly_mean, xmin = .lower, xmax = .upper)) +
+  geom_pointintervalh()
+
+#Generate posterior estimates
 dat %>%
   data_grid(year) %>%
-  add_fitted_draws(m_stk2, dpar = TRUE) %>%
+  add_fitted_draws(m_stk2) %>%
   ggplot(aes(x = year, y = .value, color = .category)) +
   stat_pointinterval(position = position_dodge(width = .4)) +
   scale_size_continuous(guide = FALSE)
+
+#Generate posterior predictive estimates
+dat %>%
+  data_grid(year) %>%
+  add_predicted_draws(m_stk2) %>%
+  ggplot(aes(x = .prediction, y = year)) +
+  stat_intervalh(.width = c(.50, .80, .95, .99)) +
+  geom_point(aes(x = stock), data = dat) +
+  scale_color_brewer()
+
+grid = dat %>% 
+  data_grid(year)
+fits = grid %>% 
+  add_fitted_draws(m_stk2)
+preds = grid %>% 
+  add_predicted_draws(m_stk2) %>% 
+  group_by(.draw, .prediction) %>% 
+  add_tally() %>% 
+  arrange(.prediction, .draw)
+
+dat %>%
+  ggplot(aes(x = year, y = stock)) +
+  # stat_intervalh(aes(x = .prediction, y = year), data = preds) +
+  ggplot() + 
+  stat_pointinterval(aes(x = year, y = .value, color = .category), data = fits,
+                     .width = c(.66, .95), 
+                     position = position_dodge(width = .4)) +
+  # geom_point() +
+  scale_color_brewer()
+# needs to be adjusted so parameter estimates correspond to observed prob
