@@ -3,7 +3,6 @@
 # recover with models 
 ## Oct. 4 2019
 
-library(tidyverse)
 library(rethinking)
 library(tidyverse)
 library(modelr)
@@ -148,19 +147,47 @@ grid = dat %>%
   data_grid(year)
 fits = grid %>% 
   add_fitted_draws(m_stk2)
+nIter <- length(unique(fits$.draw))
 preds = grid %>% 
   add_predicted_draws(m_stk2) %>% 
-  group_by(.draw, .prediction) %>% 
-  add_tally() %>% 
-  arrange(.prediction, .draw)
+  group_by(.prediction, year) %>% 
+  tally() %>% #calculate the predicted frequency from posterior
+  mutate(stockFreq = n / nIter)
 
-dat %>%
-  ggplot(aes(x = year, y = stock)) +
-  # stat_intervalh(aes(x = .prediction, y = year), data = preds) +
-  ggplot() + 
-  stat_pointinterval(aes(x = year, y = .value, color = .category), data = fits,
+length(unique(preds$.row))
+
+ggplot() + 
+  stat_pointintervalh(aes(y = year, x = .value, color = .category), data = fits,
                      .width = c(.66, .95), 
                      position = position_dodge(width = .4)) +
-  # geom_point() +
+  geom_point(aes(y = year, x = stockFreq, pch = .prediction), data = preds,
+             position = position_nudge(y = -0.2)) +
   scale_color_brewer()
-# needs to be adjusted so parameter estimates correspond to observed prob
+
+## CHECK STAT_DIST_SLABH func
+dat %>%
+  data_grid(year) %>%
+  add_fitted_draws(m_stk2, dpar = TRUE) %>%
+  sample_draws(30) %>%
+  ggplot(aes(y = stock)) +
+  stat_dist_slabh(aes(dist = "categorical", arg1 = mu2, arg2 = mu3), 
+                  slab_color = "gray65", alpha = 1/10, fill = NA
+  ) +
+  geom_point(aes(x = response), data = ABC, shape = 21, fill = "#9ECAE1", size = 2)
+
+# Plot predicted curves
+dat %>%
+  # group_by(year) %>%
+  data_grid(year) %>%
+  add_fitted_draws(m_stk2) %>%
+  ggplot(aes(x = year, y = stock
+             # , color = ordered(cyl)
+             )) +
+  stat_lineribbon(aes(y = .value)) +
+  # geom_point(data = dat) +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_brewer(palette = "Set2")
+
+
+m_mpg = brm(mpg ~ hp * cyl, data = mtcars)
+

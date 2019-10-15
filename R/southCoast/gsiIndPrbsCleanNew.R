@@ -59,8 +59,6 @@ dat <- cbind(id, datRaw) %>%
                           "Area124_24")) %>% 
   left_join(., stockKey, by = "stock") #add southcoast regional groupings
 
-dat %>% 
-  
 
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat %>% 
@@ -92,6 +90,8 @@ weeklyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   dplyr::group_by(statArea, year, month, week) %>% 
   dplyr::summarize(weeklyCatch = sum(catch),
                    weeklyEffort = sum(boatDays))
+# write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
+#                                    "weeklyCatch_WCVI.csv"))
 
 weeklySamples <- dat %>% 
   group_by(statArea, year, month, week) %>% 
