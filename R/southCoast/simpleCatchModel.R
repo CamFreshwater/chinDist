@@ -24,14 +24,54 @@ dCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   summarize(aggCatch = sum(catch),
             aggEffort = sum(boatDays)) %>% 
   filter(!aggEffort == 0) %>% 
-  mutate(aggCPUE = aggCatch / aggEffort)
+  mutate(aggCPUE = (aggCatch + 0.0001) / aggEffort)
 
 ggplot(aes(x = jDay, y = aggCatch), data = dCatch) +
   geom_point()
+ggplot(aes(x = jDay, y = log(aggCPUE)), data = dCatch) +
+  geom_point()
 
-mCatch = brm(aggCatch ~ jDay + jDay^2 + aggEffort, family = negbinomial,
-             data = dCatch, chains = 4)
-mCatch2 = brm(aggCPUE ~ jDay + jDay^2, data = dCatch, chains = 4)
+mCatch = brm(aggCatch ~ jDay + I(jDay^2) + aggEffort, family = negbinomial, 
+             prior = c(prior(normal(0, 5), class = Intercept),
+                       prior(normal(0, 5), class = b)),
+             data = dCatch, chains = 4, cores = 4, iter = 4000)
+mCatch2 = brm(aggCPUE ~ jDay + I(jDay^2),
+              family = Gamma(link = "log"),
+              data = dCatch, 
+              prior = c(prior(normal(0, 5), class = Intercept),
+                        prior(normal(0, 2), class = b),
+                        prior(gamma(0.01,0.01), class = "shape")),
+              chains = 4, cores = 4, iter = 5000,
+              control = list(max_treedepth = 15))
+
+plot(marginal_effects(mCatch2), points=T)
+
+
+#fits and predictions from model
+daySeq <- tibble(jDay = seq(from = 0, to = 365, length.out = 50))
+f_quad <- fitted(mCatch2, 
+                 newdata = daySeq) %>%
+  as_tibble() %>%
+  bind_cols(daySeq)
+
+p_quad <- predict(mCatch2, 
+          newdata = daySeq) %>%
+  as_tibble() %>%
+  bind_cols(daySeq)  
+
+ggplot(data = dCatch, 
+       aes(x = jDay)) +
+  geom_ribbon(data = p_quad, 
+              aes(ymin = Q2.5, ymax = Q97.5),
+              fill = "grey83") +
+  geom_smooth(data = f_quad,
+              aes(y = Estimate, ymin = Q2.5, ymax = Q97.5),
+              stat = "identity",
+              fill = "grey70", color = "black", alpha = 1, size = 1/2) +
+  geom_point(aes(y = aggCPUE),
+             color = "navyblue", shape = 1, size = 1.5, alpha = 1/3) +
+
+    coord_cartesian(xlim = range(dCatch$jDay)) 
 
 dCatch %>% 
   data_grid(jDay = seq_range(jDay, n = 100),
@@ -52,3 +92,10 @@ mtcars %>%
   geom_point(data = mtcars) +
   scale_fill_brewer(palette = "Greys") +
   scale_color_brewer(palette = "Set2")
+
+
+
+p <- 0.5
+q <- seq(0,100,1)
+y <- 450 + p*(q-10)^2
+plot(q,y,type='l',col='navy',main='Nonlinear relationship',lwd=3)
