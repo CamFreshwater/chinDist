@@ -26,14 +26,15 @@ dCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   filter(!aggEffort == 0) %>% 
   mutate(aggCPUE = (aggCatch + 0.0001) / aggEffort)
 
-ggplot(aes(x = jDay, y = aggCatch), data = dCatch) +
+ggplot(aes(x = jDay, y = log(aggCatch)), data = dCatch) +
   geom_point()
 ggplot(aes(x = jDay, y = log(aggCPUE)), data = dCatch) +
   geom_point()
 
-mCatch = brm(aggCatch ~ jDay + I(jDay^2) + aggEffort, family = negbinomial, 
+mCatch = brm(aggCatch ~ jDay + I(jDay^2) + aggEffort, 
+             family = negbinomial(link = "log"), 
              prior = c(prior(normal(0, 5), class = Intercept),
-                       prior(normal(0, 5), class = b)),
+                       prior(normal(0, 2), class = b)),
              data = dCatch, chains = 4, cores = 4, iter = 4000)
 mCatch2 = brm(aggCPUE ~ jDay + I(jDay^2),
               family = Gamma(link = "log"),
