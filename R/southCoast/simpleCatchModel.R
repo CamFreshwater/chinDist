@@ -28,7 +28,11 @@ dCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 
 ggplot(aes(x = jDay, y = log(aggCatch)), data = dCatch) +
   geom_point()
+ggplot(aes(x = log(aggEffort), y = log(aggCatch)), data = dCatch) +
+  geom_point()
 ggplot(aes(x = jDay, y = log(aggCPUE)), data = dCatch) +
+  geom_point()
+ggplot(aes(x = jDay, y = aggCPUE), data = dCatch) +
   geom_point()
 
 mCatch = brm(aggCatch ~ jDay + I(jDay^2) + aggEffort, 
@@ -40,13 +44,42 @@ mCatch2 = brm(aggCPUE ~ jDay + I(jDay^2),
               family = Gamma(link = "log"),
               data = dCatch, 
               prior = c(prior(normal(0, 5), class = Intercept),
-                        prior(normal(0, 2), class = b),
-                        prior(gamma(0.01,0.01), class = "shape")),
+                        prior(normal(0, 2), class = b)),
               chains = 4, cores = 4, iter = 5000,
+              control = list(max_treedepth = 15))
+mCatch3 = brm(aggCPUE ~ jDay + I(jDay^2),
+              family = Gamma(link = "identity"),
+              data = dCatch, 
+              prior = c(#prior(normal(0, 5), class = Intercept),
+                        prior(normal(0, 5), class = b)),
+              chains = 1, cores = 4, iter = 2000, inits = "0",
               control = list(max_treedepth = 15))
 
 plot(marginal_effects(mCatch2), points=T)
 
+posterior_samples(mCatch2) %>% 
+  as_tibble() %>% 
+  mutate(iteration = 1:nrow(.))
+
+## Generate data following estimated coefficients
+int = 1.81
+b1 = 0.02
+b2 = -0.00003
+dSeq = seq(1, 365, length.out = 50)
+estShape = 0.69
+
+out <- NULL
+for(i in seq_along(dSeq)) {
+  temp <- data.frame(draw = seq(1, 100, by = 1),
+                     d = dSeq[i], 
+                     err = rgamma(100, estShape)) %>% 
+    mutate(logC = (b1 * d) + (b2 * d^2) + int + 0,
+           C = exp(logC))
+  out <- rbind(out, temp)
+}
+
+ggplot(aes(x = d, y = logC), data = out) +
+  geom_point()
 
 #fits and predictions from model
 daySeq <- tibble(jDay = seq(from = 0, to = 365, length.out = 50))
@@ -96,7 +129,3 @@ mtcars %>%
 
 
 
-p <- 0.5
-q <- seq(0,100,1)
-y <- 450 + p*(q-10)^2
-plot(q,y,type='l',col='navy',main='Nonlinear relationship',lwd=3)

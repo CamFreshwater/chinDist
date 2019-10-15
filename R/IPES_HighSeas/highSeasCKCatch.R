@@ -19,7 +19,7 @@ chin <- chinRaw %>%
   mutate(stationID = sapply(strsplit(FISH_NUMBER, "-"), function(x) {
     paste(x[1], x[2], x[3], sep = "-")
   })) %>%
-  select(stationID, catchReg = REGION, lat = START_LAT, long = START_LONG,
+  select(stationID, fullCatchReg = REGION, lat = START_LAT, long = START_LONG,
          year = YEAR, month = MONTH, fishNumber = FISH_NUMBER, fl = SHIP_FL,
          stock = STOCK_1, reg = REGION_1, agg = HSS_REGION_1) %>% 
   mutate(month =  fct_relevel(as.factor(month), "FEB", "MAR", "APR", "MAY", 
@@ -27,7 +27,7 @@ chin <- chinRaw %>%
          agg = case_when(
            reg == "SOMN" ~ "BC SOUTH COAST",
            TRUE ~ agg),
-         catchReg = fct_recode(catchReg, SoG = "GEORGIA STRAIT", 
+         catchReg = fct_recode(fullCatchReg, SoG = "GEORGIA STRAIT", 
                                QCSt = "QUEEN CHARLOTTE STRAIT", 
                                InBC = "INSIDE BC", JS = "JOHNSTONE STRAIT", 
                                QCSd = "QUEEN CHARLOTTE SOUND", 
@@ -40,9 +40,22 @@ chin <- chinRaw %>%
                                QCI = "QUEEN CHARLOTTE ISLANDS", 
                                PS = "PUGET SOUND", 
                                JDF_US = "JUAN DE FUCA - USA SIDE", 
-                               DI = "DISCOVERY ISLANDS", 
-                               BA = "BROUGHTON ARCHEPELIGO", 
-                               KI = "KNIGHT INLET"))
+                               JS = "DISCOVERY ISLANDS", 
+                               QCSt = "BROUGHTON ARCHEPELIGO", 
+                               QCSt = "KNIGHT INLET"))
+
+## Visualize set locations
+nAm <- map_data("world") %>% 
+  filter(region %in% c("Canada", "USA"))
+
+ggplot(chin) +
+  geom_point(aes(x = long, y = lat, color = catchReg)) +
+  geom_map(data = nAm, map = nAm, aes(long, lat, map_id = region), 
+           color = "black", fill = "gray80") + 
+  coord_fixed(xlim = c(-129.5, -123), ylim = c(48, 52), ratio = 1.3) + 
+  # scale_x_continuous(breaks = scales::pretty_breaks(n = 3)) +
+  samSim::theme_sleekX()
+
 
 # write.csv(chin, here::here("data", "highSeas", "cleanChinook.csv"),
 #           row.names = FALSE)
@@ -53,6 +66,12 @@ dropRegions <- chin %>%
   summarize(yearsFished = length(unique(year))) %>% 
   filter(yearsFished < 10)
 dropReg <- dropRegions$catchReg
+
+chin %>% 
+  filter(!catchReg %in% dropReg) %>% 
+  group_by(catchReg, month) %>% 
+  summarize(yearsFished = length(unique(year))) %>% 
+  filter(yearsFished > 9)
 
 setCount <- chin %>% 
   filter(!catchReg %in% dropReg) %>% 
@@ -88,7 +107,7 @@ pdf(here::here("figs", "highSeasCatch", "catchCounts.pdf"),
     height = 7, width = 8)
 ggplot(summRegCatch, aes(x = month, y = agg, fill = log(mean))) + 
   geom_tile() + 
-  viridis::scale_fill_viridis(name = "Mean Catch", option = "viridis") +
+  viridis::scale_fill_viridis(name = "Log Mean\nCatch", option = "viridis") +
   samSim::theme_sleekX()
 dev.off()
 
