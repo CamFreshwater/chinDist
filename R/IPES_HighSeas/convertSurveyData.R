@@ -34,7 +34,6 @@ calcCount <- function(speciesCode)
   haulDat %>% 
   filter(speciesCode)
 
-
 ## Data recorded on board
 bridgeDat <- read.csv(here::here("data", "highSeas", "importHighSeas", 
                                  "bridge_shipData.csv"), 
@@ -45,7 +44,6 @@ haulDat <- read.csv(here::here("data", "highSeas", "importHighSeas",
                                "haulCard_shipData.csv"), 
                     stringsAsFactors = FALSE) %>% 
   filter(CRUISE.NUMBER == "2019-125")
-
 
 
 ############
