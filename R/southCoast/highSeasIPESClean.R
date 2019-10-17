@@ -3,13 +3,12 @@
 
 library(RODBC); library(tidyverse); library(ggplot2)
 
-# Access databases saved locally to work computer to import bridge (i.e. total
+# Access databases saved to regional drive to import bridge (i.e. total
 # catches) and genetics data from historical (high seas) and contemporary (IPES)
 # databases
-pathHighSeas <- here::here("data", "highSeas", "HSSALMON.accdb")
+pathHighSeas <- "R:/SCIENCE/IPES/DB/chinookIndex/HSSALMON.accdb" 
 conHS <- odbcConnectAccess2007(pathHighSeas)
-pathIPES <- here::here("data", "highSeas", 
-                       "IPES_TrawlDB_v19.07f_2017_18_19.mdb")
+pathIPES <- "R:/SCIENCE/IPES/DB/IPES_TrawlDB_v19.07f_2017_18_19.mdb"
 conIPES <- odbcConnectAccess2007(pathIPES)
 
 # High seas bridge data - includes catch totals
@@ -162,12 +161,95 @@ chinHS <- sqlQuery(conHS, chinDNAQry)
 
 
 # IPES Chinook GSI
-chinIPESQuery <- "SELECT DNA_STOCK_INDIVIDUAL_FISH_ID, BCSI_FISH_NUMBER, 
+dnaIPESQuery <- "SELECT DNA_STOCK_INDIVIDUAL_FISH_ID, BCSI_FISH_NUMBER, 
   BATCH_DNA_NUMBER, STOCK_1, STOCK_2, STOCK_3, STOCK_4, STOCK_5, REGION_1, 
   REGION_2, REGION_3, REGION_4, REGION_5, PROB_1, PROB_2, PROB_3, PROB_4, 
   PROB_5
 FROM DNA_STOCK_INDIVIDUAL_FISH;
 "
-dnaIPES <- sqlQuery(conIPES, chinIPESQuery)
+dnaIPES <- sqlQuery(conIPES, dnaIPESQuery)
 
+#Samples from specimen table have differently formatted fish identifier
+fishID <- dnaIPES$BCSI_FISH_NUMBER %>% 
+  as.vector() %>% 
+  strsplit(., split = "-") %>% 
+  unlist() %>%
+  matrix(., nrow = 5, ncol = length(dnaIPES$BCSI_FISH_NUMBER)) %>%
+  t() %>%
+  data.frame() %>%
+  dplyr::rename("prog" = X1, "survey" = X2, "event" = X3, "species" = X4,
+                "conFish" = X5) %>% 
+  mutate(BCSI_FISH_NUMBER = dnaIPES$BCSI_FISH_NUMBER) %>% 
+  filter(species %in% c("124", "124J", "124A")) 
+
+dnaIPESTrim <- dnaIPES %>% 
+  right_join(., fishID, by = "BCSI_FISH_NUMBER") 
+# %>% 
+#   mutate(
+#     year = as.numeric(
+#       case_when(
+#         survey == "201873" ~ "2018",
+#         survey == "201742" ~ "2017",
+#         TRUE ~ "NA")),
+#     survey = case_when(
+#       survey == "201873" ~ "73",
+#       survey == "201742" ~ "42",
+#       TRUE ~ "NA"),
+#     age = case_when(
+#       grepl("J", species) ~ "J",
+#       grepl("A", species) ~ "A"),
+#     # species = "124",
+#     UNIVERSAL_FISH_LABEL = prog %>% #matches identifier from next query
+#       paste(., year, sep = "") %>% 
+#       paste(., survey, event, species, sep = "-") %>% 
+#       paste(., paste("0", conFish, sep = ""), sep = "-")
+#     )
+  
 # IPES sampling key (necessary to match to station_id)
+chinIPESQuery <- "SELECT SPECIMEN.SPECIMEN_ID, BRIDGE_LOG.BRIDGE_LOG_ID, BRIDGE_LOG.EVENT_NUMBER, TRIP.TRIP_YEAR, TRIP.TRIP_START_DATE, SPECIMEN.CATCH_ID, SPECIMEN.FISH_ID, SPECIMEN.UNIVERSAL_FISH_LABEL, SPECIMEN.SPECIES_CODE, SPECIMEN.LENGTH, SPECIMEN.WEIGHT
+FROM TRIP INNER JOIN ((BRIDGE_LOG INNER JOIN CATCH ON BRIDGE_LOG.BRIDGE_LOG_ID = CATCH.BRIDGE_LOG_ID) INNER JOIN SPECIMEN ON CATCH.CATCH_ID = SPECIMEN.CATCH_ID) ON TRIP.TRIP_ID = BRIDGE_LOG.TRIP_ID
+WHERE (((SPECIMEN.SPECIES_CODE)='124'));"
+chinIPES <- sqlQuery(conIPES, chinIPESQuery) 
+  
+# Join stock identification data, new survey ID and individual sampling data 
+dum <- chinIPES$UNIVERSAL_FISH_LABEL %>% 
+  as.vector() %>% 
+  strsplit(., split = "-") %>% 
+  unlist() %>%
+  matrix(., nrow = 5, ncol = length(chinIPES$UNIVERSAL_FISH_LABEL)) %>%
+  t() %>%
+  data.frame() %>%
+  dplyr::rename("prog" = X1, "survey" = X2, "event" = X3, "species" = X4,
+                "conFish" = X5) %>% 
+  mutate(UNIVERSAL_FISH_LABEL = chinIPES$UNIVERSAL_FISH_LABEL) %>% 
+  filter(species %in% c("124", "124J", "124A")) %>% 
+  mutate(
+    year = as.numeric(
+      case_when(
+        grepl("2017", prog) ~ "2017",
+        grepl("2018", prog) ~ "2018",
+        grepl("2019", prog) ~ "2019")),
+    prog = case_when(
+      grepl("IPES", prog) ~ "IPES",
+      TRUE ~ "NA"),
+    conFish = formatC(conFish, width = 3, format = "d", flag = "0")
+  )
+
+dum2 <- chinIPES %>% 
+  left_join(., dum, by = "UNIVERSAL_FISH_LABEL") %>% 
+  mutate(
+    age = case_when(
+      grepl("J", species) ~ "J",
+      grepl("A", species) ~ "A",
+      LENGTH <= 300 ~ "J",
+      LENGTH > 300 ~ "A",
+      TRUE ~ "NA"
+    ),
+    species = paste("124", age, sep = ""),
+    BCSI_FISH_NUMBER = paste(year, survey, sep = "") %>% 
+      paste(prog, ., event, species, conFish, sep = "-")
+  )
+
+dnaIPESOut <- dum2 %>% 
+  right_join(., dnaIPESTrim, by = "BCSI_FISH_NUMBER") 
+
