@@ -42,21 +42,20 @@ id <- datRaw$szLineInfo %>%
     month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
     week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
 
-#Calculate total summed probability for each sample
-dum <- datRaw %>% 
-  group_by(szLineInfo) %>%
-  summarize(totalProb = sum(dProb))
 
 #Merge id vector with original data frame and trim
 dat <- cbind(id, datRaw) %>% 
-  left_join(., dum, by = "szLineInfo") %>% 
-  mutate(adjProb = dProb / totalProb) %>% #adjusted prob. coerced to sum to 1
+  #calculate total summed probability for each sample
+  group_by(szLineInfo) %>%
+  mutate(totalProb = sum(dProb)) %>% 
+  ungroup() %>% 
+  mutate(adjProb = dProb / totalProb) %>% 
   select(-iRun, -iSample, -iYearMix, tempFish = szLineInfo, stock = szStock, 
          prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, 
          -szRegion) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area
-  filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127", 
-                          "Area124_24")) %>% 
+  filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
+                          "Area124_24")) %>%
   left_join(., stockKey, by = "stock") #add southcoast regional groupings
 
 
@@ -81,7 +80,8 @@ weeklyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                              "dailyCatch_WCVI.csv"),
                   stringsAsFactors = FALSE) %>% 
   dplyr::rename(statArea = area) %>% 
-  mutate(date = as.Date(as.numeric(as.character(jDay)), 
+  mutate(statArea = as.character(statArea),
+         date = as.Date(as.numeric(as.character(jDay)), 
                         origin = as.Date(paste(year, "01", "01", sep = "-"))),
          month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
          week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d"))) %>% 
@@ -95,15 +95,17 @@ weeklyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 
 weeklySamples <- dat %>% 
   group_by(statArea, year, month, week) %>% 
-  tally(., name = "nSampled") %>% 
+  summarize(nSampled = length(unique(fishNum))) %>% 
+  # distinct() %>% 
+  # tally(., name = "nSampled") %>% 
   ungroup() %>%
-  mutate(statArea = as.numeric(as.character(statArea)),
+  mutate(statArea = as.character(statArea),
          year = as.numeric(as.character(year)),
          month = as.numeric(as.character(month)),
          week = as.numeric(as.character(week)))
 
 reg3Catch <- reg3 %>% 
-  mutate(statArea = as.numeric(as.character(statArea)),
+  mutate(statArea = as.character(statArea),
          year = as.numeric(as.character(year))) %>% 
   full_join(., 
             weeklyCatch, 
@@ -119,7 +121,7 @@ summDat <- weeklyCatch %>%
             by = c("statArea", "year", "week", "month")) %>% 
   replace_na(list(nSampled = 0)) %>% 
   mutate(sampPpn = nSampled / weeklyCatch) %>% 
-  filter(statArea %in% unique(reg3$statArea)) %>% #constrain to focal stat areas
+  # filter(statArea %in% unique(reg3$statArea)) %>% #constrain to focal stat areas
   distinct()
 
 ggplot(summDat, aes(x = week, y = sampPpn)) +
@@ -135,12 +137,8 @@ ggplot(summDat, aes(x = week, y = nSampled)) +
 # fishery; ideally include effort or at least catch from that sector
 ## Double check this...
 dum2 <- summDat %>% 
-  filter(sampPpn > 1)
+  filter(sampPpn > 1) %>% 
+  arrange(year)
 write.csv(dum2, here::here("data", "gsiCatchData", "commTroll", 
                            "missingCatchData.csv"), row.names = FALSE)
 
-summDat %>% 
-  filter(statArea %in% c("24", "26"), 
-         n > 0)
-reg3 %>% 
-  filter(statArea %in% c("24", "26"))
