@@ -108,6 +108,13 @@ areaCatch <- sqlQuery(con, catchQry) %>%
 # write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll", 
 #                                 "fosCatch.csv"))
 
+areaCatch %>% 
+  filter(FISHING.YEAR == "2011",
+         FISHING.MONTH == "9",
+         AREA_NAME == "management area 123") 
+
+areaCatch %>% 
+  filter(grepl("CN DNA Sampling", OPNG_DESC))
 
 #summary of how catch/effort data is distributed through time
 # fosSumm <- areaCatch %>%
@@ -120,13 +127,17 @@ areaCatch <- sqlQuery(con, catchQry) %>%
 #summarize catches by area, month and year to match south coast GSI data
 sumCatch <- areaCatch %>% 
   group_by(CATCH_REGION, FISHING.MONTH, FISHING.YEAR) %>% 
-  summarize(sumCatch = sum(CHINOOK_KEPT),
-            sumEffort = sum(VESSELS_OP)) %>% 
+  mutate(sumCatch = 
+         #normally only KEPT chinook contribute to GSI samples, but certain
+         #fisheries include live sampling where CHINOOK_RELD = catch
+          case_when(
+            grepl("CN DNA Sampling", OPNG_DESC) ~ sum(CHINOOK_RELD),
+            TRUE ~ sum(CHINOOK_KEPT)),
+         sumEffort = sum(VESSELS_OP)) %>% 
   select(catchReg = CATCH_REGION, month = FISHING.MONTH, year = FISHING.YEAR, 
          sumCatch, sumEffort) %>% 
   ungroup() %>% 
   mutate(catchReg = as.character(catchReg))
-head(sumCatch)
 
 # # catch/effort coverage
 # ggplot(sumCatch, aes(x = month, y = sumCatch, color = catchReg)) +
