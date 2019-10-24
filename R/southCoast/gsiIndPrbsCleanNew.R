@@ -53,7 +53,8 @@ dat <- cbind(id, datRaw) %>%
   select(-iRun, -iSample, -iYearMix, tempFish = szLineInfo, stock = szStock, 
          prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, 
          -szRegion) %>% 
-  # for now remove ~150 fish that can't be assigned to an individual stat area
+  # for now remove ~150 fish that can't be assigned to an individual stat area;
+  # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
                           "Area124_24")) %>%
   left_join(., stockKey, by = "stock") #add southcoast regional groupings
@@ -65,8 +66,8 @@ reg3 <- dat %>%
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
   dplyr::arrange(tempFish, desc(aggProb)) %>% 
   left_join(dat %>% 
-               select(tempFish, statArea, year, month, week, jDay, gear, fishNum,
-                      date),
+               select(tempFish, statArea, year, month, week, jDay, gear, 
+                      fishNum, date),
              .,
              by = "tempFish") %>% 
   distinct() %>% 
@@ -76,15 +77,16 @@ reg3 <- dat %>%
 #                            "reg3RollUpCatchProb.csv"))
 
 #Add weekly catches and sampling effort
-weeklyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                             "dailyCatch_WCVI.csv"),
-                  stringsAsFactors = FALSE) %>% 
+dailyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                    "dailyCatch_WCVI.csv"),
+         stringsAsFactors = FALSE) %>% 
   dplyr::rename(statArea = area) %>% 
   mutate(statArea = as.character(statArea),
          date = as.Date(as.numeric(as.character(jDay)), 
                         origin = as.Date(paste(year, "01", "01", sep = "-"))),
          month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
-         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d"))) %>% 
+         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
+weeklyCatch <- dailyCatch %>% 
   select(-catchReg) %>%
   select(-jDay, - date, -sumCPUE) %>% 
   dplyr::group_by(statArea, year, month, week) %>% 
@@ -93,36 +95,71 @@ weeklyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 # write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                    "weeklyCatch_WCVI.csv"))
 
-weeklySamples <- dat %>% 
-  group_by(statArea, year, month, week) %>% 
-  summarize(nSampled = length(unique(fishNum))) %>% 
-  # distinct() %>% 
-  # tally(., name = "nSampled") %>% 
+dailySamples <- dat %>% 
+  group_by(statArea, year, month, jDay) %>% 
+  mutate(nSampled = length(unique(fishNum))) %>% 
   ungroup() %>%
-  mutate(statArea = as.character(statArea),
-         year = as.numeric(as.character(year)),
-         month = as.numeric(as.character(month)),
-         week = as.numeric(as.character(week)))
-
-reg3Catch <- reg3 %>% 
-  mutate(statArea = as.character(statArea),
-         year = as.numeric(as.character(year))) %>% 
-  full_join(., 
-            weeklyCatch, 
-            by = c("statArea", "year", "week", "month")) %>% 
-  left_join(., 
-            weeklySamples,
-            by = c("statArea", "year", "week", "month"))
+  select(statArea, year, month, week, jDay, nSampled) %>% 
+  distinct() %>% 
+  mutate(year = as.numeric(year))
+weeklySamples <- dailySamples %>% 
+  group_by(statArea, year, month, week) %>% 
+  summarize(nSampled = sum(nSampled)) %>% 
+  ungroup() 
 
 # review sampling effort relative to catch
 summDat <- weeklyCatch %>%
   full_join(.,
             weeklySamples,
             by = c("statArea", "year", "week", "month")) %>% 
-  replace_na(list(nSampled = 0)) %>% 
+  replace_na(list(nSampled = 0, weeklyCatch = 0, weeklyEffort = 0)) %>% 
   mutate(sampPpn = nSampled / weeklyCatch) %>% 
   # filter(statArea %in% unique(reg3$statArea)) %>% #constrain to focal stat areas
   distinct()
+
+## Sampling proportion exceeds 100% because at least some samples are from Taaq
+# fishery; ideally include effort or at least catch from that sector
+## Double check this...
+dum2 <- summDat %>% 
+  filter(sampPpn > 1) %>% 
+  arrange(statArea, year)
+
+dailyCatch %>% 
+  filter(statArea == "23", month == "6", year == "2007") %>% 
+  select(statArea:jDay, week, catch, date)
+dailySamples %>% 
+  filter(statArea == "23", month == "6", year == "2007")
+
+# weeklyCatch %>% 
+#   filter(statArea == "125", month == "9", year == "2012") %>% 
+#   select(-weeklyEffort)
+# weeklySamples %>% 
+#   filter(statArea == "125", month == "9", year == "2012")
+
+adjWeeklySamps <- weeklySamples %>% 
+  mutate(adjWeek = case_when(
+    statArea == "23" & month == "3" & year == "2013" ~ week - 1,
+    statArea == "24" & month == "5" & year == "2013" ~ week - 1,
+    statArea == "26" & month == "2" & year == "2" ~ week - 1,
+    statArea == "123" & month == "6" & year == "2007" ~ week - 1,
+    statArea == "123" & month == "6" & year == "2008" ~ week - 1,
+    statArea == "125" & month == "6" & year == "2007" ~ week - 1,
+    statArea == "125" & month == "10" & year == "2007" ~ week - 1,
+    statArea == "125" & month == "5" & year == "2014"~ week - 1,
+    statArea == "126" & month == "3" & year == "2007"~ week - 1,
+    statArea == "126" & month == "2" & year == "2012"~ week - 1,
+    statArea == "126" & month == "3" & year == "2013"~ week - 1,
+    statArea == "126" & month == "4" & year == "2013"~ week - 1,
+    statArea == "126" & month == "3" & year == "2015"~ week - 1,
+    statArea == "127" & month == "6" & year == "2007"~ week - 1,
+    statArea == "127" & month == "4" & year == "2014"~ week - 1,
+    statArea == "23" & month == "6" & year == "2007"~ week - 1,
+    TRUE ~ week)
+    )
+
+write.csv(dum2, here::here("data", "gsiCatchData", "commTroll", 
+                           "missingCatchData.csv"), row.names = FALSE)
+
 
 ggplot(summDat, aes(x = week, y = sampPpn)) +
   geom_point() +
@@ -132,13 +169,3 @@ ggplot(summDat, aes(x = week, y = nSampled)) +
   geom_point() +
   facet_wrap(~statArea, scales = "free_y") +
   theme_bw()
-
-## Sampling proportion exceeds 100% because at least some samples are from Taaq
-# fishery; ideally include effort or at least catch from that sector
-## Double check this...
-dum2 <- summDat %>% 
-  filter(sampPpn > 1) %>% 
-  arrange(year)
-write.csv(dum2, here::here("data", "gsiCatchData", "commTroll", 
-                           "missingCatchData.csv"), row.names = FALSE)
-

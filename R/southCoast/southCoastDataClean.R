@@ -105,7 +105,7 @@ areaCatch <- sqlQuery(con, catchQry) %>%
   rename_all(list(~make.names(.))) %>%
   filter(FISHING.YEAR %in% yrs,
          !VESSELS_OP > 200) #remove one entry with unrealistically high effort
-# write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll", 
+# write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                 "fosCatch.csv"))
 
 areaCatch %>% 
@@ -149,38 +149,43 @@ sumCatch <- areaCatch %>%
 
 # combine monthly summed catches w/ monthly GSI to calculate stock specific 
 # catches (divide by 100 since they're percentages currently)
-stockCatch <- stockComp %>% 
-  left_join(., sumCatch, by = c("catchReg", "month", "year")) %>% 
-  mutate(estCatch = (Estimate / 100) * sumCatch,
-         varCatch = ((SD / 100) * sumCatch)^2,
-         Stock = as.character(Stock),
-         samplePpn = Lab.Reported.N / sumCatch) %>% 
-  left_join(., trimRegKey, by = "Stock") %>% 
-  select(catchReg, month, year, sumEffort, labN = Lab.Reported.N, samplePpn,
-         estCatch, varCatch, Stock, Region1Name, Region2Name, Region3Name,
-         Region1Code:FraserGroupCode)
-
-dd <- stockCatch %>% 
-  filter(is.na(samplePpn))
-
-ee <- areaCatch %>% 
-  filter(FISHING.YEAR == "2013", 
-  FISHING.MONTH %in% c("6","8"))
-
-write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
-                                 "stockCatch_WCVI.csv"), row.names = FALSE)
+# stockCatch <- stockComp %>% 
+#   left_join(., sumCatch, by = c("catchReg", "month", "year")) %>% 
+#   mutate(estCatch = (Estimate / 100) * sumCatch,
+#          varCatch = ((SD / 100) * sumCatch)^2,
+#          Stock = as.character(Stock),
+#          samplePpn = Lab.Reported.N / sumCatch) %>% 
+#   left_join(., trimRegKey, by = "Stock") %>% 
+#   select(catchReg, month, year, sumEffort, labN = Lab.Reported.N, samplePpn,
+#          estCatch, varCatch, Stock, Region1Name, Region2Name, Region3Name,
+#          Region1Code:FraserGroupCode)
+# 
+# dd <- stockCatch %>% 
+#   filter(is.na(samplePpn))
+# 
+# ee <- areaCatch %>% 
+#   filter(FISHING.YEAR == "2013", 
+#   FISHING.MONTH %in% c("6","8"))
+# 
+# write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
+#                                  "stockCatch_WCVI.csv"), row.names = FALSE)
 
 
 ## Generate aggregate catch by Julian Day to match individual data from genetics
 # lab
-areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                                 "fosCatch.csv"))
+# areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+#                                  "fosCatch.csv"))
 
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
                                            format="%Y-%m-%d"))) %>% 
   group_by(CATCH_REGION, MGMT_AREA, FISHING.MONTH, jDay, FISHING.YEAR) %>% 
-  summarize(catch = sum(CHINOOK_KEPT),
+  #normally only KEPT chinook contribute to GSI samples, but certain
+  #fisheries include live sampling where CHINOOK_RELD = catch
+  summarize(catch =
+              case_when(
+                grepl("CN DNA Sampling", OPNG_DESC) ~ sum(CHINOOK_RELD),
+                TRUE ~ sum(CHINOOK_KEPT)),
             boatDays = sum(VESSELS_OP)) %>% 
   select(catchReg = CATCH_REGION, area = MGMT_AREA, year = FISHING.YEAR, 
          month = FISHING.MONTH, jDay, catch, boatDays) %>%
@@ -188,6 +193,10 @@ dailyCatch <- areaCatch %>%
   ungroup() %>% 
   mutate(catchReg = as.character(catchReg),
          sumCPUE = catch / boatDays)
+
+# dailyCatch %>% 
+#   filter(year %in% c("2009", "2010", "2011"),
+#          month == "9", area == "123")
 
 # write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                  "dailyCatch_WCVI.csv"), row.names = FALSE)
