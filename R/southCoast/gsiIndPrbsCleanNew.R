@@ -23,25 +23,39 @@ id <- datRaw$szLineInfo %>%
   data.frame() %>% 
   dplyr::rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4, 
                 "fishNum" = X5) %>% 
-  mutate(statArea = case_when(
-    statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
-    statArea %in% c("Area123", "Area123SWVI", "Area123Comm") ~ "123",
-    statArea %in% c("Area124", "Area124SWVI", "Area124Comm") ~ "124",
-    statArea %in% c("Area125", "Area125NWVI") ~ "125",
-    statArea %in% c("Area126", "Area126NWVI") ~ "126",
-    statArea %in% c("Area127", "Area127NWVI") ~ "127",
-    statArea %in% c("Area026") ~ "26",
-    statArea %in% c("Area24", "Area_24", "Area_24xgill") ~ "24",
-    TRUE ~ as.character(statArea)),
-    abbYear = sapply(strsplit(as.character(year), '[()]'), 
+  mutate(jDay = as.numeric(as.character(jDay)),
+         statArea = 
+           case_when(
+              statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
+              statArea %in% c("Area123", "Area123SWVI", "Area123Comm") ~ "123",
+              statArea %in% c("Area124", "Area124SWVI", "Area124Comm") ~ "124",
+              statArea %in% c("Area125", "Area125NWVI") ~ "125",
+              statArea %in% c("Area126", "Area126NWVI") ~ "126",
+              statArea %in% c("Area127", "Area127NWVI") ~ "127",
+              statArea %in% c("Area026") ~ "26",
+              statArea %in% c("Area24", "Area_24", "Area_24xgill") ~ "24",
+              TRUE ~ as.character(statArea)
+              ),
+         abbYear = sapply(strsplit(as.character(year), '[()]'), 
                      function(x) (x)[2]),
-    year = paste("20", abbYear, sep = ""),
-    date = as.Date(as.numeric(as.character(jDay)), 
-                   origin = as.Date(paste(year, "01", "01", sep = "-"))),
-    month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
-    week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d"))) %>% 
-  # adjust sampling week for specific strata based on when samples were landed
-  # vs. julian date of when fishing occurred
+         year = paste("20", abbYear, sep = ""),
+         #adjust sampling day to correct for errors by genetics lab and 
+         jDay = 
+           case_when(
+             statArea == "126" & year == "2012" & jDay > 48 &
+               jDay < 116 ~ 48,
+             statArea == "126" & year == "2012" & jDay > 116 &
+               jDay < 121 ~ 116,
+             TRUE ~ jDay),
+         date = as.Date(as.numeric(as.character(jDay)),
+                        origin = as.Date(paste(year, "01", "01", sep = "-"))),
+         month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
+         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")),
+         fishNum = as.numeric(as.character(fishNum))) %>% 
+  # adjust sampling week
+  # for specific strata based on when samples were landed relative to julian 
+  # date of when fishing occurred (based on reviewing FOS database and pers. 
+  # comm. Lee Kearey - South Coast)
   mutate(adjWeek = case_when(
     statArea == "23" & month == "3" & year == "2013" ~ week - 1,
     statArea == "24" & month == "5" & year == "2013" ~ week - 1,
@@ -85,6 +99,18 @@ dat <- cbind(id, datRaw) %>%
 saveRDS(dat, here::here("data", "gsiCatchData", "commTroll",
                         "wcviIndProbsLong_CLEAN.rds"))
 
+dailySamples <- dat %>% 
+  group_by(statArea, year, month, jDay) %>% 
+  mutate(nSampled = length(unique(fishNum))) %>% 
+  ungroup() %>%
+  select(statArea, year, month, week, jDay, nSampled) %>% 
+  distinct() %>% 
+  mutate(year = as.numeric(year))
+weeklySamples <- dailySamples %>% 
+  group_by(statArea, year, month, week) %>% 
+  summarize(nSampled = sum(nSampled)) %>% 
+  ungroup()
+
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat %>% 
   group_by(flatFileID, Region3Name) %>% 
@@ -120,17 +146,7 @@ weeklyCatch <- dailyCatch %>%
 # write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                    "weeklyCatch_WCVI.csv"))
 
-dailySamples <- dat %>% 
-  group_by(statArea, year, month, jDay) %>% 
-  mutate(nSampled = length(unique(fishNum))) %>% 
-  ungroup() %>%
-  select(statArea, year, month, week, jDay, nSampled) %>% 
-  distinct() %>% 
-  mutate(year = as.numeric(year))
-weeklySamples <- dailySamples %>% 
-  group_by(statArea, year, month, week) %>% 
-  summarize(nSampled = sum(nSampled)) %>% 
-  ungroup()
+
 
 # review sampling effort relative to catch
 summDat <- weeklyCatch %>%
