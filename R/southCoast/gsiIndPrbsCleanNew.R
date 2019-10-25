@@ -10,9 +10,8 @@ library(ggplot2)
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                               "wcviIndProbsLong.txt"), 
                    stringsAsFactors = FALSE)
-stockKey <- read.csv(here::here("data", "southcoastStockKey.csv"), 
-                     stringsAsFactors = FALSE) %>% 
-  select(stock = Stock, Region1Name, Region2Name, Region3Name)
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) %>% 
+  mutate(stock = tolower(stock)) 
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
 id <- datRaw$szLineInfo %>% 
@@ -40,36 +39,62 @@ id <- datRaw$szLineInfo %>%
     date = as.Date(as.numeric(as.character(jDay)), 
                    origin = as.Date(paste(year, "01", "01", sep = "-"))),
     month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
-    week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
-
+    week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d"))) %>% 
+  # adjust sampling week for specific strata based on when samples were landed
+  # vs. julian date of when fishing occurred
+  mutate(adjWeek = case_when(
+    statArea == "23" & month == "3" & year == "2013" ~ week - 1,
+    statArea == "24" & month == "5" & year == "2013" ~ week - 1,
+    statArea == "26" & month == "2" & year == "2" ~ week - 1,
+    statArea == "123" & month == "6" & year == "2007" ~ week - 1,
+    statArea == "123" & month == "6" & year == "2008" ~ week - 1,
+    statArea == "125" & month == "6" & year == "2007" ~ week - 1,
+    statArea == "125" & month == "10" & year == "2007" ~ week - 1,
+    statArea == "125" & month == "5" & year == "2014"~ week - 1,
+    statArea == "126" & month == "3" & year == "2007"~ week - 1,
+    statArea == "126" & month == "2" & year == "2012"~ week - 1,
+    statArea == "126" & month == "3" & year == "2013"~ week - 1,
+    statArea == "126" & month == "4" & year == "2013"~ week - 1,
+    statArea == "126" & month == "3" & year == "2015"~ week - 1,
+    statArea == "127" & month == "6" & year == "2007"~ week - 1,
+    statArea == "127" & month == "4" & year == "2014"~ week - 1,
+    statArea == "23" & month == "6" & year == "2007"~ week - 1,
+    TRUE ~ week)
+  ) %>% 
+  #shuffle adjusted
+  rename(week = adjWeek, unadjWeek = week)
 
 #Merge id vector with original data frame and trim
 dat <- cbind(id, datRaw) %>% 
   #calculate total summed probability for each sample
   group_by(szLineInfo) %>%
-  mutate(totalProb = sum(dProb)) %>% 
+  mutate(stock = tolower(szStock),
+         totalProb = sum(dProb)) %>% 
   ungroup() %>% 
   mutate(adjProb = dProb / totalProb) %>% 
-  select(-iRun, -iSample, -iYearMix, tempFish = szLineInfo, stock = szStock, 
-         prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, 
+  select(-iRun, -iSample, -iYearMix, flatFileID = szLineInfo, stock, -szStock,
+         prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, -unadjWeek,
          -szRegion) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
                           "Area124_24")) %>%
-  left_join(., stockKey, by = "stock") #add southcoast regional groupings
+  #add southcoast regional groupings
+  left_join(., stockKey, by = "stock") 
 
+saveRDS(dat, here::here("data", "gsiCatchData", "commTroll",
+                        "wcviIndProbsLong_CLEAN.rds"))
 
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat %>% 
-  group_by(tempFish, Region3Name) %>% 
+  group_by(flatFileID, Region3Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
-  dplyr::arrange(tempFish, desc(aggProb)) %>% 
+  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
   left_join(dat %>% 
-               select(tempFish, statArea, year, month, week, jDay, gear, 
+               select(flatFileID, statArea, year, month, week, jDay, gear, 
                       fishNum, date),
              .,
-             by = "tempFish") %>% 
+             by = "flatFileID") %>% 
   distinct() %>% 
   dplyr::rename(regName = Region3Name)
 
@@ -105,12 +130,13 @@ dailySamples <- dat %>%
 weeklySamples <- dailySamples %>% 
   group_by(statArea, year, month, week) %>% 
   summarize(nSampled = sum(nSampled)) %>% 
-  ungroup() 
+  ungroup()
 
 # review sampling effort relative to catch
 summDat <- weeklyCatch %>%
   full_join(.,
-            weeklySamples,
+            adjWeeklySamps,
+            # weeklySamples,
             by = c("statArea", "year", "week", "month")) %>% 
   replace_na(list(nSampled = 0, weeklyCatch = 0, weeklyEffort = 0)) %>% 
   mutate(sampPpn = nSampled / weeklyCatch) %>% 
@@ -125,10 +151,10 @@ dum2 <- summDat %>%
   arrange(statArea, year)
 
 dailyCatch %>% 
-  filter(statArea == "23", month == "6", year == "2007") %>% 
+  filter(statArea == "24", month == "6", year == "2013") %>% 
   select(statArea:jDay, week, catch, date)
 dailySamples %>% 
-  filter(statArea == "23", month == "6", year == "2007")
+  filter(statArea == "24", month == "6", year == "2013")
 
 # weeklyCatch %>% 
 #   filter(statArea == "125", month == "9", year == "2012") %>% 
@@ -136,30 +162,8 @@ dailySamples %>%
 # weeklySamples %>% 
 #   filter(statArea == "125", month == "9", year == "2012")
 
-adjWeeklySamps <- weeklySamples %>% 
-  mutate(adjWeek = case_when(
-    statArea == "23" & month == "3" & year == "2013" ~ week - 1,
-    statArea == "24" & month == "5" & year == "2013" ~ week - 1,
-    statArea == "26" & month == "2" & year == "2" ~ week - 1,
-    statArea == "123" & month == "6" & year == "2007" ~ week - 1,
-    statArea == "123" & month == "6" & year == "2008" ~ week - 1,
-    statArea == "125" & month == "6" & year == "2007" ~ week - 1,
-    statArea == "125" & month == "10" & year == "2007" ~ week - 1,
-    statArea == "125" & month == "5" & year == "2014"~ week - 1,
-    statArea == "126" & month == "3" & year == "2007"~ week - 1,
-    statArea == "126" & month == "2" & year == "2012"~ week - 1,
-    statArea == "126" & month == "3" & year == "2013"~ week - 1,
-    statArea == "126" & month == "4" & year == "2013"~ week - 1,
-    statArea == "126" & month == "3" & year == "2015"~ week - 1,
-    statArea == "127" & month == "6" & year == "2007"~ week - 1,
-    statArea == "127" & month == "4" & year == "2014"~ week - 1,
-    statArea == "23" & month == "6" & year == "2007"~ week - 1,
-    TRUE ~ week)
-    )
-
 write.csv(dum2, here::here("data", "gsiCatchData", "commTroll", 
                            "missingCatchData.csv"), row.names = FALSE)
-
 
 ggplot(summDat, aes(x = week, y = sampPpn)) +
   geom_point() +
