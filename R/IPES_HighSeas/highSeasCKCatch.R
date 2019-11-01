@@ -156,3 +156,16 @@ juvCR <- chin %>%
          fl > 150, fl < 400)
 
 hotMap(juvCR, longRange = c(-132, -124.5), latRange = c(48, 52))
+
+
+## Focus on IVI Nov-March
+winterVI <- chin %>% 
+  filter(month %in% c("NOV", "DEC", "FEB", "MAR"),
+         fullCatchReg %in% c("INSIDE VANCOUVER ISLAND"))
+
+ggplot(winterVI) +
+  geom_boxplot(aes(x = as.factor(month), y = fl))
+
+winterVI %>% 
+  group_by(month, year) %>% 
+  tally()
