@@ -17,35 +17,60 @@ df <- fish %>%
   mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER),
          CatchWt = 
            if_else(SPECIES_CODE == 96, 
-                   TotalCatchWtCPUE_kg_km3, JuvCatchWtCPUE_kg_km3)) %>% 
+                   TotalCatchWtCPUE_kg_km3, JuvCatchWtCPUE_kg_km3) / 1000) %>% 
   select(TRIP_YEAR, STRATUM, yearTow, SPECIES_CODE, CatchWt)
+
+# add zeros to catch data and merge with hauls
+cpue_df <- haul %>% 
+  select(yearTow, TRIP_YEAR, STRATUM, DayNight) %>% 
+  left_join(., df %>% select(yearTow, SPECIES_CODE), by = "yearTow") %>% 
+  expand(., nesting(yearTow, TRIP_YEAR, STRATUM, DayNight), SPECIES_CODE) %>% 
+  filter(!is.na(SPECIES_CODE)) %>% 
+  left_join(., df, by = c("yearTow", "TRIP_YEAR", "STRATUM", "SPECIES_CODE")) %>% 
+  complete(yearTow, SPECIES_CODE, fill = list(CatchWt = 0)) %>% 
+  mutate(nonZero = case_when(
+    CatchWt > 0 ~ 1,
+    CatchWt == 0 ~ 0
+  )) %>% 
+  group_by(SPECIES_CODE) %>% 
+  nest() %>% 
+  #don't account for year/strata now, but could as fixed or mixed effects
+  mutate(m1 = map(data, ~glm(nonZero ~ 1, data = ., 
+                             family = binomial(link = logit))),
+         m2 = map(data, 
+                  ~glm(CatchWt ~ 1, data = subset(., nonZero == 1), 
+                       family = Gamma(link = log)))
+         ) %>% 
+  mutate(tidy1 = map(m1, broom::tidy),
+         tidy2 = map(m2, broom::tidy))
+
+cpue_df %>% 
+  unnest(tidy1, tidy2) %>%
+  select(species = SPECIES_CODE, data, binMu = estimate, binSig = std.error, 
+         gamMu = estimate1, gamSig = std.error1) %>% 
+  pivot_longer(-c(species, data), names_to = "parameter", 
+               values_to = "estimate") %>% 
+  mutate(model = case_when(
+    grepl("gam", parameter) ~ "gamma",
+    TRUE ~ "binomial"),
+    parameter = case_when(
+      grepl("Mu", parameter) ~ "mu",
+      grepl("Sig", parameter) ~ "sigma"
+    )) %>% 
+  glimpse()
+
+  grepl("PIT", stock) ~ "LWFR-Su"
   
-## Merge with haul
-cpue_df <- left_join(haul, df, by = c("yearTow", "TRIP_YEAR", "STRATUM")) %>% 
-  filter(SPECIES_CODE == "96") %>%
-  complete(nesting(TOW_NUMBER, yearTow), SPECIES_CODE) %>% 
-  # filter(!is.na(SPECIES_CODE)) %>%
-  arrange(yearTow)
-cpue_df$CatchWt[is.na(cpue_df$CatchWt)] <- 0
-# cpue_df[is.na(cpue_df$SPECIES_CODE),] <- thisSpeciesCode
-cpue_df$CatchWt <- cpue_df$CatchWt / 1000 
-
-dum <- df %>% 
-  filter(#STRATUM == "505",
-         SPECIES_CODE == "96")
-         #TRIP_YEAR == "2018")
+relig_income
+relig_income %>%
+  pivot_longer(-religion,  names_to = "income", values_to = "count")
 
 
-#1. Identify plausible lognormal mean and sd of biomass for each species
-ggplot(cpue_df) +
-  geom_histogram(aes(x = CatchWt)) +
-  facet_wrap(~SPECIES_CODE, scales = "free")
+fish_encounters
+fish_encounters %>%
+  pivot_wider(names_from = station, values_from = seen)
 
-haul %>% 
-  group_by(TRIP_YEAR, STRATUM) %>% 
-  tally()
-
-zeroinfl()
+#1. Use gamma hurdle models to estimate parameters describing data then simulate
 
 #2. Sample from distribution at different levels
 #3. Calculate CV following biomass extrapolotation
