@@ -58,7 +58,9 @@ haul %<>%
 
 #JB added
 ##JK: this is required because the actual volume sampled is not the volume of the block, but the volume of the tow!!!!  Derp.
-volswept <- read.csv("Input/2019/VolumeSwept_ByStratum_DayNight.csv", header = TRUE, sep = ",")
+volswept <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
+                                "VolumeSwept_ByStratum_DayNight.csv"), 
+                     stringsAsFactors = FALSE)
 haul <- merge(haul,volswept,by = c("TRIP_YEAR","STRATUM","DayNight"), all.x = TRUE)
 
 ##defining q
@@ -77,10 +79,15 @@ annual_hauls <- haul %>%
 ##calculating biomass based on day and stratum only --- dropping headrope depth
 ##if you don't, then variance cannot be calculated for n = 1 tow
 
+
+
 ############## 
 #EA: create biomass function to simplfy code 
 #############
 biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
+  
+  thisSpeciesCode <- "124"
+  q_value <- 0.4
   
   # subset
   df <- fish %>% filter(SPECIES_CODE == thisSpeciesCode) %>%
