@@ -75,6 +75,8 @@ pvals <- modfits %>%
 pvals %>% 
   filter(term == "STRATUM", 
          value == "p-value")
+#generally strata effects are significant for the binomial model, but less 
+#consistent for gamma
 
 modOut <- modfits
   unnest(tidy1, tidy2, gamDisp) %>%
@@ -116,33 +118,56 @@ phiStrata <- predict(m1, newdata=newDat, type='response') # on scale of response
 muStrata <- predict(m2, newdata = newDat, type = 'response')
 #gamma distribution parameters
 gammaCoefs <- data.frame(strata = unique(dum$STRATUM),
-                         shape = 1 / summary(m2)$dispersion,
-                         rate = shape / muStrata)
+                         shape = 1 / summary(m2)$dispersion) %>%
+  mutate(rate = shape / muStrata)
 
 # generate random draws for the binomial catch
-N <- 1000
-dum2 <- data.frame(strata = rep(unique(dum$STRATUM), each = N),
-                  draw = rep(seq(1, N, by = 1), 
-                             times = length(unique(dum$STRATUM))),
-                      #binomial coefficients first
-                  phi = rep(phiStrata, each = N)) %>% 
+M <- 10 #number of trials
+N <- 10 #number of draws per trial
+trialList  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
+                   trial = rep(seq(1, M, by = 1), 
+                              times = length(unique(dum$STRATUM))),
+                   #binomial coefficients first
+                   phi = rep(phiStrata, each = M)) %>% 
   left_join(., gammaCoefs, by = "strata") %>% 
-  #don't account for year/strata now, but could as fixed or mixed effects
-  group_by(strata) %>% 
-  mutate(nonZero = rbinom(N, size = 1, prob = phi)) %>% 
-  ungroup()
+  split(., .$trial) %>% 
+  lapply(., function(x) {
+    #simulateTrials func here
+    draw <- seq(1, N, by = 1)
+    x %>% 
+      expand()
+  })
+  
+simulateTrials <- function(dattt, N) {
+  dattt <- trialList[[1]] 
+  draw <- seq(1, N, by = 1)
+  # Sample binomial distribution within strata/trial N draw times
+  tempBinomial <- dattt %>% 
+    expand(nesting(strata, trial, phi, shape, rate), draw) %>% 
+    group_by(strata) %>% 
+    #don't account for year/strata now, but could as fixed or mixed effects
+    mutate(nonZero = rbinom(N, size = 1, prob = phi)) 
+  
+  # Sample gamma distribution within strata/trial for nonzero trials within 
+  # a strata
+  tempGamma <- tempBinomial %>% 
+    filter(nonZero == "1") %>% 
+    group_by(strata) %>%
+    mutate(towsWCatch = length(nonZero)) %>% 
+    mutate(catchWt = rgamma(n =  towsWCatch, shape = shape, rate = rate)) %>% 
+    select(strata, draw, catchWt)
+  catchOut <- tempBinomial %>% 
+    left_join(., tempGamma, by = c("strata", "draw")) %>% 
+    replace_na(., list(catchWt = 0))
+}
+ 
 
-# subset and generate random draws for catch weight when catch is non-zero
-gammaDum <- dum2 %>% 
-  filter(nonZero == "1") %>% 
-  group_by(strata) %>%
-  mutate(towsWCatch = length(nonZero)) %>% 
-  mutate(catchWt = rgamma(n =  towsWCatch, shape = shape, rate = rate)) %>% 
-  select(strata, draw, catchWt)
+
 
 catchOut <- dum2 %>% 
   left_join(., gammaDum, by = c("strata", "draw")) %>% 
   replace_na(., list(catchWt = 0))
+
 
 ggplot(catchOut %>% filter(nonZero == "1")) +
   geom_histogram(aes(x = catchWt)) +
