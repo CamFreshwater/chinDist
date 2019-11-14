@@ -78,23 +78,22 @@ pvals %>%
 #generally strata effects are significant for the binomial model, but less 
 #consistent for gamma
 
-modOut <- modfits
-  unnest(tidy1, tidy2, gamDisp) %>%
-  select(species = SPECIES_CODE, data, binMu = estimate, binMuSig = std.error, 
-         gamMu = estimate1, gamMuSig = std.error1, gamDisp) %>% 
-  pivot_longer(-c(species, data), names_to = "parameter", 
-               values_to = "estimate") %>% 
-  mutate(
-    model = case_when(
-      grepl("gam", parameter) ~ "gamma",
-      TRUE ~ "binomial"),
-    parameter = case_when(
-      grepl("MuSig", parameter) ~ "sigmaMu",
-      grepl("Mu", parameter) ~ "mu",
-      grepl("Disp", parameter) ~ "dispersion"
-    )) %>% 
-  arrange(species, model, parameter)
-
+# modOut <- modfits
+#   unnest(tidy1, tidy2, gamDisp) %>%
+#   select(species = SPECIES_CODE, data, binMu = estimate, binMuSig = std.error, 
+#          gamMu = estimate1, gamMuSig = std.error1, gamDisp) %>% 
+#   pivot_longer(-c(species, data), names_to = "parameter", 
+#                values_to = "estimate") %>% 
+#   mutate(
+#     model = case_when(
+#       grepl("gam", parameter) ~ "gamma",
+#       TRUE ~ "binomial"),
+#     parameter = case_when(
+#       grepl("MuSig", parameter) ~ "sigmaMu",
+#       grepl("Mu", parameter) ~ "mu",
+#       grepl("Disp", parameter) ~ "dispersion"
+#     )) %>% 
+#   arrange(species, model, parameter)
 
   
   
@@ -122,27 +121,33 @@ gammaCoefs <- data.frame(strata = unique(dum$STRATUM),
   mutate(rate = shape / muStrata)
 
 # generate random draws for the binomial catch
-M <- 10 #number of trials
-N <- 10 #number of draws per trial
-trialList  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
+M <- 2 #number of trials
+N <- 200 #number of draws per trial (i.e. events per strata per trial)
+nVec <- c(5, 10, 20, 50, 100) #vector of survey sets (per strata)
+trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
                    trial = rep(seq(1, M, by = 1), 
                               times = length(unique(dum$STRATUM))),
                    #binomial coefficients first
                    phi = rep(phiStrata, each = M)) %>% 
   left_join(., gammaCoefs, by = "strata") %>% 
+  #break into list because of issues expanding w/ random draws within a DF subset
   split(., .$trial) %>% 
   lapply(., function(x) {
-    #simulateTrials func here
-    draw <- seq(1, N, by = 1)
-    x %>% 
-      expand()
-  })
-  
-simulateTrials <- function(dattt, N) {
-  dattt <- trialList[[1]] 
+    drawDist(x, N) %>% 
+      simSurvey(., nVec)
+  }) %>% 
+  #recombine into DF
+  do.call(rbind.data.frame, .) %>%
+  ungroup()
+
+
+# function that can be passed to lapply to generate draws from both distributions
+# within a given trial
+drawDist <- function(coefsDat, N) {
   draw <- seq(1, N, by = 1)
+  
   # Sample binomial distribution within strata/trial N draw times
-  tempBinomial <- dattt %>% 
+  tempBinomial <- coefsDat %>% 
     expand(nesting(strata, trial, phi, shape, rate), draw) %>% 
     group_by(strata) %>% 
     #don't account for year/strata now, but could as fixed or mixed effects
@@ -156,27 +161,30 @@ simulateTrials <- function(dattt, N) {
     mutate(towsWCatch = length(nonZero)) %>% 
     mutate(catchWt = rgamma(n =  towsWCatch, shape = shape, rate = rate)) %>% 
     select(strata, draw, catchWt)
+  
+  # Merge dataframes and export
   catchOut <- tempBinomial %>% 
     left_join(., tempGamma, by = c("strata", "draw")) %>% 
-    replace_na(., list(catchWt = 0))
+    replace_na(., list(catchWt = 0)) %>% 
+    ungroup()
+  return(catchOut)
 }
- 
+
+#function that can be pass to lapply to simulate surveying across each trial 
+#with different sample sizes 
+simSurvey <- function(trialsDat, nVec) {
+  simList <- vector(mode = "list", length = length(nVec))
+  for (i in seq_along(simList)) {
+    simList[[i]] <- trialsDat %>% 
+      group_by(strata) %>% 
+      sample_n(., size = nVec[i], replace = F) %>% 
+      mutate(sampleSet = nVec[i]) %>% 
+      ungroup()
+  }
+  do.call(rbind, simList)
+}
 
 
-
-catchOut <- dum2 %>% 
-  left_join(., gammaDum, by = c("strata", "draw")) %>% 
-  replace_na(., list(catchWt = 0))
-
-
-ggplot(catchOut %>% filter(nonZero == "1")) +
-  geom_histogram(aes(x = catchWt)) +
-  facet_wrap(~strata)
-
-ggplot(cpue_df %>% filter(SPECIES_CODE == "124",
-                          nonZero == "1")) +
-  geom_histogram(aes(x = CatchWt)) +
-  facet_wrap(~STRATUM)
   
 #2. Sample from distribution at different levels
 #3. Calculate CV following biomass extrapolotation
