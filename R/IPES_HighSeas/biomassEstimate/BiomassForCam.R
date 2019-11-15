@@ -86,6 +86,9 @@ annual_hauls <- haul %>%
 #############
 biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
   
+  thisSpeciesCode <- "124"
+  q_value <- 0.4
+  
   # subset
   df <- fish %>% filter(SPECIES_CODE == thisSpeciesCode) %>%
     # create new column to use so function works on herring and salmon
@@ -113,10 +116,15 @@ biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
     summarise(strata_cpue = mean(CatchWtCPUE_kg_km3*q_value), 
               cpue_var = var(CatchWtCPUE_kg_km3*q_value),
               strata_num = n(),
-              volswept = mean(SumOfOfficialVolumeSwept_km3)) %>%  ##taking the mean because in actual fact SumOfficialVolumeSwept is already the 
+              volswept = mean(SumOfOfficialVolumeSwept_km3), #redundant 
+              meanVolPerSweep = volswept / strata_num) %>%  ##taking the mean because in actual fact SumOfficialVolumeSwept is already the 
     ##the strata sum -- and since it's value is repeated for each tow, need to take
     ## the mean to get the strata sum back.
     ungroup()
+  
+  # NOTE
+  # FOR BIOMASS SIM use average (among strata) of meanVolPerSweep (0.01169336) to account 
+  # for increasing proportion of area sampled as set number increases
   
   ## (A.2) assign the total volume (V) per stratum
   mu_cpue_df$strata_vol <- with(mu_cpue_df, ifelse(STRATUM == 504, 47.04, ##assigning stratum volume

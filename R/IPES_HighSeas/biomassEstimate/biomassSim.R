@@ -10,12 +10,20 @@ fish <- read.csv(here::here("data", "highSeas", "ipesBiomass",
 volswept <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
                                 "VolumeSwept_ByStratum_DayNight.csv"), 
                      stringsAsFactors = FALSE)
-haul <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
+haulDat <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
                             "Trawl_Tows.csv"), stringsAsFactors = F) %>%  
   merge(., volswept,by = c("TRIP_YEAR","STRATUM","DayNight"), 
         all.x = TRUE) %>% 
-  mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER)) %>% 
-  rename(volSweptStrata = SumOfOfficialVolumeSwept_km3)
+  mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER)) %>%
+  #convoluted effort to calcuate average volume swept by strata since necessary 
+  #to scale biomass estimates w/ sample size
+  group_by(STRATUM, TRIP_YEAR, DayNight) %>%
+  mutate(nTows = length(unique(TOW_NUMBER)),
+         sweepVol = SumOfOfficialVolumeSwept_km3 / nTows) %>% 
+  ungroup() %>% 
+  group_by(STRATUM) %>% 
+  mutate(meanSweepVol = mean(sweepVol)) %>% 
+  ungroup()
 
 
 df <- fish %>% 
@@ -28,11 +36,11 @@ df <- fish %>%
   select(TRIP_YEAR, STRATUM, yearTow, SPECIES_CODE, CatchWt)
 
 # add zeros to catch data and merge with hauls
-cpue_df <- haul %>% 
-  select(yearTow, TRIP_YEAR, STRATUM, DayNight, volSweptStrata) %>% 
+cpue_df <- haulDat %>% 
+  select(yearTow, TRIP_YEAR, STRATUM, DayNight, meanSweepVol) %>% 
   left_join(., df %>% select(yearTow, SPECIES_CODE), by = "yearTow") %>% 
   expand(., 
-         nesting(yearTow, TRIP_YEAR, STRATUM, DayNight, volSweptStrata), 
+         nesting(yearTow, TRIP_YEAR, STRATUM, DayNight, meanSweepVol), 
          SPECIES_CODE) %>% 
   filter(!is.na(SPECIES_CODE)) %>% 
   left_join(., df, by = c("yearTow", "TRIP_YEAR", "STRATUM", "SPECIES_CODE")) %>% 
@@ -59,12 +67,14 @@ cpue_df <- haul %>%
            STRATUM == 509 ~ 44.64,
            STRATUM == 510 ~ 91.20, 
            STRATUM == 511 ~ 121.92)
-         ) %>% 
-  group_by(STRATUM) %>%
-  #take average of volume that was swept by tow ACROSS YEARS
-  mutate(volSweptMean = mean(volSweptStrata)) %>% 
-  select(-volSweptStrata) %>% 
-  ungroup() 
+         ) 
+# %>% 
+## REPLACED BY ABOVE
+#   group_by(STRATUM) %>%
+#   #take average of volume that was swept by tow ACROSS YEARS
+#   mutate(volSweptMean = mean(volSweptStrata)) %>% 
+#   select(-volSweptStrata) %>% 
+#   ungroup() 
   
 
 #1. Use gamma hurdle models to estimate parameters describing data then simulate
@@ -95,7 +105,7 @@ modfits <- cpue_df %>%
 # simpler example with one species  
 volPars <- cpue_df %>% 
   filter(SPECIES_CODE == "124") %>% 
-  select(strata = STRATUM, q_value, strataVol, volSweptMean) %>% 
+  select(strata = STRATUM, q_value, strataVol, meanSweepVol) %>% 
   distinct()
 
 dum <- cpue_df %>% 
@@ -115,7 +125,7 @@ gammaCoefs <- data.frame(strata = unique(dum$STRATUM),
   mutate(rate = shape / muStrata)
 
 # generate random draws for the binomial catch
-M <- 2 #number of trials
+M <- 20 #number of trials
 N <- 200 #number of draws per trial (i.e. events per strata per trial)
 nVec <- c(5, 10, 20, 50, 100) #vector of survey sets (per strata)
 trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
@@ -181,22 +191,23 @@ simSurvey <- function(trialsDat, nVec) {
 #function modified from BiomassForCam.R to estimate mean and CV of biomass
 #NOTE: grouping of species, trials, years etc. is done external to function
 calcBiomass <- function(sampledWt) {
-  tt <- sampledWt %>% 
-    filter(trial == "1",
-           sampleSet == "100") %>% 
-    group_by(strata) %>% 
+  tt <- trialsOut %>% 
+    filter(sampleSet == "20") %>%
+    group_by(trial, strata) %>% #remove trial
     mutate(meanCPUE = mean(catchWt * q_value),
            varCPUE = var(catchWt * q_value)) %>% 
     ungroup() %>% 
+    group_by(trial) %>% #remove
     mutate(strataBiomass = meanCPUE * strataVol,
-           strataVar = strataVol * (strataVol - volSweptMean) * 
+           strataVar = strataVol * (strataVol - meanSweepVol) * 
              (varCPUE / sampleSet),
            annualBiomass = sum(strataBiomass),
            annualVariance = sum(strataVar),
            annualSamples = sum(sampleSet),
            annualBiomassSD = sqrt(annualVariance),
            annualBiomassCV = annualBiomassSD / annualBiomass,
-           annualBiomassSE = annualBiomassSD / sqrt(annualSamples))
+           annualBiomassSE = annualBiomassSD / sqrt(annualSamples)) %>% 
+    ungroup()
            
 } 
 
@@ -215,55 +226,18 @@ biomass_df$annual_biomass_UCI <-
 biomass_df$species_code <- thisSpeciesCode
 
 
+ggplot(mu_cpue_df) + 
+  geom_histogram(aes(x = volswept)) +
+  facet_wrap(~STRATUM)
 
+ggplot(tt) + 
+  geom_histogram(aes(x = strataVar)) +
+  facet_wrap(~strata)
 
-biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
-  
-  ##(B) Calculate annual stratum biomass and variance
-  ##(B.1) Biomass
-  mu_cpue_df$strata_biomass = (mu_cpue_df$strata_cpue * mu_cpue_df$strata_vol)##this is where I had q previously 
-  
-  ##sample variance as per Thompson, S.K. 1992. Sampling. John Wiley and Sons, Inc. New York. 343 p.
-  ##JK:  below was incorrect, because it assumed that the sampled volume was the block volume, when it is the tow volume
-  #mu_cpue_pink$strata_N = mu_cpue_pink$strata_vol/(4*4*(30/1000))  #total number of 4x4 km blocks fished to 30 m per stratum 
-  ##JB says:  use strata volume for Nh and volume swept for nh - except the last nh in the formula, and it should be number of tows.
-  ##JK:  ie. Nh is strata volume as before with volume swept subtracted; then the variance is divided by the number of tows
-  
-  ##(B.2) Variance
-  mu_cpue_df$strata_variance = mu_cpue_df$strata_vol * (mu_cpue_df$strata_vol - mu_cpue_df$volswept) *
-    (mu_cpue_df$cpue_var / mu_cpue_df$strata_num)
-  
-  ## (C) sum up the biomass and variance estimates across all strata
-  biomass_df <- mu_cpue_df %>%
-    group_by(TRIP_YEAR, DayNight) %>%
-    summarise(
-      annual_biomass = sum(strata_biomass),
-      annual_biomass_variance = sum(strata_variance),
-      annual_biomass_num = sum(strata_num)
-    ) %>%
-    ungroup()
-  
-  ##(D) Then based on the annual biomass variance across all strata (in C above), calculate the standard deviation, SE, CV and CI            
-  biomass_df$annual_biomass_sd <-
-    sqrt(biomass_df$annual_biomass_variance)
-  biomass_df$annual_biomass_cv <-
-    biomass_df$annual_biomass_sd / biomass_df$annual_biomass
-  biomass_df$annual_biomass_se <-
-    biomass_df$annual_biomass_sd / (sqrt(biomass_df$annual_biomass_num))
-  biomass_df$annual_biomass_LCI <-
-    ifelse(((biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass)) < 0, 0,
-           (biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass
-           )) ##if LCI<0 then assign zero
-  biomass_df$annual_biomass_UCI <-
-    biomass_df$annual_biomass_sd * (1.96) + biomass_df$annual_biomass
-  biomass_df$species_code <- thisSpeciesCode
-  
-  return(biomass_df)
-  
-}
-
-
-
+mu_cpue_df %>% 
+  select(volswept, STRATUM, TRIP_YEAR, DayNight) %>% 
+  distinct() %>% 
+  tail
   
 #2. Sample from distribution at different levels
 #3. Calculate CV following biomass extrapolotation
