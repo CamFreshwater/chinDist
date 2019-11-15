@@ -4,7 +4,7 @@
 ###### IMPORT DATA AND CLEAN
 library(tidyverse)
 library(ggplot2)
-fish <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
+fishDat <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
                             "Biomass_Estimates.csv"), stringsAsFactors = F) 
 
 volswept <- read.csv(here::here("data", "highSeas", "ipesBiomass", 
@@ -26,7 +26,7 @@ haulDat <- read.csv(here::here("data", "highSeas", "ipesBiomass",
   ungroup()
 
 
-df <- fish %>% 
+fishDat <- fishDat %>% 
   dplyr::rename(SPECIES_CODE_orig = SPECIES_CODE) %>%
   mutate(SPECIES_CODE = as.integer(str_sub(SPECIES_CODE_orig, 1, 3))) %>%
   mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER),
@@ -38,12 +38,12 @@ df <- fish %>%
 # add zeros to catch data and merge with hauls
 cpue_df <- haulDat %>% 
   select(yearTow, TRIP_YEAR, STRATUM, DayNight, meanSweepVol) %>% 
-  left_join(., df %>% select(yearTow, SPECIES_CODE), by = "yearTow") %>% 
+  left_join(., fishDat %>% select(yearTow, SPECIES_CODE), by = "yearTow") %>% 
   expand(., 
          nesting(yearTow, TRIP_YEAR, STRATUM, DayNight, meanSweepVol), 
          SPECIES_CODE) %>% 
   filter(!is.na(SPECIES_CODE)) %>% 
-  left_join(., df, by = c("yearTow", "TRIP_YEAR", "STRATUM", "SPECIES_CODE")) %>% 
+  left_join(., fishDat, by = c("yearTow", "TRIP_YEAR", "STRATUM", "SPECIES_CODE")) %>% 
   complete(yearTow, SPECIES_CODE, fill = list(CatchWt = 0)) %>% 
   #specify zero catches
   mutate(nonZero = 
@@ -143,7 +143,8 @@ trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
   #recombine into DF
   do.call(rbind.data.frame, .) %>%
   ungroup() %>% 
-  left_join(., volPars, by = "strata")
+  left_join(., volPars, by = "strata") %>% 
+  select(-c(phi:rate))
 
 # function that can be passed to lapply to generate draws from both distributions
 # within a given trial
@@ -193,46 +194,39 @@ simSurvey <- function(trialsDat, nVec) {
 calcBiomass <- function(sampledWt) {
   tt <- trialsOut %>% 
     filter(sampleSet == "20") %>%
-    group_by(trial, strata) %>% #remove trial
-    mutate(meanCPUE = mean(catchWt * q_value),
-           varCPUE = var(catchWt * q_value)) %>% 
-    ungroup() %>% 
-    group_by(trial) %>% #remove
+    group_by(sampleSet, trial, strata, strataVol, meanSweepVol) %>% #remove trial and sampleset
+    summarise(meanCPUE = mean(catchWt * q_value),
+              varCPUE = var(catchWt * q_value)) %>% 
     mutate(strataBiomass = meanCPUE * strataVol,
-           strataVar = strataVol * (strataVol - meanSweepVol) * 
-             (varCPUE / sampleSet),
-           annualBiomass = sum(strataBiomass),
+           strataVar = strataVol * (strataVol - meanSweepVol) *
+             (varCPUE / sampleSet)
+           ) %>% 
+    group_by(sampleSet, trial) %>% 
+    summarise(annualBiomass = sum(strataBiomass),
            annualVariance = sum(strataVar),
            annualSamples = sum(sampleSet),
            annualBiomassSD = sqrt(annualVariance),
            annualBiomassCV = annualBiomassSD / annualBiomass,
-           annualBiomassSE = annualBiomassSD / sqrt(annualSamples)) %>% 
-    ungroup()
-           
+           annualBiomassSE = annualBiomassSD / sqrt(annualSamples)) 
 } 
 
-biomass_df$annual_biomass_sd <-
-  sqrt(biomass_df$annual_biomass_variance)
-biomass_df$annual_biomass_cv <-
-  biomass_df$annual_biomass_sd / biomass_df$annual_biomass
-biomass_df$annual_biomass_se <-
-  biomass_df$annual_biomass_sd / (sqrt(biomass_df$annual_biomass_num))
-biomass_df$annual_biomass_LCI <-
-  ifelse(((biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass)) < 0, 0,
-         (biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass
-         )) ##if LCI<0 then assign zero
-biomass_df$annual_biomass_UCI <-
-  biomass_df$annual_biomass_sd * (1.96) + biomass_df$annual_biomass
-biomass_df$species_code <- thisSpeciesCode
+mu_cpue_df %>% 
+  select(STRATUM, TRIP_YEAR, DayNight, strata_biomass) %>% 
+  distinct()
+tt %>% 
+  select(strata, strataBiomass)
 
-
-ggplot(mu_cpue_df) + 
-  geom_histogram(aes(x = volswept)) +
+ggplot(mu_cpue_df) +
+  geom_histogram(aes(x = strata_biomass)) +
   facet_wrap(~STRATUM)
+ggplot(biomass_df) + 
+  geom_histogram(aes(x = annual_biomass_variance))
 
-ggplot(tt) + 
-  geom_histogram(aes(x = strataVar)) +
+ggplot(tt) +
+  geom_histogram(aes(x = strataBiomass)) +
   facet_wrap(~strata)
+ggplot(tt) + 
+  geom_histogram(aes(x = annualVariance)) 
 
 mu_cpue_df %>% 
   select(volswept, STRATUM, TRIP_YEAR, DayNight) %>% 
