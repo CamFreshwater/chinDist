@@ -86,9 +86,6 @@ annual_hauls <- haul %>%
 #############
 biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
   
-  thisSpeciesCode <- "124"
-  q_value <- 0.4
-  
   # subset
   df <- fish %>% filter(SPECIES_CODE == thisSpeciesCode) %>%
     # create new column to use so function works on herring and salmon

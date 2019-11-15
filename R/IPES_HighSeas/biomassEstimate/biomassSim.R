@@ -93,6 +93,11 @@ modfits <- cpue_df %>%
 # Eventually this should account for strata and year effects as well.
 
 # simpler example with one species  
+volPars <- cpue_df %>% 
+  filter(SPECIES_CODE == "124") %>% 
+  select(strata = STRATUM, q_value, strataVol, volSweptMean) %>% 
+  distinct()
+
 dum <- cpue_df %>% 
   filter(SPECIES_CODE == "124")
 m1 <- glm(nonZero ~ STRATUM, data = dum, family = binomial(link = logit))
@@ -122,17 +127,13 @@ trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
   #break into list because of issues expanding w/ random draws within a DF subset
   split(., .$trial) %>% 
   lapply(., function(x) {
-    drawDist(x, N) %>% 
-      simSurvey(., nVec)
+    drawDist(x, N) %>% #generate samples based on model coefficients
+      simSurvey(., nVec) #subsample based on input vector size 
   }) %>% 
   #recombine into DF
   do.call(rbind.data.frame, .) %>%
   ungroup() %>% 
-  left_join(., 
-            cpue_df %>% 
-              select(strata = STRATUM, q_value, strataVol, volSweptMean),
-            by = "strata")
-
+  left_join(., volPars, by = "strata")
 
 # function that can be passed to lapply to generate draws from both distributions
 # within a given trial
@@ -177,12 +178,41 @@ simSurvey <- function(trialsDat, nVec) {
   do.call(rbind, simList)
 }
 
+#function modified from BiomassForCam.R to estimate mean and CV of biomass
+#NOTE: grouping of species, trials, years etc. is done external to function
+calcBiomass <- function(sampledWt) {
+  tt <- sampledWt %>% 
+    filter(trial == "1",
+           sampleSet == "100") %>% 
+    group_by(strata) %>% 
+    mutate(meanCPUE = mean(catchWt * q_value),
+           varCPUE = var(catchWt * q_value)) %>% 
+    ungroup() %>% 
+    mutate(strataBiomass = meanCPUE * strataVol,
+           strataVar = strataVol * (strataVol - volSweptMean) * 
+             (varCPUE / sampleSet),
+           annualBiomass = sum(strataBiomass),
+           annualVariance = sum(strataVar),
+           annualSamples = sum(sampleSet),
+           annualBiomassSD = sqrt(annualVariance),
+           annualBiomassCV = annualBiomassSD / annualBiomass,
+           annualBiomassSE = annualBiomassSD / sqrt(annualSamples))
+           
+} 
 
-
-
-
-
-
+biomass_df$annual_biomass_sd <-
+  sqrt(biomass_df$annual_biomass_variance)
+biomass_df$annual_biomass_cv <-
+  biomass_df$annual_biomass_sd / biomass_df$annual_biomass
+biomass_df$annual_biomass_se <-
+  biomass_df$annual_biomass_sd / (sqrt(biomass_df$annual_biomass_num))
+biomass_df$annual_biomass_LCI <-
+  ifelse(((biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass)) < 0, 0,
+         (biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass
+         )) ##if LCI<0 then assign zero
+biomass_df$annual_biomass_UCI <-
+  biomass_df$annual_biomass_sd * (1.96) + biomass_df$annual_biomass
+biomass_df$species_code <- thisSpeciesCode
 
 
 
