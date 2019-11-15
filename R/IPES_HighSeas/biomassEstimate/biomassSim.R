@@ -14,7 +14,8 @@ haul <- read.csv(here::here("data", "highSeas", "ipesBiomass",
                             "Trawl_Tows.csv"), stringsAsFactors = F) %>%  
   merge(., volswept,by = c("TRIP_YEAR","STRATUM","DayNight"), 
         all.x = TRUE) %>% 
-  mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER))
+  mutate(yearTow = paste0(TRIP_YEAR, "-", TOW_NUMBER)) %>% 
+  rename(volSweptStrata = SumOfOfficialVolumeSwept_km3)
 
 
 df <- fish %>% 
@@ -28,17 +29,43 @@ df <- fish %>%
 
 # add zeros to catch data and merge with hauls
 cpue_df <- haul %>% 
-  select(yearTow, TRIP_YEAR, STRATUM, DayNight) %>% 
+  select(yearTow, TRIP_YEAR, STRATUM, DayNight, volSweptStrata) %>% 
   left_join(., df %>% select(yearTow, SPECIES_CODE), by = "yearTow") %>% 
-  expand(., nesting(yearTow, TRIP_YEAR, STRATUM, DayNight), SPECIES_CODE) %>% 
+  expand(., 
+         nesting(yearTow, TRIP_YEAR, STRATUM, DayNight, volSweptStrata), 
+         SPECIES_CODE) %>% 
   filter(!is.na(SPECIES_CODE)) %>% 
   left_join(., df, by = c("yearTow", "TRIP_YEAR", "STRATUM", "SPECIES_CODE")) %>% 
   complete(yearTow, SPECIES_CODE, fill = list(CatchWt = 0)) %>% 
-  mutate(nonZero = case_when(
-    CatchWt > 0 ~ 1,
-    CatchWt == 0 ~ 0
-  )) 
-
+  #specify zero catches
+  mutate(nonZero = 
+           case_when(
+             CatchWt > 0 ~ 1,
+             CatchWt == 0 ~ 0
+             ),
+         #add catch ability coefficients
+         q_value = 
+           case_when(
+             SPECIES_CODE == 96 ~ 1,
+             TRUE ~ 0.4
+           ),
+         #add volume of strata
+         strataVol = case_when(
+           STRATUM == 504 ~ 47.04, 
+           STRATUM == 505 ~ 73.44,
+           STRATUM == 506 ~ 24.96,
+           STRATUM == 507 ~ 40.32,
+           STRATUM == 508 ~ 37.92,
+           STRATUM == 509 ~ 44.64,
+           STRATUM == 510 ~ 91.20, 
+           STRATUM == 511 ~ 121.92)
+         ) %>% 
+  group_by(STRATUM) %>%
+  #take average of volume that was swept by tow ACROSS YEARS
+  mutate(volSweptMean = mean(volSweptStrata)) %>% 
+  select(-volSweptStrata) %>% 
+  ungroup() 
+  
 
 #1. Use gamma hurdle models to estimate parameters describing data then simulate
 modfits <- cpue_df %>% 
@@ -56,44 +83,6 @@ modfits <- cpue_df %>%
          summ = map(m2, summary),
          gamDisp = map_dbl(summ, "dispersion"))
 
-pvals <- modfits %>% 
-  unnest(tidy1, tidy2) %>% 
-  select(species = SPECIES_CODE, term, binMu = estimate,  
-         binP = p.value, gamMu = estimate1, gamP = p.value1) %>% 
-  pivot_longer(-c(species, term), names_to = "outputValue", 
-               values_to = "estimate") %>%
-  mutate(
-    model = case_when(
-      grepl("gam", outputValue) ~ "gamma",
-      TRUE ~ "binomial"),
-    value = case_when(
-      grepl("Mu", outputValue) ~ "mu",
-      grepl("P", outputValue) ~ "p-value"
-    )) %>%
-  select(-outputValue)
-  
-pvals %>% 
-  filter(term == "STRATUM", 
-         value == "p-value")
-#generally strata effects are significant for the binomial model, but less 
-#consistent for gamma
-
-# modOut <- modfits
-#   unnest(tidy1, tidy2, gamDisp) %>%
-#   select(species = SPECIES_CODE, data, binMu = estimate, binMuSig = std.error, 
-#          gamMu = estimate1, gamMuSig = std.error1, gamDisp) %>% 
-#   pivot_longer(-c(species, data), names_to = "parameter", 
-#                values_to = "estimate") %>% 
-#   mutate(
-#     model = case_when(
-#       grepl("gam", parameter) ~ "gamma",
-#       TRUE ~ "binomial"),
-#     parameter = case_when(
-#       grepl("MuSig", parameter) ~ "sigmaMu",
-#       grepl("Mu", parameter) ~ "mu",
-#       grepl("Disp", parameter) ~ "dispersion"
-#     )) %>% 
-#   arrange(species, model, parameter)
 
   
   
@@ -138,7 +127,11 @@ trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
   }) %>% 
   #recombine into DF
   do.call(rbind.data.frame, .) %>%
-  ungroup()
+  ungroup() %>% 
+  left_join(., 
+            cpue_df %>% 
+              select(strata = STRATUM, q_value, strataVol, volSweptMean),
+            by = "strata")
 
 
 # function that can be passed to lapply to generate draws from both distributions
@@ -185,36 +178,88 @@ simSurvey <- function(trialsDat, nVec) {
 }
 
 
+
+
+
+
+
+
+
+
+
+biomassFunction <- function(thisSpeciesCode, fish, haul, q_value) {
+  
+  ##(B) Calculate annual stratum biomass and variance
+  ##(B.1) Biomass
+  mu_cpue_df$strata_biomass = (mu_cpue_df$strata_cpue * mu_cpue_df$strata_vol)##this is where I had q previously 
+  
+  ##sample variance as per Thompson, S.K. 1992. Sampling. John Wiley and Sons, Inc. New York. 343 p.
+  ##JK:  below was incorrect, because it assumed that the sampled volume was the block volume, when it is the tow volume
+  #mu_cpue_pink$strata_N = mu_cpue_pink$strata_vol/(4*4*(30/1000))  #total number of 4x4 km blocks fished to 30 m per stratum 
+  ##JB says:  use strata volume for Nh and volume swept for nh - except the last nh in the formula, and it should be number of tows.
+  ##JK:  ie. Nh is strata volume as before with volume swept subtracted; then the variance is divided by the number of tows
+  
+  ##(B.2) Variance
+  mu_cpue_df$strata_variance = mu_cpue_df$strata_vol * (mu_cpue_df$strata_vol - mu_cpue_df$volswept) *
+    (mu_cpue_df$cpue_var / mu_cpue_df$strata_num)
+  
+  ## (C) sum up the biomass and variance estimates across all strata
+  biomass_df <- mu_cpue_df %>%
+    group_by(TRIP_YEAR, DayNight) %>%
+    summarise(
+      annual_biomass = sum(strata_biomass),
+      annual_biomass_variance = sum(strata_variance),
+      annual_biomass_num = sum(strata_num)
+    ) %>%
+    ungroup()
+  
+  ##(D) Then based on the annual biomass variance across all strata (in C above), calculate the standard deviation, SE, CV and CI            
+  biomass_df$annual_biomass_sd <-
+    sqrt(biomass_df$annual_biomass_variance)
+  biomass_df$annual_biomass_cv <-
+    biomass_df$annual_biomass_sd / biomass_df$annual_biomass
+  biomass_df$annual_biomass_se <-
+    biomass_df$annual_biomass_sd / (sqrt(biomass_df$annual_biomass_num))
+  biomass_df$annual_biomass_LCI <-
+    ifelse(((biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass)) < 0, 0,
+           (biomass_df$annual_biomass_sd * (-1.96) + biomass_df$annual_biomass
+           )) ##if LCI<0 then assign zero
+  biomass_df$annual_biomass_UCI <-
+    biomass_df$annual_biomass_sd * (1.96) + biomass_df$annual_biomass
+  biomass_df$species_code <- thisSpeciesCode
+  
+  return(biomass_df)
+  
+}
+
+
+
   
 #2. Sample from distribution at different levels
 #3. Calculate CV following biomass extrapolotation
 
 
-set.seed(999)
-N <- 100
-x <- runif(N, -1, 1)
-a <- 0.5
-b <- 1.2
-y_true <- exp(a + b *x)
-shape <- 10
-y <- rgamma(N, rate = shape / y_true, shape = shape)
-m_glm <- glm(y ~ x, family = Gamma(link = "log"))
-summary(m_glm)
+## pvalues for glms
+pvals <- modfits %>% 
+  mutate(mutate(tidy1 = map(m1, broom::tidy),
+                tidy2 = map(m2, broom::tidy))) %>% 
+  unnest(tidy1, tidy2) %>% 
+  select(species = SPECIES_CODE, term, binMu = estimate,  
+         binP = p.value, gamMu = estimate1, gamP = p.value1) %>% 
+  pivot_longer(-c(species, term), names_to = "outputValue", 
+               values_to = "estimate") %>%
+  mutate(
+    model = case_when(
+      grepl("gam", outputValue) ~ "gamma",
+      TRUE ~ "binomial"),
+    value = case_when(
+      grepl("Mu", outputValue) ~ "mu",
+      grepl("P", outputValue) ~ "p-value"
+    )) %>%
+  select(-outputValue)
 
-(exp(0.47255)^2) / (exp(0.02925)^2)
-1 / 0.08556405
-
-summary(m_glm)$dispersion/coef(m_glm)[1]
-#shape parameter
-alpha <- 1 / summary(m_glm)$dispersion
-#rate parameter (shape / mean)
-beta <- summary(m_glm)$dispersion / coef(m_glm)[1] 
-
-
-x <- rnorm(100) 
-y <- rpois(rep(1,100), exp(x)) ## poisson regression with slope=1
-## fit model
-m1 <- glm(y ~ x,family=poisson)
-new.data <- data.frame(x=seq(-3,3,.1))
-mu.y <- predict(m1, newdata=new.data, type='response')
-sim.y <- replicate(2, rpois(rep(1, length(mu.y)), mu.y))
+pvals %>% 
+  filter(term == "STRATUM", 
+         value == "p-value")
+#generally strata effects are significant for the binomial model, but less 
+#consistent for gamma
