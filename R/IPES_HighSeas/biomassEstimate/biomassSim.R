@@ -68,83 +68,70 @@ cpue_df <- haulDat %>%
            STRATUM == 510 ~ 91.20, 
            STRATUM == 511 ~ 121.92)
          ) 
-# %>% 
-## REPLACED BY ABOVE
-#   group_by(STRATUM) %>%
-#   #take average of volume that was swept by tow ACROSS YEARS
-#   mutate(volSweptMean = mean(volSweptStrata)) %>% 
-#   select(-volSweptStrata) %>% 
-#   ungroup() 
-  
 
-#1. Use gamma hurdle models to estimate parameters describing data then simulate
-modfits <- cpue_df %>% 
-  group_by(SPECIES_CODE) %>% 
-  nest()  %>% 
-  #don't account for year/strata now, but could as fixed or mixed effects
-  mutate(m1 = map(data, ~glm(nonZero ~ STRATUM, data = ., 
-                             family = binomial(link = logit))),
-         m2 = map(data, 
-                  ~glm(CatchWt ~ STRATUM, data = subset(., nonZero == 1), 
-                       family = Gamma(link = log)))
-         ) %>% 
-  mutate(tidy1 = map(m1, broom::tidy),
-         tidy2 = map(m2, broom::tidy),
-         summ = map(m2, summary),
-         gamDisp = map_dbl(summ, "dispersion"))
-
-
-  
-  
-# Best practice would be to simulate data by specifying trials; each trial 
-# generate an estimate of phi and beta (rate) by drawing from normal 
-# distribution describing mu and se of parameter estimates. Then use these values
-# to generate 1000 fishing events (i.e. 0/1 and estimate of catch if non-0). 
-# Eventually this should account for strata and year effects as well.
-
-# simpler example with one species  
-volPars <- cpue_df %>% 
-  filter(SPECIES_CODE == "124") %>% 
-  select(strata = STRATUM, q_value, strataVol, meanSweepVol) %>% 
-  distinct()
-
-dum <- cpue_df %>% 
-  filter(SPECIES_CODE == "124")
-m1 <- glm(nonZero ~ STRATUM, data = dum, family = binomial(link = logit))
-m2 <- glm(CatchWt ~ STRATUM, data = subset(dum, nonZero == 1), 
-          family = Gamma(link = log))
-
-newDat <- data.frame(STRATUM = unique(dum$STRATUM))
-#binomial predictions
-phiStrata <- predict(m1, newdata=newDat, type='response') # on scale of response
-#gamma predictions
-muStrata <- predict(m2, newdata = newDat, type = 'response')
-#gamma distribution parameters
-gammaCoefs <- data.frame(strata = unique(dum$STRATUM),
-                         shape = 1 / summary(m2)$dispersion) %>%
-  mutate(rate = shape / muStrata)
-
-# generate random draws for the binomial catch
-M <- 20 #number of trials
-N <- 200 #number of draws per trial (i.e. events per strata per trial)
-nVec <- c(5, 10, 20, 50, 100) #vector of survey sets (per strata)
-trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
-                   trial = rep(seq(1, M, by = 1), 
-                              times = length(unique(dum$STRATUM))),
-                   #binomial coefficients first
-                   phi = rep(phiStrata, each = M)) %>% 
-  left_join(., gammaCoefs, by = "strata") %>% 
-  #break into list because of issues expanding w/ random draws within a DF subset
-  split(., .$trial) %>% 
+# Use gamma hurdle models to estimate parameters describing data then 
+# simulate sampling events
+simBiomass <- cpue_df %>% 
+  split(., .$SPECIES_CODE) %>% 
   lapply(., function(x) {
-    drawDist(x, N) %>% #generate samples based on model coefficients
-      simSurvey(., nVec) #subsample based on input vector size 
-  }) %>% 
-  #recombine into DF
+    simTrials(x, M = 100, N = 1000, nVec = c(5, 10, 20, 50, 100))
+    }) %>% 
   do.call(rbind.data.frame, .) %>%
   ungroup() %>% 
-  left_join(., volPars, by = "strata") %>% 
-  select(-c(phi:rate))
+  mutate(nSetsPerStrata = as.factor(sampleSet),
+         species = as.factor(species))
+
+pdf(here::here("figs", "biomassSim", "annualCVEst.pdf"), height = 6, width = 8)
+ggplot(simBiomass) +
+  geom_boxplot(aes(x = nSetsPerStrata, y = annualBiomassCV)) +
+  facet_wrap(~species, scales = "free_y")
+dev.off()
+
+# Function that fits the models and uses secondary helper functions to generate
+# random data that is sampled
+simTrials <- function(datIn, M = 100, N = 1000, 
+                      nVec = c(5, 10, 20, 50, 100)) {
+  #Fit models
+  m1 <- glm(nonZero ~ STRATUM, data = datIn, family = binomial(link = logit))
+  m2 <- glm(CatchWt ~ STRATUM, data = subset(datIn, nonZero == 1), 
+            family = Gamma(link = log))
+  
+  strataLevels <- unique(datIn$STRATUM)
+  newDat <- data.frame(STRATUM = strataLevels) #df of predictions
+  phiStrata <- predict(m1, newdata = newDat, type='response') # on scale of response
+  #gamma predictions
+  muStrata <- predict(m2, newdata = newDat, type = 'response')
+  #gamma distribution parameters
+  gammaCoefs <- data.frame(strata = strataLevels,
+                           shape = 1 / summary(m2)$dispersion) %>%
+    mutate(rate = shape / muStrata)
+ 
+  trialsOut  <- data.frame(strata = rep(strataLevels, each = M),
+                           trial = rep(seq(1, M, by = 1), 
+                                       times = length(strataLevels)),
+                           #binomial coefficients first
+                           phi = rep(phiStrata, each = M)) %>% 
+    left_join(., gammaCoefs, by = "strata") %>% 
+    #break into list because of issues expanding w/ random draws within a DF subset
+    split(., .$trial) %>% 
+    lapply(., function(x) {
+      drawDist(x, N) %>% #generate samples based on model coefficients
+        simSurvey(., nVec) #subsample based on input vector size 
+    }) %>% 
+    #recombine into DF
+    do.call(rbind.data.frame, .) %>%
+    ungroup() %>% 
+    left_join(., volPars, by = "strata") %>% 
+    select(-c(phi:rate)) 
+  
+  #calculate biomass based on CPUE
+  biomassEst <- trialsOut %>% 
+    calcBiomass() %>% 
+    ungroup() %>% 
+    mutate(species =  unique(datIn$SPECIES_CODE)) %>%  #add species ID
+    select(species, sampleSet:annualBiomassSE) #reorder
+  return(biomassEst)
+}
 
 # function that can be passed to lapply to generate draws from both distributions
 # within a given trial
@@ -190,18 +177,17 @@ simSurvey <- function(trialsDat, nVec) {
 }
 
 #function modified from BiomassForCam.R to estimate mean and CV of biomass
-#NOTE: grouping of species, trials, years etc. is done external to function
-calcBiomass <- function(sampledWt) {
-  tt <- trialsOut %>% 
-    filter(sampleSet == "20") %>%
-    group_by(sampleSet, trial, strata, strataVol, meanSweepVol) %>% #remove trial and sampleset
+calcBiomass <- function(sampledCatch) {
+  sampledCatch %>% 
+    # filter(sampleSet == "20", trial == "1") %>%
+    group_by(sampleSet, trial, strata, strataVol, meanSweepVol) %>% 
     summarise(meanCPUE = mean(catchWt * q_value),
               varCPUE = var(catchWt * q_value)) %>% 
     mutate(strataBiomass = meanCPUE * strataVol,
            strataVar = strataVol * (strataVol - meanSweepVol) *
              (varCPUE / sampleSet)
            ) %>% 
-    group_by(sampleSet, trial) %>% 
+    group_by(sampleSet, trial) %>%
     summarise(annualBiomass = sum(strataBiomass),
            annualVariance = sum(strataVar),
            annualSamples = sum(sampleSet),
@@ -209,33 +195,6 @@ calcBiomass <- function(sampledWt) {
            annualBiomassCV = annualBiomassSD / annualBiomass,
            annualBiomassSE = annualBiomassSD / sqrt(annualSamples)) 
 } 
-
-mu_cpue_df %>% 
-  select(STRATUM, TRIP_YEAR, DayNight, strata_biomass) %>% 
-  distinct()
-tt %>% 
-  select(strata, strataBiomass)
-
-ggplot(mu_cpue_df) +
-  geom_histogram(aes(x = strata_biomass)) +
-  facet_wrap(~STRATUM)
-ggplot(biomass_df) + 
-  geom_histogram(aes(x = annual_biomass_variance))
-
-ggplot(tt) +
-  geom_histogram(aes(x = strataBiomass)) +
-  facet_wrap(~strata)
-ggplot(tt) + 
-  geom_histogram(aes(x = annualVariance)) 
-
-mu_cpue_df %>% 
-  select(volswept, STRATUM, TRIP_YEAR, DayNight) %>% 
-  distinct() %>% 
-  tail
-  
-#2. Sample from distribution at different levels
-#3. Calculate CV following biomass extrapolotation
-
 
 ## pvalues for glms
 pvals <- modfits %>% 
@@ -261,3 +220,62 @@ pvals %>%
          value == "p-value")
 #generally strata effects are significant for the binomial model, but less 
 #consistent for gamma
+
+## Preliminary biomass sampling and calcs with one dataframe (i.e. species)
+
+df <- data_frame(one = rep("hey", 10), two = seq(1:10), etc = "etc")
+
+list_df <- list(df, df, df, df, df)
+dfnames <- c("first", "second", "third", "fourth", "fifth")
+
+dfs <- list_df %>% map2_df(dfnames,~mutate(.x, name=.y))
+
+# simpler example with one species  
+volPars <- cpue_df %>% 
+  filter(SPECIES_CODE == "124") %>% 
+  select(strata = STRATUM, q_value, strataVol, meanSweepVol) %>% 
+  distinct()
+
+dum <- cpue_df %>% 
+  filter(SPECIES_CODE == "124")
+m1 <- glm(nonZero ~ STRATUM, data = dum, family = binomial(link = logit))
+m2 <- glm(CatchWt ~ STRATUM, data = subset(dum, nonZero == 1), 
+          family = Gamma(link = log))
+
+newDat <- data.frame(STRATUM = unique(dum$STRATUM))
+#binomial predictions
+phiStrata <- predict(m1, newdata=newDat, type='response') # on scale of response
+#gamma predictions
+muStrata <- predict(m2, newdata = newDat, type = 'response')
+#gamma distribution parameters
+gammaCoefs <- data.frame(strata = unique(dum$STRATUM),
+                         shape = 1 / summary(m2)$dispersion) %>%
+  mutate(rate = shape / muStrata)
+
+# generate random draws for the binomial catch
+M <- 100 #number of trials
+N <- 1000 #number of draws per trial (i.e. events per strata per trial)
+nVec <- c(5, 10, 20, 50, 100) #vector of survey sets (per strata)
+trialsOut  <- data.frame(strata = rep(unique(dum$STRATUM), each = M),
+                         trial = rep(seq(1, M, by = 1), 
+                                     times = length(unique(dum$STRATUM))),
+                         #binomial coefficients first
+                         phi = rep(phiStrata, each = M)) %>% 
+  left_join(., gammaCoefs, by = "strata") %>% 
+  #break into list because of issues expanding w/ random draws within a DF subset
+  split(., .$trial) %>% 
+  lapply(., function(x) {
+    drawDist(x, N) %>% #generate samples based on model coefficients
+      simSurvey(., nVec) #subsample based on input vector size 
+  }) %>% 
+  #recombine into DF
+  do.call(rbind.data.frame, .) %>%
+  ungroup() %>% 
+  left_join(., volPars, by = "strata") %>% 
+  select(-c(phi:rate)) 
+
+biomassEst <- trialsOut %>% 
+  calcBiomass()
+
+ggplot(biomassEst) + 
+  geom_boxplot(aes(x = as.factor(sampleSet), y = annualVariance))
