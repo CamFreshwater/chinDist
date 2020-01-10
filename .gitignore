@@ -14,7 +14,6 @@
 *.nav
 *.synctex.gz*
 knitr-cache
-.RData
 *.accdb
 *.laccdb
 *.mdb
