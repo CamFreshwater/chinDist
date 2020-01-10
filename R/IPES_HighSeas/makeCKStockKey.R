@@ -6,8 +6,10 @@ library(tidyverse)
 adDat <- read.csv(here::here("data", "highSeas", "adultChinookHS.csv"))
 
 stockKey <- adDat %>% 
-  select(STOCK_1, REGION_1, HSS_REGION_1) %>% 
-  distinct() 
+  select(STOCK_1, region = REGION_1, HSS_REGION_1) %>% 
+  distinct()
 
-write.csv(stockKey, here::here("data", "chinookStockKey.csv"), 
-          row.names = FALSE)
+#remove weird empty row
+stockKey <- stockKey[!apply(stockKey == "", 1, all),]
+
+saveRDS(stockKey, here::here("data", "stockKeys", "highSeasChinoookStockKey.RDS"))
