@@ -17,6 +17,8 @@ knitr-cache
 *.accdb
 *.laccdb
 *.mdb
+*.rds
+!data/stockKeys/*.rds
 
 # History files
 .Rhistory
