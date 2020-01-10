@@ -10,8 +10,8 @@ library(ggplot2)
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                               "wcviIndProbsLong.txt"), 
                    stringsAsFactors = FALSE)
-# stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) %>% 
-#   mutate(stock = tolower(stock)) 
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) %>%
+  mutate(stock = toupper(stock))
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
 id <- datRaw$szLineInfo %>% 
@@ -88,16 +88,17 @@ dat <- cbind(id, datRaw) %>%
   mutate(adjProb = dProb / totalProb) %>% 
   select(-iRun, -iSample, -iYearMix, flatFileID = szLineInfo, stock, -szStock,
          prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, -unadjWeek,
-         -szRegion) %>% 
+         Region1Name = szRegion) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
-                          "Area124_24")) 
+                          "Area124_24"))  %>% 
+  left_join(., stockKey, by = c("stock", "Region1Name"))
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # juvenile-salmon-index repo 
 stks_out <- dat %>% 
-  select(stock) %>% 
+  select(stock, Region1Name) %>% 
   distinct()
 saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
@@ -116,7 +117,7 @@ weeklySamples <- dailySamples %>%
   summarize(nSampled = sum(nSampled)) %>% 
   ungroup()
 
-#Roll up to regional aggregates (region 3 first)
+#Roll up to regional aggregates (region 3 first) by summing probabilities at Region 3 level
 reg3 <- dat %>% 
   group_by(flatFileID, Region3Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
