@@ -10,8 +10,8 @@ library(ggplot2)
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                               "wcviIndProbsLong.txt"), 
                    stringsAsFactors = FALSE)
-# stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) %>% 
-#   mutate(stock = tolower(stock)) 
+# stock key generated in juvenile salmon index repo
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) 
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
 id <- datRaw$szLineInfo %>% 
@@ -88,7 +88,7 @@ dat <- cbind(id, datRaw) %>%
   mutate(adjProb = dProb / totalProb) %>% 
   select(-iRun, -iSample, -iYearMix, flatFileID = szLineInfo, stock, -szStock,
          prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, -unadjWeek,
-         -szRegion) %>% 
+         Region1Name = szRegion) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
@@ -96,15 +96,18 @@ dat <- cbind(id, datRaw) %>%
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # juvenile-salmon-index repo 
-stks_out <- dat %>% 
-  select(stock) %>% 
-  distinct()
-saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
+# stks_out <- dat %>%
+#   select(stock, Region1Name) %>%
+#   distinct()
+# saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
-saveRDS(dat, here::here("data", "gsiCatchData", "commTroll",
-                        "wcviIndProbsLong_CLEAN.rds"))
+dat2 <- dat %>% 
+  select(-Region1Name) %>% 
+  left_join(., stockKey, by = c("stock"))
+saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
+                         "wcviIndProbsLong_CLEAN.rds"))
 
-dailySamples <- dat %>% 
+dailySamples <- dat2 %>% 
   group_by(statArea, year, month, jDay) %>% 
   mutate(nSampled = length(unique(fishNum))) %>% 
   ungroup() %>%
@@ -117,7 +120,7 @@ weeklySamples <- dailySamples %>%
   ungroup()
 
 #Roll up to regional aggregates (region 3 first)
-reg3 <- dat %>% 
+reg3 <- dat2 %>% 
   group_by(flatFileID, Region3Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
   dplyr::arrange(flatFileID, desc(aggProb)) %>% 
@@ -129,8 +132,8 @@ reg3 <- dat %>%
   distinct() %>% 
   dplyr::rename(regName = Region3Name)
 
-# write.csv(reg3, here::here("data", "gsiCatchData", "commTroll",
-#                            "reg3RollUpCatchProb.csv"))
+write.csv(reg3, here::here("data", "gsiCatchData", "commTroll",
+                           "reg3RollUpCatchProb.csv"), row.names = FALSE)
 
 #Add weekly catches and sampling effort
 dailyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
@@ -148,16 +151,15 @@ weeklyCatch <- dailyCatch %>%
   dplyr::group_by(statArea, year, month, week) %>% 
   dplyr::summarize(weeklyCatch = sum(catch),
                    weeklyEffort = sum(boatDays))
-# write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
-#                                    "weeklyCatch_WCVI.csv"))
-
+write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
+                                   "weeklyCatch_WCVI.csv"), row.names = FALSE)
 
 
 # review sampling effort relative to catch
 summDat <- weeklyCatch %>%
   full_join(.,
-            adjWeeklySamps,
-            # weeklySamples,
+            # adjWeeklySamps,
+            weeklySamples,
             by = c("statArea", "year", "week", "month")) %>% 
   replace_na(list(nSampled = 0, weeklyCatch = 0, weeklyEffort = 0)) %>% 
   mutate(sampPpn = nSampled / weeklyCatch) %>% 
@@ -169,7 +171,7 @@ summDat <- weeklyCatch %>%
 ## Double check this...
 dum2 <- summDat %>% 
   filter(sampPpn > 1) %>% 
-  arrange(statArea, year)
+  arrange(statArea, year) 
 
 dailyCatch %>% 
   filter(statArea == "24", month == "6", year == "2013") %>% 
