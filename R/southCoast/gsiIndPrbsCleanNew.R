@@ -92,8 +92,9 @@ dat <- cbind(id, datRaw) %>%
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
-                          "Area124_24"))  %>% 
-  left_join(., stockKey, by = c("stock", "Region1Name"))
+                          "Area124_24"))
+# %>% 
+#   left_join(., stockKey, by = c("stock", "Region1Name"))
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # juvenile-salmon-index repo 
@@ -108,18 +109,6 @@ dat2 <- dat %>%
 saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
                          "wcviIndProbsLong_CLEAN.rds"))
 
-dailySamples <- dat2 %>% 
-  group_by(statArea, year, month, jDay) %>% 
-  mutate(nSampled = length(unique(fishNum))) %>% 
-  ungroup() %>%
-  select(statArea, year, month, week, jDay, nSampled) %>% 
-  distinct() %>% 
-  mutate(year = as.numeric(year))
-weeklySamples <- dailySamples %>% 
-  group_by(statArea, year, month, week) %>% 
-  summarize(nSampled = sum(nSampled)) %>% 
-  ungroup()
-
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat2 %>% 
   group_by(flatFileID, Region3Name) %>% 
@@ -133,8 +122,8 @@ reg3 <- dat2 %>%
   distinct() %>% 
   dplyr::rename(regName = Region3Name)
 
-write.csv(reg3, here::here("data", "gsiCatchData", "commTroll",
-                           "reg3RollUpCatchProb.csv"), row.names = FALSE)
+saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
+                           "reg3RollUpCatchProb.RDS"))
 
 #Add weekly catches and sampling effort
 dailyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
@@ -157,6 +146,18 @@ write.csv(weeklyCatch, here::here("data", "gsiCatchData", "commTroll",
 
 
 # review sampling effort relative to catch
+dailySamples <- dat2 %>% 
+  group_by(statArea, year, month, jDay) %>% 
+  mutate(nSampled = length(unique(fishNum))) %>% 
+  ungroup() %>%
+  select(statArea, year, month, week, jDay, nSampled) %>% 
+  distinct() %>% 
+  mutate(year = as.numeric(year))
+weeklySamples <- dailySamples %>% 
+  group_by(statArea, year, month, week) %>% 
+  summarize(nSampled = sum(nSampled)) %>% 
+  ungroup()
+
 summDat <- weeklyCatch %>%
   full_join(.,
             # adjWeeklySamps,
