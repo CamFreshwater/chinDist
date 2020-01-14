@@ -10,7 +10,7 @@ library(ggplot2)
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                               "wcviIndProbsLong.txt"), 
                    stringsAsFactors = FALSE)
-# stock key generated in juvenile salmon index repo
+# stock key generated in stockKey repo
 stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) 
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
@@ -97,7 +97,7 @@ dat <- cbind(id, datRaw) %>%
 #   left_join(., stockKey, by = c("stock", "Region1Name"))
 
 ## Export list of stocks to be passed to makeFullStockKey script in
-# juvenile-salmon-index repo 
+# stockKey repo 
 # stks_out <- dat %>%
 #   select(stock, Region1Name) %>%
 #   distinct()
