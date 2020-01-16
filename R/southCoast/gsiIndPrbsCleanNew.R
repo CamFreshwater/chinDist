@@ -10,8 +10,6 @@ library(ggplot2)
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                               "wcviIndProbsLong.txt"), 
                    stringsAsFactors = FALSE)
-# stock key generated in stockKey repo
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) 
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
 id <- datRaw$szLineInfo %>% 
@@ -103,11 +101,17 @@ dat <- cbind(id, datRaw) %>%
 #   distinct()
 # saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
+# stock key generated in stockKey repo
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) 
+
 dat2 <- dat %>% 
   select(-Region1Name) %>% 
   left_join(., stockKey, by = c("stock"))
+# write.csv(dat2[1:1000, ], here::here("data", "gsiCatchData", "commTroll",
+#                            "wcviIndProbsLong_ExTrim.csv"))
 saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
                          "wcviIndProbsLong_CLEAN.rds"))
+
 
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat2 %>% 
