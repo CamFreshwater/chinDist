@@ -19,8 +19,8 @@ id <- datRaw$szLineInfo %>%
   matrix(., nrow = 5, ncol = length(datRaw$szLineInfo)) %>%
   t() %>% 
   data.frame() %>% 
-  dplyr::rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4, 
-                "fishNum" = X5) %>% 
+  rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4,
+         "fishNum" = X5) %>% 
   mutate(jDay = as.numeric(as.character(jDay)),
          statArea = 
            case_when(
