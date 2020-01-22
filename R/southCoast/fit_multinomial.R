@@ -19,18 +19,21 @@ reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   # aggregate as necessary
   mutate(
     regName = case_when(
-      # regName %in% c("Coastal Washington", "Washington Coast") ~ "WA Coast",
-      # regName %in% c("Alaska South SE", "North/Central BC") ~ "North",
       regName %in% c("Columbia", "Snake") ~ "Columbia",
       regName %in% c("Coastal Washington", "Washington Coast", 
-                     "Alaska South SE", 
-                     "North/Central BC", "SOG") ~ "Other",
+                     "Alaska South SE", "North/Central BC", "SOG") ~ "Other",
       TRUE ~ regName
     ),
-    present = 1) %>% 
-  select(-flatFileID, -week:gear, -date, -aggProb:maxProb)
+    pres = 1) %>%
+  dplyr::select(flatFileID, statArea, year, month, regName, pres)
 
+gsi_wide <- reg3_long %>% 
+  pivot_wider(., names_from = regName, values_from = pres) %>%
+  mutate_if(is.numeric, ~replace_na(., 0)) %>% 
+  filter(year == "2007")
 
+obs_mat <- gsi_wide %>% 
+  select()
 
 compile("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic.cpp")
 dyn.load(dynlib("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic"))
