@@ -18,53 +18,105 @@ reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   ungroup() %>% 
   # aggregate as necessary
   mutate(
+    month = as.factor(month),
+    year =  as.factor(year),
     regName = case_when(
-      # regName %in% c("Coastal Washington", "Washington Coast") ~ "WA Coast",
-      # regName %in% c("Alaska South SE", "North/Central BC") ~ "North",
+      regName == "Oregon/California" ~ "Or_Cl",
       regName %in% c("Columbia", "Snake") ~ "Columbia",
       regName %in% c("Coastal Washington", "Washington Coast", 
-                     "Alaska South SE", 
-                     "North/Central BC", "SOG") ~ "Other",
+                     "Alaska South SE", "North/Central BC", "SOG") ~ "Other",
       TRUE ~ regName
     ),
-    present = 1) %>% 
-  select(-flatFileID, -week:gear, -date, -aggProb:maxProb)
+    regName = as.factor(abbreviate(regName, minlength = 5)),
+    pres = 1) %>%
+  dplyr::select(flatFileID, statArea, year, month, regName, pres)
+
+reg3_trim <- reg3_long %>% 
+  filter(statArea == "123") %>% 
+  droplevels()
+table(reg3_trim$regName, reg3_trim$month)
+
+# dummy dataset to replace missing values 
+dum <- expand.grid(#year = unique(reg3_long$year), 
+  month = unique(reg3_trim$month),
+  regName = unique(reg3_trim$regName), 
+  pres = 1)
+
+gsi_wide <- reg3_trim %>% 
+  full_join(., dum, by = c("month", "regName", "pres")) %>% 
+  pivot_wider(., names_from = regName, values_from = pres) %>%
+  mutate_if(is.numeric, ~replace_na(., 0))
+
+# Prep data to pass to model
+obs_mat <- gsi_wide %>% 
+  select(FrsrR:WCVI) %>% 
+  as.matrix()
 
 
+.X <- model.matrix(~ month, gsi_wide)
 
-compile("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic.cpp")
-dyn.load(dynlib("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic"))
-
-
+data <- list(cov = .X, y_obs = obs_mat)
 
 
-gsi_long_agg <- readRDS(here::here("data", "longGSI_reg4.rds")) %>% 
-  filter(age == "J", 
-         station_id %in% juv$station_id) %>% 
-  mutate(jdayZ = as.vector(scale(jday)[,1]),
-         present = 1,
-         #consolidate northern aggregates because rel. rare
-         agg = case_when(
-           Region4Name %in% c("NBC", "SEAK", "CoastUS") ~ "Other",
-           TRUE ~ Region4Name),
-         season = as.factor(case_when(
-           month %in% c("2", "3") ~ "winter",
-           month %in% c("5", "6", "7", "8") ~ "summer",
-           month %in% c("9", "10", "11" , "12") ~ "fall")),
-         year = as.factor(year)
-  ) %>% 
-  select(-Region4Name, -ship_fl, -c(xUTM_start:age), -c(aggProb:maxProb)) %>%
-  mutate(season = fct_relevel(season, "fall", after = 1)) %>% 
-  left_join(., juv %>% select(station_id, week), by = "station_id") %>% 
+## RUN MODEL -------------------------------------------------------------------
+# compile("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic.cpp")
+# dyn.load(dynlib("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic"))
+
+compile(here::here("R", "southCoast", "multinomial_generic.cpp"))
+dyn.load(dynlib(here::here("R", "southCoast", "multinomial_generic")))
+
+pars <- list(betas = matrix(data = 0, nrow = ncol(.X), 
+                            ncol = ncol(obs_mat) - 1))
+
+## Make a function object
+obj <- MakeADFun(data, pars, DLL="multinomial_generic")
+
+## Call function minimizer
+opt <- nlminb(obj$par, obj$fn, obj$gr)
+
+## Get parameter uncertainties and convergence diagnostics
+sdr <- sdreport(obj)
+sdr
+
+ssdr <- summary(sdr)
+ssdr
+
+r <- obj$report()
+r$probs
+r$log_odds
+r$logit_probs
+
+
+## Plot predictions
+k <- ncol(obs_mat) # number of stocks
+stk_names <- colnames(obs_mat)
+N <- nrow(obs_mat)
+months <- gsi_wide$month
+years <- gsi_wide$year
+
+logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs", ]
+# logit_probs_mat <- r$logit_probs
+pred_ci <- data.frame(stock = rep(stk_names, each = N),
+                      month = rep(months, times = k),
+                      #year = as.factor(rep(years, times = k)),
+                      logit_prob_est = logit_probs_mat[ , "Estimate"],
+                      logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>% 
+  mutate(pred_prob = plogis(logit_prob_est),
+         pred_prob_low = plogis(logit_prob_est + (qnorm(0.025) * logit_prob_se)),
+         pred_prob_up = plogis(logit_prob_est + (qnorm(0.975) * logit_prob_se))
+  ) %>%
   distinct()
 
-year_aggs <- expand.grid(year = unique(gsi_long_agg$year), 
-                         agg = unique(gsi_long_agg$agg), 
-                         present = 1)
+ggplot(pred_ci) +
+  # geom_point(aes(x = year, y = pred_prob)) +
+  geom_pointrange(aes(x = month, y = pred_prob, ymin = pred_prob_low, 
+                      ymax = pred_prob_up)) +
+  # geom_ribbon(aes(x = jday, ymin = pred_prob_low, ymax = pred_prob_up), 
+  #             fill = "#bfd3e6") +
+  # geom_line(aes(x = jday, y = pred_prob), col = "#810f7c", size = 1) +
+  facet_grid( ~ stock) +
+  labs(y = "Probability", x = "Year")
 
-## Replace year/aggregate combinations with 0 catches with 1s and spread to wide
-# format
-gsi_wide <- full_join(gsi_long_agg, year_aggs, 
-                      by = c("year", "agg", "present")) %>% 
-  pivot_wider(., names_from = agg, values_from = present) %>%
-  mutate_if(is.numeric, ~replace_na(., 0)) 
+
+
+
