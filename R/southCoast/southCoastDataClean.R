@@ -173,8 +173,8 @@ sumCatch <- areaCatch %>%
 
 ## Generate aggregate catch by Julian Day to match individual data from genetics
 # lab
-# areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-#                                  "fosCatch.csv"))
+areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                                 "fosCatch.csv"))
 
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
@@ -194,9 +194,8 @@ dailyCatch <- areaCatch %>%
   mutate(catchReg = as.character(catchReg),
          sumCPUE = catch / boatDays)
 
-# dailyCatch %>% 
-#   filter(year %in% c("2009", "2010", "2011"),
-#          month == "9", area == "123")
+dailyCatch %>%
+  filter(sumCPUE > 200)
 
 # write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                  "dailyCatch_WCVI.csv"), row.names = FALSE)
