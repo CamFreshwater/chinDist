@@ -8,7 +8,7 @@ library(tidyverse)
 library(ggplot2)
 
 datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                              "wcviIndProbsLong.txt"), 
+                              "wcviIndProbsLong_RAW.txt"), 
                    stringsAsFactors = FALSE)
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
@@ -102,17 +102,16 @@ dat <- cbind(id, datRaw) %>%
 # saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
 # stock key generated in stockKey repo
-# stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds")) 
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds"))
 
-# dat2 <- dat %>% 
-#   select(-Region1Name) %>% 
-#   left_join(., stockKey, by = c("stock"))
-# write.csv(dat2[1:1000, ], here::here("data", "gsiCatchData", "commTroll",
-#                            "wcviIndProbsLong_ExTrim.csv"))
+dat2 <- dat %>%
+  select(-Region1Name) %>%
+  left_join(., stockKey, by = c("stock")) %>% 
+  arrange(statArea, year, month, jDay, fishNum)
 # saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
-#                          "wcviIndProbsLong_CLEAN.rds"))
+#                          "wcviIndProbsLong.rds"))
 dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "wcviIndProbsLong_CLEAN.rds"))
+                           "wcviIndProbsLong.rds"))
 
 #Roll up to regional aggregates (region 3 first)
 reg3 <- dat2 %>% 
@@ -131,8 +130,8 @@ saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
                            "reg3RollUpCatchProb.RDS"))
 
 #Add weekly catches and sampling effort
-dailyCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                    "dailyCatch_WCVI.csv"),
+dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                    "dailyCatch_WCVI.rds"),
          stringsAsFactors = FALSE) %>% 
   dplyr::rename(statArea = area) %>% 
   mutate(statArea = as.character(statArea),

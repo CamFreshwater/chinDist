@@ -103,18 +103,15 @@ catchQry <- "SELECT [Area G FOS Catch Estimates].ESTIMATE_TYPE,
 "
 areaCatch <- sqlQuery(con, catchQry) %>% 
   rename_all(list(~make.names(.))) %>%
-  filter(FISHING.YEAR %in% yrs,
-         !VESSELS_OP > 200) #remove one entry with unrealistically high effort
+  filter(FISHING.YEAR %in% yrs) %>% 
+  # correct anomalously low vessel operating after looking at FOS
+  mutate(VESSELS_OP = 
+           case_when(
+             FISHING_DATE == "2013-05-15" & MGMT_AREA == "123" ~ 39,
+             TRUE ~ VESSELS_OP)
+         )
 # write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll",
 #                                 "fosCatch.csv"))
-
-areaCatch %>% 
-  filter(FISHING.YEAR == "2011",
-         FISHING.MONTH == "9",
-         AREA_NAME == "management area 123") 
-
-areaCatch %>% 
-  filter(grepl("CN DNA Sampling", OPNG_DESC))
 
 #summary of how catch/effort data is distributed through time
 # fosSumm <- areaCatch %>%
@@ -187,23 +184,21 @@ dailyCatch <- areaCatch %>%
                 grepl("CN DNA Sampling", OPNG_DESC) ~ sum(CHINOOK_RELD),
                 TRUE ~ sum(CHINOOK_KEPT)),
             boatDays = sum(VESSELS_OP)) %>% 
-  select(catchReg = CATCH_REGION, area = MGMT_AREA, year = FISHING.YEAR, 
-         month = FISHING.MONTH, jDay, catch, boatDays) %>%
-  # filter(!boatDays == 0) %>% 
+  rename(catchReg = CATCH_REGION, area = MGMT_AREA, year = FISHING.YEAR, 
+         month = FISHING.MONTH) %>%
   ungroup() %>% 
   mutate(catchReg = as.character(catchReg),
-         sumCPUE = catch / boatDays)
+         sumCPUE = catch / boatDays) %>% 
+  arrange(area, year, month, jDay)
 
-dailyCatch %>%
-  filter(sumCPUE > 200)
 
-# write.csv(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
-#                                  "dailyCatch_WCVI.csv"), row.names = FALSE)
+saveRDS(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
+                                 "dailyCatch_WCVI.rds"))
 
 ggplot(data = dailyCatch %>% filter(!boatDays == 0)) +
   geom_point(aes(x = jDay, y = sumCPUE)) +
   facet_wrap(~catchReg) +
-  samSim::theme_sleekX()
+  ggsidekick::theme_sleek()
 
 
 ## Check anomalously large CPUE
