@@ -19,6 +19,7 @@ knitr-cache
 *.mdb
 *.rds
 !data/stockKeys/*.rds
+!data/gsiCatchData/commTroll/*.rds
 
 # History files
 .Rhistory
