@@ -5,39 +5,29 @@
 library(glmmTMB)
 library(tidyverse)
 
-weekCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                                 "weeklyCatch_WCVI.csv"), 
-                      stringsAsFactors = TRUE) %>% 
-  mutate(
-    statArea = as.factor(statArea),
-    month = as.factor(month),
-    year = as.factor(year),
-    weeklyCPUE = weeklyCatch / weeklyEffort)
-
-monthC <- weekCatch %>%
-  group_by(month, year, statArea) %>% 
-  summarize(catch = sum(weeklyCatch),
-            eff = sum(weeklyEffort),
+dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                                 "dailyCatch_WCVI.RDS"))
+monthC <- dailyCatch %>% 
+  group_by(month, year, area, catchReg) %>% 
+  summarize(catch = sum(catch),
+            eff = sum(boatDays),
             cpue = catch / eff) %>% 
   filter(!is.na(cpue),
          #remove inshore regions with highly variable catches
          #statArea %in% c("24", "25", "26"),
          !cpue > 150) %>% #remove temp outlier 
   ungroup() %>% 
-  mutate(
-    reg = case_when(
-      statArea %in% c("123", "124", "23", "24") ~ "SWVI",
-      TRUE ~ "NWVI"
-    ),
-    reg = as.factor(reg)
-  )
+  rename(reg = catchReg) %>% 
+  mutate(month = as.factor(month),
+         year = as.factor(year),
+         z_eff = scale(eff))
 
 
 ## Visualize
 ggplot(monthC, aes(x = month, y = cpue)) +
   geom_boxplot() +
   ggsidekick::theme_sleek() +
-  facet_wrap(~statArea)
+  facet_wrap(~area)
 
 ggplot(monthC) +
   geom_point(aes(x = catch, y = eff)) +
@@ -50,9 +40,11 @@ ggplot(monthC) +
 # and variation among years. Consider making predictions for NW and SWVI, using
 # stat area as a random effect only
 
-mod1 <- glmmTMB(catch ~ eff + month * reg + (1|statArea) + (1|year), 
+#nbinom2 supported rel to 1 based on aic scores
+mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
                 family = nbinom2,
                 data = monthC)
+
 
 
 gmod_gA_L_NB2 <- glmmadmb(shells~prev+offset(log(Area))+factor(year)+(1|Site),
