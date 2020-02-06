@@ -9,7 +9,10 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.RDS"))
 monthC <- dailyCatch %>% 
   group_by(month, year, area, catchReg) %>% 
-  summarize(catch = sum(catch),
+ 
+  FIX SUMMMARIZE YA BISH
+  
+   summarize(catch = sum(catch),
             eff = sum(boatDays),
             cpue = catch / eff) %>% 
   filter(!is.na(cpue),
@@ -18,7 +21,8 @@ monthC <- dailyCatch %>%
          !cpue > 150) %>% #remove temp outlier 
   ungroup() %>% 
   rename(reg = catchReg) %>% 
-  mutate(month = as.factor(month),
+  mutate(area = as.factor(area),
+         month = as.factor(month),
          year = as.factor(year),
          z_eff = scale(eff))
 
@@ -27,7 +31,12 @@ monthC <- dailyCatch %>%
 ggplot(monthC, aes(x = month, y = cpue)) +
   geom_boxplot() +
   ggsidekick::theme_sleek() +
-  facet_wrap(~area)
+  facet_wrap(~reg)
+
+ggplot(monthC, aes(x = month, y = eff)) +
+  geom_boxplot() +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~reg)
 
 ggplot(monthC) +
   geom_point(aes(x = catch, y = eff)) +
@@ -41,9 +50,24 @@ ggplot(monthC) +
 # stat area as a random effect only
 
 #nbinom2 supported rel to 1 based on aic scores
-mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
+mod2 <- glmmTMB(cpue ~ month + reg + (1|area) + (1|year), 
+                    family = nbinom2,
+                    data = monthC)
+mod2_int <- glmmTMB(cpue ~ (month * reg) + (1|area) + (1|year), 
                 family = nbinom2,
                 data = monthC)
+mod2_nest <- glmmTMB(cpue ~ month + reg + (1|month:area) + (1|year), 
+                     family = nbinom2,
+                     data = monthC)
+
+
+library(lme4)
+mod3 <- glmer.nb(catch ~ z_eff + month + reg + (1|area) + (1|year), 
+         data = monthC)
+
+
+mod <- lmer(FL ~ zDOY + SEX + AGE + (1 | YEAR), data = FullDataset,
+            REML = FALSE)
 
 
 
