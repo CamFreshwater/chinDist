@@ -6,8 +6,8 @@ library(glmmTMB)
 library(tidyverse)
 
 dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.RDS")) %>% 
-  filter(!is.na(sumCPUE)) %>% 
+                                 "dailyCatch_WCVI.rds")) %>% 
+  filter(!is.na(cpue)) %>% 
   mutate(area = as.factor(area),
          month = case_when(
            month %in% c("6", "7") ~ "6_7",
@@ -15,9 +15,8 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          ),
          month = as.factor(month),
          year = as.factor(year),
-         z_eff = scale(boatDays)) %>% 
+         z_eff = as.numeric(scale(boatDays))) %>% 
   rename(eff = boatDays,
-         cpue = sumCPUE,
          reg = catchReg)
 
 ## Visualize
@@ -44,12 +43,15 @@ table(dailyCatch$month, dailyCatch$reg)
 # stat area as a random effect only
 
 #nbinom2 supported rel to 1 based on aic scores
-mod2 <- glmmTMB(cpue ~ month + reg + (1|area) + (1|year), 
+mod1_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
+                    family = nbinom1,
+                    data = dailyCatch)
+mod2_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
                     family = nbinom2,
                     data = dailyCatch)
-mod2_int <- glmmTMB(cpue ~ (month:reg) + (1|area) + (1|year), 
-                family = nbinom2,
-                data = dailyCatch)
+mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
+                    family = nbinom2,
+                    data = dailyCatch)
 
 
 

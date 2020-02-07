@@ -188,7 +188,7 @@ dailyCatch <- areaCatch %>%
          month = FISHING.MONTH) %>%
   ungroup() %>% 
   mutate(catchReg = as.character(catchReg),
-         sumCPUE = catch / boatDays) %>% 
+         cpue = catch / boatDays) %>% 
   arrange(area, year, month, jDay)
 
 
