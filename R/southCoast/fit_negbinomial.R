@@ -6,43 +6,37 @@ library(glmmTMB)
 library(tidyverse)
 
 dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.RDS"))
-monthC <- dailyCatch %>% 
-  group_by(month, year, area, catchReg) %>% 
- 
-  FIX SUMMMARIZE YA BISH
-  
-   summarize(catch = sum(catch),
-            eff = sum(boatDays),
-            cpue = catch / eff) %>% 
-  filter(!is.na(cpue),
-         #remove inshore regions with highly variable catches
-         #statArea %in% c("24", "25", "26"),
-         !cpue > 150) %>% #remove temp outlier 
-  ungroup() %>% 
-  rename(reg = catchReg) %>% 
+                                 "dailyCatch_WCVI.RDS")) %>% 
+  filter(!is.na(sumCPUE)) %>% 
   mutate(area = as.factor(area),
+         month = case_when(
+           month %in% c("6", "7") ~ "6_7",
+           TRUE ~ as.character(month)
+         ),
          month = as.factor(month),
          year = as.factor(year),
-         z_eff = scale(eff))
-
+         z_eff = scale(boatDays)) %>% 
+  rename(eff = boatDays,
+         cpue = sumCPUE,
+         reg = catchReg)
 
 ## Visualize
-ggplot(monthC, aes(x = month, y = cpue)) +
+ggplot(dailyCatch, aes(x = month, y = cpue)) +
   geom_boxplot() +
   ggsidekick::theme_sleek() +
   facet_wrap(~reg)
 
-ggplot(monthC, aes(x = month, y = eff)) +
+ggplot(dailyCatch, aes(x = month, y = eff)) +
   geom_boxplot() +
   ggsidekick::theme_sleek() +
   facet_wrap(~reg)
 
-ggplot(monthC) +
+ggplot(dailyCatch) +
   geom_point(aes(x = catch, y = eff)) +
   ggsidekick::theme_sleek() +
   facet_wrap(~month, scales = "free")
 
+table(dailyCatch$month, dailyCatch$reg)
 
 ## Fit model -------------------------------------------------------------------
 # Goal is to make stat area predictions by month, while accounting for effort
@@ -52,13 +46,11 @@ ggplot(monthC) +
 #nbinom2 supported rel to 1 based on aic scores
 mod2 <- glmmTMB(cpue ~ month + reg + (1|area) + (1|year), 
                     family = nbinom2,
-                    data = monthC)
-mod2_int <- glmmTMB(cpue ~ (month * reg) + (1|area) + (1|year), 
+                    data = dailyCatch)
+mod2_int <- glmmTMB(cpue ~ (month:reg) + (1|area) + (1|year), 
                 family = nbinom2,
-                data = monthC)
-mod2_nest <- glmmTMB(cpue ~ month + reg + (1|month:area) + (1|year), 
-                     family = nbinom2,
-                     data = monthC)
+                data = dailyCatch)
+
 
 
 library(lme4)
