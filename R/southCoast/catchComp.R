@@ -10,44 +10,55 @@ library(ggplot2)
 reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                             "reg3RollUpCatchProb.RDS"))
 fullGSI <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                         "wcviIndProbsLong_CLEAN.rds"))
+                         "wcviIndProbsLong.rds"))
 weekCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                   "weeklyCatch_WCVI.csv"), 
                       stringsAsFactors = TRUE)
 
 
-## Calculate regional proportion assuming perfect assignment for each stat area-
-#week and lumping all years; focus only 123/124 for now
+## Dataset consisting of only top assignments
 max_prob <- reg3 %>% 
   group_by(flatFileID) %>% 
-  mutate(max_assignment = max(aggProb),
-         strata = paste(statArea, week, sep = "_")) %>% 
+  mutate(max_assignment = max(aggProb)) %>% 
   # Remove samples where top stock ID is less than 75% probability
   filter(!aggProb < max_assignment, 
-         !max_assignment < 0.75,
-         statArea %in% c("123", "124"), 
-         month %in% c(5, 6, 7, 8)) %>% 
+         !max_assignment < 0.75) %>% 
   ungroup() %>% 
-  distinct()
+  distinct() %>% 
+  mutate(regName = fct_relevel(regName, "Alaska South SE", "North/Central BC", 
+                               "WCVI",
+                               "Fraser River", "SOG", "Puget Sound", 
+                               "Washington Coast", "Columbia", 
+                               "Oregon/California"), 
+         regName = fct_recode(regName, ECVI = "SOG", 
+                              "Washington Coast" = "Coastal Washington",
+                              "Columbia" = "Snake"))
+
+
+# Summer weekly all stocks -----------------------------------------------------
 
 weekly_comp <- max_prob %>%
+  mutate(strata = paste(statArea, week, sep = "_")) %>% 
   group_by(strata) %>% 
   mutate(nSampled = length(unique(flatFileID))) %>% 
   group_by(strata, regName) %>% 
   mutate(nByReg = length(unique(flatFileID)), 
          catch_prop = nByReg / nSampled) %>% 
   ungroup() %>%  
-  select(strata, statArea, week, month_week, regName, catch_prop, nByReg, 
+  select(strata, statArea, week, regName, catch_prop, nByReg, 
          nSampled) %>%
-  distinct() %>% 
-  mutate(statArea = fct_relevel(as.factor(statArea), "123", after = Inf),
-         regName = fct_relevel(regName, "North/Central BC", "WCVI",
-                               "Fraser River", "SOG", "Puget Sound", 
-                               "Washington Coast", "Oregon/California"))
+  distinct() 
 
-weekly_reg_plot <- ggplot(weekly_comp) +
+## Generate weekly plots for summer caught fish in SWVI
+weekly_comp_summ <- weekly_comp %>% 
+  filter(week > 18,
+         week < 35,
+         statArea %in% c("123", "124")) %>% 
+  mutate(statArea = fct_relevel(as.factor(statArea), "123", after = Inf))
+
+weekly_reg_plot <- ggplot(weekly_comp_summ) +
   geom_bar(aes(x = as.factor(week), y = catch_prop, fill = regName),
-           stat = "identity") +
+         stat = "identity") +
   scale_fill_viridis_d(option = "B") +
   labs(x = "", y = "Composition", fill = "Region of Origin") +
   facet_wrap(~statArea) + 
@@ -58,8 +69,11 @@ pdf(here::here("figs", "stockComp", "weekly_comp_agg.pdf"), height = 6,
 weekly_reg_plot
 dev.off()
 
-## Calculate stock proportion within Fraser assuming perfect assignment for each
-# stat area-week and lumping all years; focus only 123/124 for now
+
+# Fraser summer SWVI weekly catches --------------------------------------------
+
+## Aassuming perfect assignment for each  stat area-week and lumping all years; 
+# Focus only 123/124 for now
 # Identify Fraser IDs from above
 fraser_ids <- max_prob %>% 
   filter(regName == "Fraser River") %>% 
@@ -113,4 +127,39 @@ weekly_mu_plot <- ggplot(weekly_comp2) +
 pdf(here::here("figs", "stockComp", "weekly_comp_FraserMU.pdf"), height = 6,
     width = 10)
 weekly_mu_plot
+dev.off()
+
+
+# All seasons monthly all stocks -----------------------------------------------
+
+monthly_comp <- max_prob %>%
+  mutate(
+    catchReg = case_when(
+      statArea %in% c("123", "121", "23", "124", "24") ~ "SWVI",
+      TRUE ~ "NWVI"),
+    strata = paste(catchReg, month, sep = "_")) %>% 
+  group_by(strata) %>% 
+  mutate(nSampled = length(unique(flatFileID))) %>% 
+  group_by(strata, regName) %>% 
+  mutate(nByReg = length(unique(flatFileID)), 
+         catch_prop = nByReg / nSampled) %>% 
+  ungroup() %>%  
+  select(strata, catchReg, month, regName, catch_prop, nByReg, 
+         nSampled) %>%
+  distinct() 
+
+saveRDS(monthly_comp, here::here("generatedData", "monthly_stock_comp.rds"))
+
+
+monthly_reg_plot <- ggplot(monthly_comp) +
+  geom_bar(aes(x = as.factor(month), y = catch_prop, fill = regName),
+           stat = "identity") +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = "", y = "Composition", fill = "Region of Origin") +
+  facet_wrap(~catchReg) + 
+  ggsidekick::theme_sleek()
+
+pdf(here::here("figs", "stockComp", "monthly_comp_agg.pdf"), height = 4,
+    width = 7)
+monthly_reg_plot
 dev.off()

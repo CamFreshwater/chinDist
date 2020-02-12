@@ -2,6 +2,7 @@
 # January 20, 2020
 # Fit negative binomial model to catch data
 
+library(lme4)
 library(glmmTMB)
 library(tidyverse)
 
@@ -9,10 +10,13 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
   filter(!is.na(cpue)) %>% 
   mutate(area = as.factor(area),
-         month = case_when(
+         #condense gappy months necessary for convergence when estimating
+         #month:area interactions or random month slopes by area 
+         month_c = case_when(
            month %in% c("6", "7") ~ "6_7",
            TRUE ~ as.character(month)
          ),
+         month_c = as.factor(month_c),
          month = as.factor(month),
          year = as.factor(year),
          z_eff = as.numeric(scale(boatDays))) %>% 
@@ -28,7 +32,7 @@ ggplot(dailyCatch, aes(x = month, y = cpue)) +
 ggplot(dailyCatch, aes(x = month, y = eff)) +
   geom_boxplot() +
   ggsidekick::theme_sleek() +
-  facet_wrap(~reg)
+  facet_wrap(~area)
 
 ggplot(dailyCatch) +
   geom_point(aes(x = catch, y = eff)) +
@@ -42,30 +46,37 @@ table(dailyCatch$month, dailyCatch$reg)
 # and variation among years. Consider making predictions for NW and SWVI, using
 # stat area as a random effect only
 
-#nbinom2 supported rel to 1 based on aic scores
-mod1_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
-                    family = nbinom1,
+
+#nbinom1 does not converge
+# mod1_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
+#                     family = nbinom1,
+#                     data = dailyCatch)
+
+# interaction supported by aic
+mod2 <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year), 
+                    family = nbinom2,
                     data = dailyCatch)
+mod2b <- glmer.nb(catch ~ z_eff + month + (1|area) + (1|year), 
+                        #family = nbinom2,
+                        data = dailyCatch)
+# fails to converge due to data gaps
+# mod2_rs <- glmmTMB(catch ~ z_eff + month + (1 + month|area) + (1|year), 
+#                 family = nbinom2,
+#                 data = dailyCatch)
 mod2_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
                     family = nbinom2,
                     data = dailyCatch)
-mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
+# mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
+#                     family = nbinom2,
+#                     data = dailyCatch)
+mod3_nest <- glmmTMB(catch ~ z_eff + (month:reg) + (1|reg:area) + (1|year), 
                     family = nbinom2,
                     data = dailyCatch)
 
+bbmle::AICtab(mod2, mod2_int, mod3_nest)
 
 
-library(lme4)
-mod3 <- glmer.nb(catch ~ z_eff + month + reg + (1|area) + (1|year), 
-         data = monthC)
+## Check model diagnostics -----------------------------------------------------
 
-
-mod <- lmer(FL ~ zDOY + SEX + AGE + (1 | YEAR), data = FullDataset,
-            REML = FALSE)
-
-
-
-gmod_gA_L_NB2 <- glmmadmb(shells~prev+offset(log(Area))+factor(year)+(1|Site),
-                          family="nbinom",data=Gdat)
-gmod_gA_L_NB1 <- glmmadmb(shells~prev+offset(log(Area))+factor(year)+(1|Site),
-                          family="nbinom1",data=Gdat)
+mod2_resid <- DHARMa::simulateResiduals(mod2)
+plot(mod2_resid)
