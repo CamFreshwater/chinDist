@@ -52,23 +52,32 @@ table(dailyCatch$month, dailyCatch$reg)
 #                     family = nbinom1,
 #                     data = dailyCatch)
 
-# interaction supported by aic
-mod2 <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year), 
-                    family = nbinom2,
-                    data = dailyCatch)
+# mod2 <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+#                 family = nbinom2,
+#                 data = dailyCatch)
+# fit separately since different data available and interaction model can't be fit
+mod2_n <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+                  family = nbinom2,
+                  data = dailyCatch %>% filter(reg == "NWVI"))
+mod2_s <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+                  family = nbinom2,
+                  data = dailyCatch %>% filter(reg == "SWVI"))
+
+#glmer gives similar results, but much slower and has warnings
 mod2b <- glmer.nb(catch ~ z_eff + month + (1|area) + (1|year), 
                         #family = nbinom2,
                         data = dailyCatch)
+
 # fails to converge due to data gaps
 # mod2_rs <- glmmTMB(catch ~ z_eff + month + (1 + month|area) + (1|year), 
 #                 family = nbinom2,
 #                 data = dailyCatch)
-mod2_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
+
+
+mod2_reg <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year),
                     family = nbinom2,
                     data = dailyCatch)
-# mod2 <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year), 
-#                     family = nbinom2,
-#                     data = dailyCatch)
+
 mod3_nest <- glmmTMB(catch ~ z_eff + (month:reg) + (1|reg:area) + (1|year), 
                     family = nbinom2,
                     data = dailyCatch)
@@ -76,7 +85,50 @@ mod3_nest <- glmmTMB(catch ~ z_eff + (month:reg) + (1|reg:area) + (1|year),
 bbmle::AICtab(mod2, mod2_int, mod3_nest)
 
 
-## Check model diagnostics -----------------------------------------------------
+## Inference -------------------------------------------------------------------
 
+# Check model residuals
 mod2_resid <- DHARMa::simulateResiduals(mod2)
 plot(mod2_resid)
+
+
+# Check predictions
+new_dat <- data.frame(month = levels(dailyCatch$month),
+                      z_eff = 0)
+xx <- model.matrix(lme4::nobars(formula(mod2)[-2]), new_dat)
+cond_betas <- fixef(mod2)$cond
+preds <- xx %*% cond_betas
+
+
+# Simulate from model
+sims <- simulate(mod2_s, seed = 1, nsim = 1000)
+simdat <- map(sims, function(count) {
+  cbind(count, 
+        dailyCatch %>% 
+          filter(reg == "SWVI") %>% 
+          select(month, area, year)) %>%
+    group_by(month) %>% 
+    summarize(mu = mean(count))
+}) %>% 
+  bind_rows() 
+
+
+
+simdatlist=lapply(sims, function(count){
+  cbind(count, Salamanders[,c('site', 'mined', 'spp')])
+})
+simdatsums=lapply(simdatlist, function(x){
+  ddply(x, ~spp+mined, summarize,
+        absence=mean(count==0),
+        mu=mean(count))
+})
+ssd=do.call(rbind, simdatsums)
+
+
+
+zinbm3 = glmmTMB(count~spp * mined +(1|site), zi=~spp * mined, Salamanders, 
+                 family=nbinom2)
+
+
+
+
