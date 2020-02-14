@@ -8,7 +8,9 @@ library(tidyverse)
 
 dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
-  filter(!is.na(cpue)) %>% 
+  filter(!is.na(cpue),
+         #remove areas w/ very gappy data
+         area > 100) %>% 
   mutate(area = as.factor(area),
          #condense gappy months necessary for convergence when estimating
          #month:area interactions or random month slopes by area 
@@ -35,9 +37,9 @@ ggplot(dailyCatch, aes(x = month, y = eff)) +
   facet_wrap(~area)
 
 ggplot(dailyCatch) +
-  geom_point(aes(x = catch, y = eff)) +
+  geom_point(aes(x = z_eff^2, y = catch)) +
   ggsidekick::theme_sleek() +
-  facet_wrap(~month, scales = "free")
+  facet_wrap(~area, scales = "free")
 
 table(dailyCatch$month, dailyCatch$reg)
 
@@ -47,69 +49,96 @@ table(dailyCatch$month, dailyCatch$reg)
 # stat area as a random effect only
 
 
-#nbinom1 does not converge
-# mod1_int <- glmmTMB(catch ~ z_eff + (month:reg) + (1|area) + (1|year), 
-#                     family = nbinom1,
-#                     data = dailyCatch)
-
-# mod2 <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+# converges but SEs can't be estimated
+# mod2 <- glmmTMB(catch ~ z_eff + month:reg + (1|area) + (1|year),
 #                 family = nbinom2,
 #                 data = dailyCatch)
 
-# fit separately since different data available and interaction model can't be fit
+# fit regions separately since different data available and interaction model 
+# can't be fit
+# negative binomial has very poor fits due to non-linear relationship
 dc_north <- dailyCatch %>% 
-  filter(reg == "NWVI")
-mod2_n <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+  filter(reg == "NWVI") %>% 
+  mutate(z_eff = scale(eff))
+mod2_n <- glmmTMB(catch ~ (z_eff)^2 + month + (1|area) + (1|year),
                   family = nbinom2, data = dc_north)
-mod2_n_g <- glmmTMB(cpue ~ month + (1|area) + (1|year), 
-                    family=Gamma(link="log"),
-                    data = dc_north %>% filter(!cpue == "0"))
 
+no_zero_n <- dc_north %>% 
+  filter(!cpue == "0")
+mod2_n_g <- glmmTMB(cpue ~ month + (1|area) + (1|year), 
+                    family = Gamma(link = "log"),
+                    data = no_zero_n)
 
 dc_south <- dailyCatch %>% 
-  filter(reg == "SWVI")
-mod2_s <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
+  filter(reg == "SWVI") %>% 
+  mutate(z_eff = scale(eff))
+mod2_s <- glmmTMB(catch ~ (z_eff^2) + month + (1|area) + (1|year),
                   family = nbinom2, data = dc_south)
-mod2_s_g <- glmmTMB(log(cpue) ~ month + (1|area) + (1|year), data = dc_south)
-
 
 #glmer gives similar results, but much slower and has warnings
 mod2b <- glmer.nb(catch ~ z_eff + month + (1|area) + (1|year), 
                         #family = nbinom2,
                         data = dailyCatch)
 
-# fails to converge due to data gaps
-# mod2_rs <- glmmTMB(catch ~ z_eff + month + (1 + month|area) + (1|year), 
-#                 family = nbinom2,
-#                 data = dailyCatch)
+
+## Experiment with gamms given evidence of non-linearities between effort and 
+# catch which result in skewed residuals
+library(gamm4)
+mod3_n <- gamm4(catch ~ s(z_eff) + month, data=dc_north, 
+              random = ~(1|area) + (1|year),
+              family = nbinom2)
+mod3_n_nest <- gamm4(catch ~ s(z_eff) + month, data = dc_north, 
+                    random = ~(1|year:area),
+                    family = nbinom2)
+
+no_zero_n <- dc_north %>% 
+  filter(!month == "11")
+mod3_y <- gamm4(catch ~ month, data = no_zero_n, 
+                     random = ~(1|year),
+                     family = nbinom2)
+summary(mod3_y$mer)
+mod3_a <- gamm4(catch ~ s(z_eff) + month, data = no_zero_n, 
+                random = ~(1|area),
+                family = nbinom2)
 
 
-mod2_reg <- glmmTMB(catch ~ z_eff + month + reg + (1|area) + (1|year),
-                    family = nbinom2,
-                    data = dailyCatch)
 
-mod3_nest <- glmmTMB(catch ~ z_eff + (month:reg) + (1|reg:area) + (1|year), 
-                    family = nbinom2,
-                    data = dailyCatch)
+mod3_s <- gamm4(catch ~ s(z_eff) + month, data = dc_south, 
+                random = ~(1|area) + (1|year),
+                family = nbinom2)
+mod3_s_int <- gamm4(catch ~ s(z_eff) + month, data = dc_south, 
+                random = ~(month|area) + (1|year),
+                family = nbinom2)
+plot(mod3_n$gam)
+plot(mod3_n$mer)
+plot(mod3_n_int$gam)
+plot(mod3_n_int$mer)
 
-bbmle::AICtab(mod2, mod2_int, mod3_nest)
+summary(mod3_n_nest$gam)
 
+
+set.seed(0)
+dat <- gamSim(1,n=400,scale=2) ## simulate 4 term additive truth
+## Now add 20 level random effect `fac'...
+dat$fac <- fac <- as.factor(sample(1:20,400,replace=TRUE))
+dat$y <- dat$y + model.matrix(~fac-1)%*%rnorm(20)*.5
+
+br <- gamm4(y~s(x0)+x1+s(x2),data=dat,random=~(1|fac))
+summary(br$mer)
 
 ## Check model -----------------------------------------------------------------
 
 # Check model residuals w/ DHARMa 
-mod2s_resid <- DHARMa::simulateResiduals(mod2_s)
+mod2s_resid <- DHARMa::simulateResiduals(mod3_n$mer)
 plot(mod2s_resid)
 #some issues w/ residuals vs. predicted
 
 
-# res vs fitted
-# follows: https://stats.stackexchange.com/questions/423274/
-#checking-a-beta-regression-model-via-glmmtmb-with-dharma-package
-
-aa <- broom.mixed::augment(mod2_n_g, data = dc_north %>% filter(!cpue == "0"))
-aa_s <- broom.mixed::augment(mod2_s, data = dc_south)
-ggplot(aa, aes(.fitted, .resid)) +
+aa_gamm <- broom.mixed::augment(mod3_n$mer, data = dc_north)
+aa_nb <- broom.mixed::augment(mod2_n, data = dc_north)
+aa_g <- broom.mixed::augment(mod2_n_g, data = no_zero_n)
+# aa_s <- broom.mixed::augment(mod3_s$mer, data = dc_south)
+ggplot(aa_nb, aes(.fitted, .resid)) +
   geom_line(aes(group = area), colour = "gray") +
   # geom_line(aes(group = year), colour = "gray") +
   geom_point(aes(colour = month)) +
@@ -117,37 +146,49 @@ ggplot(aa, aes(.fitted, .resid)) +
   ggsidekick::theme_sleek()
 
 
-aa$.fitted0 <- predict(mod2_n, newdata = transform(dc_south, year = NA, 
+aa_gamm$.fitted0 <- predict(mod3_n$gam, newdata = transform(dc_north, year = NA, 
                                                    area = NA), 
                        type = "response")
-aa$.resid0 <- dc_south$catch - aa$.fitted0
-ggplot(aa, aes(.fitted0,.resid0)) + 
+aa_gamm$.resid0 <- dc_north$catch - aa_gamm$.fitted0
+aa_g$.fitted0 <- predict(mod2_n_g,
+                         newdata = transform(no_zero_n, year = NA, area = NA), 
+                       type = "response")
+aa_g$.resid0 <- no_zero_n$catch - aa_g$.fitted0
+aa_nb$.fitted0 <- predict(mod2_n,
+                         newdata = transform(dc_north, year = NA, area = NA), 
+                         type = "response")
+aa_nb$.resid0 <- dc_north$catch - aa_nb$.fitted0
+
+ggplot(aa_nb, aes(.fitted0,.resid0)) + 
   geom_line(aes(group=year), colour="gray") + 
   geom_point(aes(colour=month)) + 
   geom_smooth()
 
 
-aa$.fitted0 <- predict(m1.f, newdata=transform(dd,Pacients=NA),type="response")
-aa$.resid0 <- dd$prop.bio-aa$.fitted0
-gg3 <- (ggplot(aa, aes(.fitted0,.resid0))
-        + geom_line(aes(group=Pacients),colour="gray")
-        + geom_point(aes(colour=Side,shape=Product))
-        + geom_smooth()
-)
 
-m1.f <- glmmTMB(prop.bio ~ Product + (1|Pacients), data, 
-                family=list(family="beta",link="logit"))
-
-
-
-
-# Check predictions
-new_dat <- data.frame(month = levels(dailyCatch$month),
+# Check predictions of catch gamm's with neg. binomial vs. cpue glmm w/ gamma
+# glmm
+new_dat <- data.frame(month = levels(dc_north$month),
                       z_eff = 0)
-xx <- model.matrix(lme4::nobars(formula(mod2)[-2]), new_dat)
-cond_betas <- fixef(mod2)$cond
+xx <- model.matrix(lme4::nobars(formula(mod2_n_g)[-2]), new_dat)
+cond_betas <- fixef(mod2_n_g)$cond
 preds <- xx %*% cond_betas
 
+# gamm
+newdat_gamm <-  data.frame(month = levels(dc_north$month),
+                           z_eff = 0)
+preds <- predict(mod3_n$gam, newdata = newdat_gamm, se.fit = TRUE) %>% 
+  cbind(newdat_gamm, .) %>% 
+  mutate(low = fit - (1.96 * se.fit),
+         up = fit + (1.96 * se.fit),
+         month = fct_relevel(as.factor(month), "10", after = 10, "11", 
+                             after = 11, "12", after = 12))
+
+ggplot(preds, aes(x = month, y = fit)) +
+  geom_pointrange(aes(ymin = low, ymax = up), shape = 21,
+                  position = position_dodge(0.9)) +
+  # facet_wrap(~year) +
+  ggsidekick::theme_sleek()
 
 # Simulate from model
 sims <- simulate(mod2_s, seed = 1, nsim = 1000)
