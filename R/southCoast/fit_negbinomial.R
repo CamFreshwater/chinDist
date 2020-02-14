@@ -59,9 +59,10 @@ table(dailyCatch$month, dailyCatch$reg)
 mod2_n <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
                   family = nbinom2,
                   data = dailyCatch %>% filter(reg == "NWVI"))
+dc_south <- dailyCatch %>% 
+  filter(reg == "SWVI")
 mod2_s <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
-                  family = nbinom2,
-                  data = dailyCatch %>% filter(reg == "SWVI"))
+                  family = nbinom2, data = dc_south)
 
 #glmer gives similar results, but much slower and has warnings
 mod2b <- glmer.nb(catch ~ z_eff + month + (1|area) + (1|year), 
@@ -85,11 +86,37 @@ mod3_nest <- glmmTMB(catch ~ z_eff + (month:reg) + (1|reg:area) + (1|year),
 bbmle::AICtab(mod2, mod2_int, mod3_nest)
 
 
-## Inference -------------------------------------------------------------------
+## Check model -----------------------------------------------------------------
 
-# Check model residuals
-mod2_resid <- DHARMa::simulateResiduals(mod2)
-plot(mod2_resid)
+# Check model residuals w/ DHARMa 
+mod2s_resid <- DHARMa::simulateResiduals(mod2_s)
+plot(mod2s_resid)
+#some issues w/ residuals vs. predicted
+
+
+# res vs fitted
+aa <- broom.mixed::augment(mod2_s, data = dc_south)
+ggplot(aa, aes(.fitted, .resid)) +
+  geom_line(aes(group = year), colour = "gray") +
+  geom_point(aes(colour = month)) +
+  geom_smooth()
+
+https://stats.stackexchange.com/questions/423274/checking-a-beta-regression-model-via-glmmtmb-with-dharma-package
+
+ # vs fitted
+library(broom.mixed)
+aa <- augment(m1.f, data=dd)
+gg2 <- (ggplot(aa, aes(.fitted,.resid))
+        + geom_line(aes(group=Pacients),colour="gray")
+        + geom_point(aes(colour=Side,shape=Product))
+        + geom_smooth()
+)
+
+
+m1.f <- glmmTMB(prop.bio ~ Product + (1|Pacients), data, 
+                family=list(family="beta",link="logit"))
+
+
 
 
 # Check predictions
