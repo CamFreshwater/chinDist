@@ -55,14 +55,23 @@ table(dailyCatch$month, dailyCatch$reg)
 # mod2 <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
 #                 family = nbinom2,
 #                 data = dailyCatch)
+
 # fit separately since different data available and interaction model can't be fit
+dc_north <- dailyCatch %>% 
+  filter(reg == "NWVI")
 mod2_n <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
-                  family = nbinom2,
-                  data = dailyCatch %>% filter(reg == "NWVI"))
+                  family = nbinom2, data = dc_north)
+mod2_n_g <- glmmTMB(cpue ~ month + (1|area) + (1|year), 
+                    family=Gamma(link="log"),
+                    data = dc_north %>% filter(!cpue == "0"))
+
+
 dc_south <- dailyCatch %>% 
   filter(reg == "SWVI")
 mod2_s <- glmmTMB(catch ~ z_eff + month + (1|area) + (1|year),
                   family = nbinom2, data = dc_south)
+mod2_s_g <- glmmTMB(log(cpue) ~ month + (1|area) + (1|year), data = dc_south)
+
 
 #glmer gives similar results, but much slower and has warnings
 mod2b <- glmer.nb(catch ~ z_eff + month + (1|area) + (1|year), 
@@ -95,23 +104,36 @@ plot(mod2s_resid)
 
 
 # res vs fitted
-aa <- broom.mixed::augment(mod2_s, data = dc_south)
+# follows: https://stats.stackexchange.com/questions/423274/
+#checking-a-beta-regression-model-via-glmmtmb-with-dharma-package
+
+aa <- broom.mixed::augment(mod2_n_g, data = dc_north %>% filter(!cpue == "0"))
+aa_s <- broom.mixed::augment(mod2_s, data = dc_south)
 ggplot(aa, aes(.fitted, .resid)) +
-  geom_line(aes(group = year), colour = "gray") +
+  geom_line(aes(group = area), colour = "gray") +
+  # geom_line(aes(group = year), colour = "gray") +
   geom_point(aes(colour = month)) +
+  geom_smooth() +
+  ggsidekick::theme_sleek()
+
+
+aa$.fitted0 <- predict(mod2_n, newdata = transform(dc_south, year = NA, 
+                                                   area = NA), 
+                       type = "response")
+aa$.resid0 <- dc_south$catch - aa$.fitted0
+ggplot(aa, aes(.fitted0,.resid0)) + 
+  geom_line(aes(group=year), colour="gray") + 
+  geom_point(aes(colour=month)) + 
   geom_smooth()
 
-https://stats.stackexchange.com/questions/423274/checking-a-beta-regression-model-via-glmmtmb-with-dharma-package
 
- # vs fitted
-library(broom.mixed)
-aa <- augment(m1.f, data=dd)
-gg2 <- (ggplot(aa, aes(.fitted,.resid))
+aa$.fitted0 <- predict(m1.f, newdata=transform(dd,Pacients=NA),type="response")
+aa$.resid0 <- dd$prop.bio-aa$.fitted0
+gg3 <- (ggplot(aa, aes(.fitted0,.resid0))
         + geom_line(aes(group=Pacients),colour="gray")
         + geom_point(aes(colour=Side,shape=Product))
         + geom_smooth()
 )
-
 
 m1.f <- glmmTMB(prop.bio ~ Product + (1|Pacients), data, 
                 family=list(family="beta",link="logit"))
