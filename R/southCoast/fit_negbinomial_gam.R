@@ -53,8 +53,9 @@ nb <- gam(catch ~ s(eff) + month + s(year, bs = "re") + s(area, bs = "re"),
             data = dailyCatch,
             family = nb)
 # Adds a cyclic crs to month
-nb_cc <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + s(year, bs = "re") + 
-                 s(area, bs = "re"), 
+nb_cc <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+               #s(year, bs = "re") + 
+                 s(area, year, bs = "re"), 
             data = dailyCatch,
             family = nb,
             knots = list(month_n = c(1, 12)))
@@ -72,19 +73,43 @@ pois_cc_tp <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
                   data = dailyCatch,
                   family = poisson,
                   knots = list(month_n = c(1, 12)))
-# Adds a tensor product between effort and month
-nb_cc_tp2 <- gam(catch ~ te(z_eff, month_n, bs = c("tp", "cc"), m = 2) + 
-                    t2(month_n, area, bs = c("cc", "re"),
-                             m = 2, full = TRUE) + 
-                    s(year, bs = "re"), 
-                  data = dailyCatch,
-                  family = nb,
-                  knots = list(month_n = c(1, 12)))
+# Adds a tensor product between month and area, then nests area within year
+nb_cc_tp2 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+                   s(month_n, area, bs = "fs", xt = list(bs = "cc")) +
+                   s(area, year, bs = "re"), 
+                 data = dailyCatch,
+                 family = nb,
+                 knots = list(month_n = c(1, 12)))
 
-AIC(nb); AIC(nb_cc); AIC(nb_cc_tp); AIC(pois_cc_tp); AIC(nb_cc_tp2)
+# Adds a tensor product between month, area and year
+nb_cc_tp3 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+                  t2(month_n, area, year, bs = c("cc", "re", "re"), m = 2,
+                     full = TRUE), 
+                data = dailyCatch,
+                family = nb,
+                knots = list(month_n = c(1, 12)))
+
+nb_cc_tp3_fix <- gam(catch ~ s(z_eff, k = 20) + s(month_n, bs = "cc", k = 10) + 
+                   t2(month_n, area, year, bs = c("cc", "re", "re"), k = 10, m = 2,
+                      full = TRUE), 
+                 data = dailyCatch,
+                 family = nb,
+                 knots = list(month_n = c(1, 12)))
+
+
+
+
+AIC(nb); AIC(nb_cc); AIC(nb_cc_tp); AIC(nb_cc_tp2); AIC(nb_cc_tp3); AIC(nb_cc_tp3_fix)
 # poisson favored but strong evidence of overdisp so stick w/ neg binomial
 
-gam.vcomp(nb_cc_tp)
+gam.check(nb_cc_tp3)
+k.check(nb_cc_tp2)
+k.check(nb_cc_tp3_fix)
+# some evidence that default k is insufficient
+
+
+
+gam.vcomp(nb_cc_tp3)
 
 
 ## Check for overdispersion
@@ -99,8 +124,8 @@ gam.vcomp(nb_cc_tp)
 
 ## Check model -----------------------------------------------------------------
 
-plot_fits(nb_cc_tp, dat = dailyCatch, exclude = FALSE, y = "resid")
-plot_fits(nb_cc_tp, dat = dailyCatch, exclude = TRUE, y = "obs")
+plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = FALSE, y = "resid")
+plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = TRUE, y = "obs")
 
 plot_fits <- function(mod, dat, exclude = TRUE, y = "resid", nbin = TRUE) {
   fit_dat <- broom.mixed::augment(mod, data = dat)
@@ -146,61 +171,6 @@ plot_fits <- function(mod, dat, exclude = TRUE, y = "resid", nbin = TRUE) {
   }
   return(p)
 }
-
-
-
-# Check predictions of catch gamm's with neg. binomial vs. cpue glmm w/ gamma
-# glmm
-new_dat <- data.frame(month = levels(dc_north$month),
-                      z_eff = 0)
-xx <- model.matrix(lme4::nobars(formula(mod2_n_g)[-2]), new_dat)
-cond_betas <- fixef(mod2_n_g)$cond
-preds <- xx %*% cond_betas
-
-# gamm
-newdat_gamm <-  data.frame(month = levels(dc_north$month),
-                           z_eff = 0)
-preds <- predict(mod3_n$gam, newdata = newdat_gamm, se.fit = TRUE) %>% 
-  cbind(newdat_gamm, .) %>% 
-  mutate(low = fit - (1.96 * se.fit),
-         up = fit + (1.96 * se.fit),
-         month = fct_relevel(as.factor(month), "10", after = 10, "11", 
-                             after = 11, "12", after = 12))
-
-ggplot(preds, aes(x = month, y = fit)) +
-  geom_pointrange(aes(ymin = low, ymax = up), shape = 21,
-                  position = position_dodge(0.9)) +
-  # facet_wrap(~year) +
-  ggsidekick::theme_sleek()
-
-# Simulate from model
-sims <- simulate(mod2_s, seed = 1, nsim = 1000)
-simdat <- map(sims, function(count) {
-  cbind(count, 
-        dailyCatch %>% 
-          filter(reg == "SWVI") %>% 
-          select(month, area, year)) %>%
-    group_by(month) %>% 
-    summarize(mu = mean(count))
-}) %>% 
-  bind_rows() 
-
-
-
-simdatlist=lapply(sims, function(count){
-  cbind(count, Salamanders[,c('site', 'mined', 'spp')])
-})
-simdatsums=lapply(simdatlist, function(x){
-  ddply(x, ~spp+mined, summarize,
-        absence=mean(count==0),
-        mu=mean(count))
-})
-ssd=do.call(rbind, simdatsums)
-
-
-
-zinbm3 = glmmTMB(count~spp * mined +(1|site), zi=~spp * mined, Salamanders, 
-                 family=nbinom2)
 
 
 
