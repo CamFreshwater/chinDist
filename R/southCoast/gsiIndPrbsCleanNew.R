@@ -131,8 +131,7 @@ saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
 
 #Add weekly catches and sampling effort
 dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                    "dailyCatch_WCVI.rds"),
-         stringsAsFactors = FALSE) %>% 
+                    "dailyCatch_WCVI.rds")) %>% 
   dplyr::rename(statArea = area) %>% 
   mutate(statArea = as.character(statArea),
          date = as.Date(as.numeric(as.character(jDay)), 
@@ -141,7 +140,7 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")))
 weeklyCatch <- dailyCatch %>% 
   select(-catchReg) %>%
-  select(-jDay, - date, -sumCPUE) %>% 
+  select(-jDay, - date, -cpue) %>% 
   dplyr::group_by(statArea, year, month, week) %>% 
   dplyr::summarize(weeklyCatch = sum(catch),
                    weeklyEffort = sum(boatDays))
