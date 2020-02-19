@@ -49,30 +49,30 @@ table(dailyCatch$month, dailyCatch$reg)
 
 # Compare various models
 # Model 1 = month intercepts w/ RE intercepts for year and area
-nb <- gam(catch ~ s(eff) + month + s(year, bs = "re") + s(area, bs = "re"), 
-            data = dailyCatch,
-            family = nb)
-# Adds a cyclic crs to month
-nb_cc <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
-               #s(year, bs = "re") + 
-                 s(area, year, bs = "re"), 
-            data = dailyCatch,
-            family = nb,
-            knots = list(month_n = c(1, 12)))
+# nb <- gam(catch ~ s(eff) + month + s(year, bs = "re") + s(area, bs = "re"), 
+#             data = dailyCatch,
+#             family = nb)
+# # Adds a cyclic crs to month
+# nb_cc <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+#                #s(year, bs = "re") + 
+#                  s(area, year, bs = "re"), 
+#             data = dailyCatch,
+#             family = nb,
+#             knots = list(month_n = c(1, 12)))
 # Adds a tensor product between month and area
-nb_cc_tp <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
-                    te(month_n, area, bs = c("cc", "re"), m = 2) + 
-                    s(year, bs = "re"), 
+nb_cc_tp <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
+                    te(month_n, area, bs = c("cc", "re"), m = 2) +
+                    s(area, year, bs = "re"),
                data = dailyCatch,
                family = nb,
                knots = list(month_n = c(1, 12)))
 # Uses poisson instead of neg binom
-pois_cc_tp <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
-                    te(month_n, area, bs = c("cc", "re"), m = 2) + 
-                    s(year, bs = "re"), 
-                  data = dailyCatch,
-                  family = poisson,
-                  knots = list(month_n = c(1, 12)))
+# pois_cc_tp <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+#                     te(month_n, area, bs = c("cc", "re"), m = 2) + 
+#                     s(year, bs = "re"), 
+#                   data = dailyCatch,
+#                   family = poisson,
+#                   knots = list(month_n = c(1, 12)))
 # Adds a tensor product between month and area, then nests area within year
 nb_cc_tp2 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
                    s(month_n, area, bs = "fs", xt = list(bs = "cc")) +
@@ -89,25 +89,25 @@ nb_cc_tp3 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
                 family = nb,
                 knots = list(month_n = c(1, 12)))
 
-nb_cc_tp3_fix <- gam(catch ~ s(z_eff, k = 20) + s(month_n, bs = "cc", k = 10) + 
-                   t2(month_n, area, year, bs = c("cc", "re", "re"), k = 10, m = 2,
-                      full = TRUE), 
-                 data = dailyCatch,
-                 family = nb,
-                 knots = list(month_n = c(1, 12)))
+# nb_cc_tp3_fix <- gam(catch ~ s(z_eff, k = 20) + s(month_n, bs = "cc", k = 10) + 
+#                    t2(month_n, area, year, bs = c("cc", "re", "re"), k = 10, m = 2,
+#                       full = TRUE), 
+#                  data = dailyCatch,
+#                  family = nb,
+#                  knots = list(month_n = c(1, 12)))
 
 
 
 
-AIC(nb); AIC(nb_cc); AIC(nb_cc_tp); AIC(nb_cc_tp2); AIC(nb_cc_tp3); AIC(nb_cc_tp3_fix)
+# AIC(nb); AIC(nb_cc); 
+AIC(nb_cc_tp); AIC(nb_cc_tp2); AIC(nb_cc_tp3) 
+# AIC(nb_cc_tp3_fix)
 # poisson favored but strong evidence of overdisp so stick w/ neg binomial
 
 gam.check(nb_cc_tp3)
 k.check(nb_cc_tp2)
 k.check(nb_cc_tp3_fix)
 # some evidence that default k is insufficient
-
-
 
 gam.vcomp(nb_cc_tp3)
 
@@ -124,10 +124,7 @@ gam.vcomp(nb_cc_tp3)
 
 ## Check model -----------------------------------------------------------------
 
-plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = FALSE, y = "resid")
-plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = TRUE, y = "obs")
-
-plot_fits <- function(mod, dat, exclude = TRUE, y = "resid", nbin = TRUE) {
+plot_fits <- function(mod, dat, exclude = TRUE, y = "resid") {
   fit_dat <- broom.mixed::augment(mod, data = dat)
   
   if (exclude == FALSE) {
@@ -148,13 +145,9 @@ plot_fits <- function(mod, dat, exclude = TRUE, y = "resid", nbin = TRUE) {
     aa <- unique(dat$area)[1]
     
     newd <- transform(dat, year = yy)
-                      #, area = aa)
     pred <- predict(mod, newd, exclude = c("s(year)"))
     #transform predictions if using nbinom
-    if(nbin == TRUE) {
-      pred <- exp(pred)
-    }
-    fit_dat$.fitted0 <- pred
+    fit_dat$.fitted0 <- exp(pred)
     fit_dat$.resid0 <- fit_dat$catch - fit_dat$.fitted0
     
     if (y == "resid") {
@@ -172,6 +165,21 @@ plot_fits <- function(mod, dat, exclude = TRUE, y = "resid", nbin = TRUE) {
   return(p)
 }
 
+plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = FALSE, y = "resid")
+plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = TRUE, y = "obs")
 
+
+## Generate predictions with z_eff zeroed
+newDat <- expand.grid(area = unique(dailyCatch$area), 
+                      month_n = unique(dailyCatch$month_n), 
+                     year =  unique(dailyCatch$year)) %>% 
+  mutate(z_eff = 0)
+  
+
+# Make various predictions
+tail(predict(nb_cc_tp, newdata = newDat)) 
+tail(predict(nb_cc_tp2, newdata = newDat)) 
+tail(predict(nb_cc_tp, newdata = newDat, exclude = "s(area,year)")) 
+tail(predict(nb_cc_tp2, newdata = newDat, exclude = "s(area,year)")) 
 
 
