@@ -28,8 +28,14 @@ reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
       TRUE ~ regName
     ),
     regName = as.factor(abbreviate(regName, minlength = 5)),
-    pres = 1) %>%
-  dplyr::select(flatFileID, statArea, year, month, regName, pres)
+    pres = 1,
+    area_n = as.numeric(as.character(statArea)),
+    catchReg = case_when(
+      area_n < 125 & area_n > 27 ~ "SWVI",
+      area_n < 25 ~ "SWVI",
+      TRUE ~ "NWVI"
+    )) %>%
+  dplyr::select(flatFileID, statArea, year, month, regName, pres, catchReg)
 
 reg3_trim <- reg3_long %>% 
   filter(statArea == "123") %>% 

@@ -12,7 +12,8 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   filter(!is.na(cpue)) %>% 
          #remove areas w/ very gappy data
          #area > 100) %>% 
-  mutate(area = as.factor(area),
+  mutate(catchReg = as.factor(catchReg),
+         area = as.factor(area),
          #condense gappy months necessary for convergence when estimating
          #month:area interactions or random month slopes by area 
          month = as.factor(month),
@@ -89,6 +90,24 @@ nb_cc_tp3 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
                 family = nb,
                 knots = list(month_n = c(1, 12)))
 
+# Adds a tensor product between month/area and month/area/year
+nb_cc_tp4 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") + 
+                   te(month_n, area, bs = c("cc", "re"), m = 2) +
+                   t2(month_n, area, year, bs = c("cc", "re", "re"), m = 2,
+                      full = TRUE), 
+                 data = dailyCatch,
+                 family = nb,
+                 knots = list(month_n = c(1, 12)))
+
+# More complex model to estimate fixed regional effect
+nb_cc_tp5 <- gam(catch ~ s(z_eff) + #te(month_n, bs = "cc") + 
+                   s(month_n, reg, bs = "fs", xt = list(bs = "cc")) +
+                   t2(month_n, area, year, bs = c("cc", "re", "re"), m = 2,
+                      full = TRUE), 
+                 data = dailyCatch,
+                 family = nb,
+                 knots = list(month_n = c(1, 12)))
+
 # nb_cc_tp3_fix <- gam(catch ~ s(z_eff, k = 20) + s(month_n, bs = "cc", k = 10) + 
 #                    t2(month_n, area, year, bs = c("cc", "re", "re"), k = 10, m = 2,
 #                       full = TRUE), 
@@ -100,11 +119,13 @@ nb_cc_tp3 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
 
 
 # AIC(nb); AIC(nb_cc); 
-AIC(nb_cc_tp); AIC(nb_cc_tp2); AIC(nb_cc_tp3) 
+AIC(nb_cc_tp); AIC(nb_cc_tp2); AIC(nb_cc_tp3); AIC(nb_cc_tp4); AIC(nb_cc_tp5)
 # AIC(nb_cc_tp3_fix)
 # poisson favored but strong evidence of overdisp so stick w/ neg binomial
 
+gam.check(nb_cc_tp4)
 gam.check(nb_cc_tp3)
+
 k.check(nb_cc_tp2)
 k.check(nb_cc_tp3_fix)
 # some evidence that default k is insufficient
@@ -172,14 +193,90 @@ plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = TRUE, y = "obs")
 ## Generate predictions with z_eff zeroed
 newDat <- expand.grid(area = unique(dailyCatch$area), 
                       month_n = unique(dailyCatch$month_n), 
-                     year =  unique(dailyCatch$year)) %>% 
-  mutate(z_eff = 0)
-  
+                      year =  unique(dailyCatch$year)) %>% 
+  mutate(z_eff = 0) %>% 
+  left_join(., 
+            dailyCatch %>% 
+              select(reg, area) %>% 
+              distinct(),
+            by = "area")
+
 
 # Make various predictions
-tail(predict(nb_cc_tp, newdata = newDat)) 
-tail(predict(nb_cc_tp2, newdata = newDat)) 
-tail(predict(nb_cc_tp, newdata = newDat, exclude = "s(area,year)")) 
-tail(predict(nb_cc_tp2, newdata = newDat, exclude = "s(area,year)")) 
+# head(predict(nb_cc_tp, newdata = newDat)) 
+# head(predict(nb_cc_tp, newdata = newDat, exclude = "s(area,year)")) 
+# head(predict(nb_cc_tp2, newdata = newDat)) 
+# head(predict(nb_cc_tp2, newdata = newDat, exclude = "s(area,year)")) 
+head(predict(nb_cc_tp3, newdata = newDat)) 
+tt <- predict.gam(nb_cc_tp3, newdata = newDat, se.fit = T) %>% 
+  bind_cols()
+
+pred_fe <- predict(nb_cc_tp3, newdata = newDat, 
+                   exclude = "t2(month_n,area,year)")
 
 
+# Plot different models
+newDat %>% 
+  mutate(tp1 = as.numeric(predict(nb_cc_tp, newdata = newDat)),
+         tp2 = as.numeric(predict(nb_cc_tp2, newdata = newDat)),
+         tp3 = as.numeric(predict(nb_cc_tp3, newdata = newDat))) %>%
+  pivot_longer(cols = tp1:tp3,
+               names_to = "model",
+               values_to = "preds") %>% 
+  ggplot(.) +
+  geom_boxplot(aes(x = as.factor(month_n), y = preds, fill = model)) +
+  ggsidekick::theme_sleek()
+#relatively similar median estimates
+
+# compare two most saturated models
+newDat %>% 
+  mutate(preds = as.numeric(predict(nb_cc_tp4, newdata = newDat))) %>%
+  ggplot(.) +
+  geom_point(aes(x = as.factor(month_n), y = preds)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~area)
+newDat %>% 
+  mutate(preds = as.numeric(predict(nb_cc_tp5, newdata = newDat))) %>%
+  ggplot(.) +
+  geom_point(aes(x = as.factor(month_n), y = preds)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~area)
+
+
+# Extract fixed effects estimates from top model
+# Plot pooling across areas/years
+preds <- predict.gam(nb_cc_tp4, newdata = newDat, 
+                     exclude = c("te(month_n,area)",
+                                 "t2(month_n,area,year)"),
+                     se = T)
+
+mu_dat1 <- newDat %>% 
+  mutate(mu.pred = as.numeric(preds$fit),
+         se.pred = as.numeric(preds$se.fit),
+         low = mu.pred - (qnorm(0.975) * se.pred),
+         high = mu.pred + (qnorm(0.975) * se.pred)) %>% 
+  select(-area, -year) %>% 
+  distinct()
+
+ggplot(mu_dat1, aes(x = as.factor(month_n), y = mu.pred)) +
+  geom_pointrange(aes(ymin = low, ymax = high)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~reg)
+
+
+
+preds2 <- predict.gam(nb_cc_tp5, newdata = newDat, 
+                     exclude = c("t2(month_n,area,year)"),
+                     se = T)
+mu_dat2 <- newDat %>% 
+  mutate(mu.pred = as.numeric(preds2$fit),
+         se.pred = as.numeric(preds2$se.fit),
+         low = mu.pred - (qnorm(0.975) * se.pred),
+         high = mu.pred + (qnorm(0.975) * se.pred)) %>% 
+  select(-area, -year) %>% 
+  distinct()
+
+ggplot(mu_dat2, aes(x = as.factor(month_n), y = mu.pred)) +
+  geom_pointrange(aes(ymin = low, ymax = high)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~reg)
