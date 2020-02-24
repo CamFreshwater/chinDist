@@ -99,7 +99,8 @@ nb_cc_tp4 <- gam(catch ~ s(z_eff) + s(month_n, bs = "cc") +
                  family = nb,
                  knots = list(month_n = c(1, 12)))
 
-# More complex model to estimate fixed regional effect
+# More complex model to estimate fixed regional effect (consider using, but not
+# for now)
 nb_cc_tp5 <- gam(catch ~ s(z_eff) + #te(month_n, bs = "cc") + 
                    s(month_n, reg, bs = "fs", xt = list(bs = "cc")) +
                    t2(month_n, area, year, bs = c("cc", "re", "re"), m = 2,
@@ -194,12 +195,13 @@ plot_fits(nb_cc_tp3, dat = dailyCatch, exclude = TRUE, y = "obs")
 newDat <- expand.grid(area = unique(dailyCatch$area), 
                       month_n = unique(dailyCatch$month_n), 
                       year =  unique(dailyCatch$year)) %>% 
-  mutate(z_eff = 0) %>% 
-  left_join(., 
-            dailyCatch %>% 
-              select(reg, area) %>% 
-              distinct(),
-            by = "area")
+  mutate(z_eff = 0) 
+# only include if estimating fixed effects for reg %>% 
+  # left_join(., 
+  #           dailyCatch %>% 
+  #             select(reg, area) %>% 
+  #             distinct(),
+  #           by = "area")
 
 
 # Make various predictions
@@ -228,19 +230,19 @@ newDat %>%
   ggsidekick::theme_sleek()
 #relatively similar median estimates
 
-# compare two most saturated models
+# compare two most saturated models with random effects included
 newDat %>% 
   mutate(preds = as.numeric(predict(nb_cc_tp4, newdata = newDat))) %>%
   ggplot(.) +
   geom_point(aes(x = as.factor(month_n), y = preds)) +
   ggsidekick::theme_sleek() +
   facet_wrap(~area)
-newDat %>% 
-  mutate(preds = as.numeric(predict(nb_cc_tp5, newdata = newDat))) %>%
-  ggplot(.) +
-  geom_point(aes(x = as.factor(month_n), y = preds)) +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~area)
+# newDat %>% 
+#   mutate(preds = as.numeric(predict(nb_cc_tp5, newdata = newDat))) %>%
+#   ggplot(.) +
+#   geom_point(aes(x = as.factor(month_n), y = preds)) +
+#   ggsidekick::theme_sleek() +
+#   facet_wrap(~area)
 
 
 # Extract fixed effects estimates from top model
@@ -260,23 +262,6 @@ mu_dat1 <- newDat %>%
 
 ggplot(mu_dat1, aes(x = as.factor(month_n), y = mu.pred)) +
   geom_pointrange(aes(ymin = low, ymax = high)) +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~reg)
+  ggsidekick::theme_sleek() 
 
 
-
-preds2 <- predict.gam(nb_cc_tp5, newdata = newDat, 
-                     exclude = c("t2(month_n,area,year)"),
-                     se = T)
-mu_dat2 <- newDat %>% 
-  mutate(mu.pred = as.numeric(preds2$fit),
-         se.pred = as.numeric(preds2$se.fit),
-         low = mu.pred - (qnorm(0.975) * se.pred),
-         high = mu.pred + (qnorm(0.975) * se.pred)) %>% 
-  select(-area, -year) %>% 
-  distinct()
-
-ggplot(mu_dat2, aes(x = as.factor(month_n), y = mu.pred)) +
-  geom_pointrange(aes(ymin = low, ymax = high)) +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~reg)

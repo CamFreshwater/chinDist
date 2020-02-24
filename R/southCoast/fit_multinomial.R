@@ -59,15 +59,12 @@ obs_mat <- gsi_wide %>%
   as.matrix()
 
 
-.X <- model.matrix(~ month, gsi_wide)
+.X <- model.matrix(~ month + year, gsi_wide)
 
 data <- list(cov = .X, y_obs = obs_mat)
 
 
 ## RUN MODEL -------------------------------------------------------------------
-# compile("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic.cpp")
-# dyn.load(dynlib("C:/github/juvenile-salmon-index/R/multinomialPractice/multinomial_generic"))
-
 compile(here::here("R", "southCoast", "multinomial_generic.cpp"))
 dyn.load(dynlib(here::here("R", "southCoast", "multinomial_generic")))
 
