@@ -50,19 +50,22 @@ dum <- expand.grid(#year = unique(reg3_long$year),
 gsi_wide <- reg3_trim %>% 
   full_join(., dum, by = c("month", "regName", "pres")) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
-  mutate_if(is.numeric, ~replace_na(., 0))
+  mutate_if(is.numeric, ~replace_na(., 0)) %>% 
+  filter(!is.na(year))
 
 # Prep data to pass to model
 obs_mat <- gsi_wide %>% 
   select(FrsrR:WCVI) %>% 
   as.matrix()
 
-.X <- model.matrix(~ month 
-                   #+ year
-                   , gsi_wide)
+.X <- model.matrix(~ month + year, gsi_wide)
 
 data <- list(cov = .X, y_obs = obs_mat)
 
+gsi_wide %>% 
+  filter(year == "2007") %>% 
+  select(WCVI) %>% 
+  sum()
 
 ## RUN MODEL -------------------------------------------------------------------
 compile(here::here("R", "southCoast", "multinomial_generic.cpp"))
@@ -101,7 +104,7 @@ logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs", ]
 # logit_probs_mat <- r$logit_probs
 pred_ci <- data.frame(stock = rep(stk_names, each = N),
                       month = rep(months, times = k),
-                      #year = as.factor(rep(years, times = k)),
+                      year = as.factor(rep(years, times = k)),
                       logit_prob_est = logit_probs_mat[ , "Estimate"],
                       logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>% 
   mutate(pred_prob = plogis(logit_prob_est),
@@ -117,8 +120,8 @@ ggplot(pred_ci) +
   # geom_ribbon(aes(x = jday, ymin = pred_prob_low, ymax = pred_prob_up), 
   #             fill = "#bfd3e6") +
   # geom_line(aes(x = jday, y = pred_prob), col = "#810f7c", size = 1) +
-  facet_grid( ~ stock) +
-  labs(y = "Probability", x = "Year")
+  facet_grid(year ~ stock) +
+  labs(y = "Probability", x = "Month")
 
 
 
