@@ -7,7 +7,6 @@ library(tidyverse)
 library(TMB)
 library(ggplot2)
 
-
 reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "reg3RollUpCatchProb.RDS")) %>% 
   #remove all secondary IDs and uncertain IDs (less than 80%)
@@ -38,7 +37,7 @@ reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   dplyr::select(flatFileID, statArea, year, month, regName, pres, catchReg)
 
 reg3_trim <- reg3_long %>% 
-  filter(statArea == "123") %>% 
+  filter(statArea == "123") %>%
   droplevels()
 table(reg3_trim$regName, reg3_trim$month)
 
@@ -58,8 +57,9 @@ obs_mat <- gsi_wide %>%
   select(FrsrR:WCVI) %>% 
   as.matrix()
 
-
-.X <- model.matrix(~ month + year, gsi_wide)
+.X <- model.matrix(~ month 
+                   #+ year
+                   , gsi_wide)
 
 data <- list(cov = .X, y_obs = obs_mat)
 
