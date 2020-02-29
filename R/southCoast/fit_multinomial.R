@@ -37,7 +37,7 @@ reg3_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   dplyr::select(flatFileID, statArea, year, month, regName, pres, catchReg)
 
 reg3_trim <- reg3_long %>% 
-  filter(statArea == "123") %>%
+  # filter(statArea == "123") %>%
   droplevels()
 table(reg3_trim$regName, reg3_trim$month)
 
@@ -49,13 +49,14 @@ dum <- expand.grid(#year = unique(reg3_long$year),
 
 gsi_wide <- reg3_trim %>% 
   full_join(., dum, by = c("month", "regName", "pres")) %>% 
+  arrange(regName) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>% 
   filter(!is.na(year))
 
 # Prep data to pass to model
 obs_mat <- gsi_wide %>% 
-  select(FrsrR:WCVI) %>% 
+  select(Colmb:WCVI) %>% 
   as.matrix()
 
 .X <- model.matrix(~ month + year, gsi_wide)
