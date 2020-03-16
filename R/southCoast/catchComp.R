@@ -31,7 +31,7 @@ max_prob <- reg3 %>%
                                "Washington Coast", "Columbia", 
                                "Oregon/California"), 
          regName = fct_recode(regName, ECVI = "SOG", 
-                              "Washington Coast" = "Coastal Washington",
+                              # "Washington Coast" = "Coastal Washington",
                               "Columbia" = "Snake"))
 saveRDS(max_prob, here::here("generatedData", "daily_gsi_maxprob.rds"))
 

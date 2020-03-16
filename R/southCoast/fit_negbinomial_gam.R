@@ -14,8 +14,6 @@ dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          #area > 100) %>% 
   mutate(catchReg = as.factor(catchReg),
          area = as.factor(area),
-         #condense gappy months necessary for convergence when estimating
-         #month:area interactions or random month slopes by area 
          month = as.factor(month),
          month_n = as.numeric(month),
          year = as.factor(year),
@@ -248,8 +246,7 @@ newDat %>%
 # Extract fixed effects estimates from top model
 # Plot pooling across areas/years
 preds <- predict.gam(nb_cc_tp4, newdata = newDat, 
-                     exclude = c("te(month_n,area)",
-                                 "t2(month_n,area,year)"),
+                     exclude = c("t2(month_n,area,year)"),
                      se = T)
 
 mu_dat1 <- newDat %>% 
@@ -257,11 +254,12 @@ mu_dat1 <- newDat %>%
          se.pred = as.numeric(preds$se.fit),
          low = mu.pred - (qnorm(0.975) * se.pred),
          high = mu.pred + (qnorm(0.975) * se.pred)) %>% 
-  select(-area, -year) %>% 
+  select(-year) %>% 
   distinct()
 
 ggplot(mu_dat1, aes(x = as.factor(month_n), y = mu.pred)) +
   geom_pointrange(aes(ymin = low, ymax = high)) +
-  ggsidekick::theme_sleek() 
+  ggsidekick::theme_sleek() +
+  facet_wrap(~area)
 
 
