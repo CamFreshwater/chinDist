@@ -91,7 +91,7 @@ parameters <- list(z_rfac = rep(0, times = length(unique(yr_vec))),
                    log_sigma_rfac = 0)
 
 ## Make a function object
-obj <- MakeADFun(data, parameters, DLL="multinomial_hier")
+obj <- MakeADFun(data, parameters, random = c("z_rfac"), DLL="multinomial_hier")
 
 ## Call function minimizer
 opt <- nlminb(obj$par, obj$fn, obj$gr)
