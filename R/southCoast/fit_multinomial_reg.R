@@ -128,33 +128,29 @@ stk_names <- colnames(y_obs)
 N <- nrow(y_obs)
 
 #fixed effects
-catch_reg <- gsi_wide$catchReg
-years <- gsi_wide$year
-
-
-logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs", ]
-pred_ci <- data.frame(stock = rep(stk_names, each = N),
-                      # month = rep(months, times = k),
-                      catch_reg = rep(catch_reg, times = k),
-                      # year = rep(years, times = k),
+logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs_out", ]
+stock_n_vec <- as.character(rep(1:k, each = length(unique(fac_key$facs_n))))
+stock_vec <- as.character(rep(stk_names, each = length(unique(fac_key$facs_n))))
+pred_ci <- data.frame(stock_n = stock_n_vec, 
+                      stock = stock_vec, 
                       logit_prob_est = logit_probs_mat[ , "Estimate"],
-                      logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>% 
+                      logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>%
   mutate(pred_prob = plogis(logit_prob_est),
-         pred_prob_low = plogis(logit_prob_est + (qnorm(0.025) * logit_prob_se)),
-         pred_prob_up = plogis(logit_prob_est + (qnorm(0.975) * logit_prob_se))
-  ) %>%
-  distinct()
+         pred_prob_low = plogis(logit_prob_est +
+                                  (qnorm(0.025) * logit_prob_se)),
+         pred_prob_up = plogis(logit_prob_est +
+                                 (qnorm(0.975) * logit_prob_se)),
+         facs_n = rep(fac_key$facs_n, times = k)) %>%
+  left_join(., fac_key, by = "facs_n") %>%
+  select(-logit_prob_est, -logit_prob_se)
 
 ggplot(pred_ci) +
   # geom_point(aes(x = year, y = pred_prob)) +
-  geom_pointrange(aes(x = stock, y = pred_prob, ymin = pred_prob_low, 
-                      ymax = pred_prob_up)) +
+  geom_pointrange(aes(x = as.factor(month), y = pred_prob, ymin = pred_prob_low, 
+                      ymax = pred_prob_up, fill = catchReg), shape = 21) +
   # geom_ribbon(aes(x = jday, ymin = pred_prob_low, ymax = pred_prob_up), 
   #             fill = "#bfd3e6") +
   # geom_line(aes(x = jday, y = pred_prob), col = "#810f7c", size = 1) +
-  labs(y = "Probability", x = "Stock") +
-  facet_wrap(~catch_reg)
-
-
-
+  labs(y = "Probability", x = "Month") +
+  facet_wrap(stock ~ year, nrow = 4)
 
