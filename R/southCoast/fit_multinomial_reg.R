@@ -52,22 +52,22 @@ table(reg3_trim$regName, reg3_trim$year)
 # dummy dataset to replace missing values 
 dum <- expand.grid(
   year = unique(reg3_trim$year),
-  season = unique(reg3_trim$season),
+  # season = unique(reg3_trim$season),
+  month = unique(reg3_trim$month),
   catchReg = unique(reg3_trim$catchReg),
   regName = unique(reg3_trim$regName),
   pres = 1)
 
 gsi_wide <- reg3_trim %>% 
-  full_join(., dum, by = c("year", "season", "regName", "pres", "catchReg")) %>%
-  arrange(regName) %>% 
+  # sample_n(2000) %>%
+  full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
+  # arrange(regName) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>% 
   # filter(season %in% c("sp", "su")) %>% 
-  droplevels()
-# %>% 
-#   sample_n(2000)
+  droplevels() 
 
-table(gsi_wide$year, gsi_wide$season, gsi_wide$regName, gsi_wide$catchReg)
+table(gsi_wide$year, gsi_wide$month, gsi_wide$regName, gsi_wide$catchReg)
 
 
 ## RUN MODEL -------------------------------------------------------------------
@@ -79,19 +79,32 @@ y_obs <- gsi_wide %>%
   select(Colmb, FrsrR, PgtSn, Other) %>% 
   as.matrix()
 yr_vec <- as.numeric(gsi_wide$year) - 1
-fix_mm <- model.matrix(~ catchReg, gsi_wide) #fixed covariates only
+fix_mm <- model.matrix(~ catchReg + month, gsi_wide) #fixed covariates only
+
+#make combined factor levels (necessary for increasing speed of prob. estimates)
+fac_dat <- gsi_wide %>% 
+  mutate(facs = as.factor(paste(catchReg, month, year, sep = "_")),
+         facs_n = (as.numeric(facs) - 1)) %>% #subtract for indexing by 0 
+  select(catchReg, month, year, facs, facs_n)
+fac_key <- fac_dat %>% 
+  distinct() %>% 
+  arrange(facs_n)
 
 data <- list(y_obs = y_obs, #obs
              rfac = yr_vec, #random intercepts
              fx_cov = fix_mm, #fixed cov model matrix
-             n_rfac = length(unique(yr_vec))) #number of random intercepts
+             n_rfac = length(unique(yr_vec)), #number of random intercepts
+             all_fac = fac_dat$facs_n, # vector of factor combinations
+             fac_key = fac_key$facs_n #ordered unique factor combos in fac_vec
+) 
 parameters <- list(z_rfac = rep(0, times = length(unique(yr_vec))),
                    z_ints = matrix(0, nrow = ncol(fix_mm), 
                                    ncol = ncol(y_obs) - 1),
                    log_sigma_rfac = 0)
 
 ## Make a function object
-obj <- MakeADFun(data, parameters, random = c("z_rfac"), DLL="multinomial_hier")
+obj <- MakeADFun(data, parameters, random = c("z_rfac"), 
+                 DLL = "multinomial_hier")
 
 ## Call function minimizer
 opt <- nlminb(obj$par, obj$fn, obj$gr)
