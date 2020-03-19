@@ -59,7 +59,6 @@ dum <- expand.grid(
   pres = 1)
 
 gsi_wide <- reg3_trim %>% 
-  # sample_n(2000) %>%
   full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
   # arrange(regName) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
@@ -116,12 +115,6 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-r <- obj$report()
-r$probs
-r$log_odds
-r$logit_probs
-
-
 ## Plot predictions
 k <- ncol(y_obs) # number of stocks
 stk_names <- colnames(y_obs)
@@ -131,26 +124,32 @@ N <- nrow(y_obs)
 logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs_out", ]
 stock_n_vec <- as.character(rep(1:k, each = length(unique(fac_key$facs_n))))
 stock_vec <- as.character(rep(stk_names, each = length(unique(fac_key$facs_n))))
+pred_ci_pool <- data.frame(stock_n = stock_n_vec, 
+                           stock = stock_vec, 
+                           logit_prob_est = logit_probs_mat[ , "Estimate"],
+                           logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>%
+  mutate(ests = "pool",
+         facs_n = rep(fac_key$facs_n, times = k))
+
+logit_probs_mat_fe <- ssdr[rownames(ssdr) %in% "logit_probs_out_fe", ]
 pred_ci <- data.frame(stock_n = stock_n_vec, 
                       stock = stock_vec, 
-                      logit_prob_est = logit_probs_mat[ , "Estimate"],
-                      logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>%
+                      logit_prob_est = logit_probs_mat_fe[ , "Estimate"],
+                      logit_prob_se =  logit_probs_mat_fe[ , "Std. Error"]) %>%
+  mutate(ests = "fix",
+         facs_n = rep(fac_key$facs_n, times = k)) %>% 
+  rbind(pred_ci_pool, .) %>% 
   mutate(pred_prob = plogis(logit_prob_est),
          pred_prob_low = plogis(logit_prob_est +
                                   (qnorm(0.025) * logit_prob_se)),
          pred_prob_up = plogis(logit_prob_est +
-                                 (qnorm(0.975) * logit_prob_se)),
-         facs_n = rep(fac_key$facs_n, times = k)) %>%
+                                 (qnorm(0.975) * logit_prob_se))) %>%
   left_join(., fac_key, by = "facs_n") %>%
-  select(-logit_prob_est, -logit_prob_se)
+  select(-logit_prob_est, -logit_prob_se) 
 
-ggplot(pred_ci) +
-  # geom_point(aes(x = year, y = pred_prob)) +
+ggplot(pred_ci %>% filter(stock == "Colmb")) +
   geom_pointrange(aes(x = as.factor(month), y = pred_prob, ymin = pred_prob_low, 
                       ymax = pred_prob_up, fill = catchReg), shape = 21) +
-  # geom_ribbon(aes(x = jday, ymin = pred_prob_low, ymax = pred_prob_up), 
-  #             fill = "#bfd3e6") +
-  # geom_line(aes(x = jday, y = pred_prob), col = "#810f7c", size = 1) +
   labs(y = "Probability", x = "Month") +
-  facet_wrap(stock ~ year, nrow = 4)
+  facet_wrap(ests ~ year, nrow = 2)
 
