@@ -262,4 +262,5 @@ ggplot(mu_dat1, aes(x = as.factor(month_n), y = mu.pred)) +
   ggsidekick::theme_sleek() +
   facet_wrap(~area)
 
-
+saveRDS(mu_dat1, 
+        here::here("data", "gsiCatchData", "commTroll", "nbgam_preds.RDS"))

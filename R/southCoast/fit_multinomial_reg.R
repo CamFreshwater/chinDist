@@ -44,29 +44,58 @@ reg3 <- readRDS(here::here("generatedData", "daily_gsi_maxprob.rds")) %>%
                 catchReg)
 
 reg3_trim <- reg3 %>% 
+  filter(!statArea %in% c("24", "26")) %>% 
   droplevels()
 table(reg3_trim$regName, reg3_trim$month)
 table(reg3_trim$regName, reg3_trim$season, reg3_trim$catchReg)
-table(reg3_trim$regName, reg3_trim$year)
+table(reg3_trim$statArea, reg3_trim$month, reg3_trim$regName)
+table(reg3_trim$statArea, reg3_trim$catchReg)
 
 # dummy dataset to replace missing values 
 dum <- expand.grid(
-  year = unique(reg3_trim$year),
-  # season = unique(reg3_trim$season),
+  # year = unique(reg3_trim$year),
   month = unique(reg3_trim$month),
-  catchReg = unique(reg3_trim$catchReg),
+  statArea = unique(reg3_trim$statArea),
+  # catchReg = unique(reg3_trim$catchReg),
   regName = unique(reg3_trim$regName),
   pres = 1)
+#add random subset of yrs to avoid overparameterizing model
+rand_yrs <- sample(unique(reg3_trim$year), size = nrow(dum), replace = TRUE)
+dum$year <- rand_yrs
+# add one value from each strata that was observed
+dum2 <- reg3_trim %>% 
+  select(month, statArea, regName, pres) %>% 
+  distinct() %>% 
+  mutate(year = sample(unique(reg3_trim$year), size = nrow(.), replace = TRUE)) %>% 
+  rbind(., dum)
 
-gsi_wide <- reg3_trim %>% 
-  full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
-  # arrange(regName) %>% 
+gsi_wide <- reg3_trim %>%
+  # full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
+  full_join(., dum2, by = c("year", "month", "regName", "pres", "statArea")) %>%
+  mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
-  mutate_if(is.numeric, ~replace_na(., 0)) %>% 
-  # filter(season %in% c("sp", "su")) %>% 
-  droplevels() 
+  mutate_if(is.numeric, ~replace_na(., 0)) %>%
+  droplevels()
 
-table(gsi_wide$year, gsi_wide$month, gsi_wide$regName, gsi_wide$catchReg)
+# alternative way of avoiding zero values, add 1 to each category
+# dum <- expand.grid(
+#   statArea = unique(reg3_trim$statArea),
+#   year = unique(reg3_trim$year),
+#   month = unique(reg3_trim$month),
+#   regName = unique(reg3_trim$regName),
+#   pres = 1)
+# 
+# gsi_wide <- reg3_trim %>% 
+#   select(-flatFileID, -catchReg, -season) %>% 
+#   rbind(., dum) %>% 
+#   mutate(id = seq(from = 1, to = nrow(.), by = 1)) %>% 
+#   pivot_wider(., names_from = regName, values_from = pres) %>%
+#   mutate_if(is.numeric, ~replace_na(., 0)) %>% 
+#   droplevels() %>% 
+#   arrange(statArea, year, month)
+
+table(gsi_wide$year, gsi_wide$month, gsi_wide$regName, gsi_wide$statArea)
+table(gsi_wide$month, gsi_wide$regName, gsi_wide$statArea)
 
 
 ## RUN MODEL -------------------------------------------------------------------
@@ -78,13 +107,13 @@ y_obs <- gsi_wide %>%
   select(Colmb, FrsrR, PgtSn, Other) %>% 
   as.matrix()
 yr_vec <- as.numeric(gsi_wide$year) - 1
-fix_mm <- model.matrix(~ catchReg + month, gsi_wide) #fixed covariates only
+fix_mm <- model.matrix(~ statArea + month, gsi_wide) #fixed covariates only
 
 #make combined factor levels (necessary for increasing speed of prob. estimates)
 fac_dat <- gsi_wide %>% 
-  mutate(facs = as.factor(paste(catchReg, month, year, sep = "_")),
+  mutate(facs = as.factor(paste(statArea, month, year, sep = "_")),
          facs_n = (as.numeric(facs) - 1)) %>% #subtract for indexing by 0 
-  select(catchReg, month, year, facs, facs_n)
+  select(statArea, month, year, facs, facs_n)
 fac_key <- fac_dat %>% 
   distinct() %>% 
   arrange(facs_n)
@@ -109,8 +138,9 @@ obj <- MakeADFun(data, parameters, random = c("z_rfac"),
 opt <- nlminb(obj$par, obj$fn, obj$gr)
 
 ## Get parameter uncertainties and convergence diagnostics
-sdr <- sdreport(obj)
+sdr2 <- sdreport(obj, getReportCovariance = TRUE)
 sdr
+sdr2
 
 ssdr <- summary(sdr)
 ssdr
@@ -140,6 +170,7 @@ pred_ci <- data.frame(stock_n = stock_n_vec,
          facs_n = rep(fac_key$facs_n, times = k)) %>% 
   rbind(pred_ci_pool, .) %>% 
   mutate(pred_prob = plogis(logit_prob_est),
+         pred_prob_se = plogis(logit_prob_se),
          pred_prob_low = plogis(logit_prob_est +
                                   (qnorm(0.025) * logit_prob_se)),
          pred_prob_up = plogis(logit_prob_est +
@@ -147,9 +178,17 @@ pred_ci <- data.frame(stock_n = stock_n_vec,
   left_join(., fac_key, by = "facs_n") %>%
   select(-logit_prob_est, -logit_prob_se) 
 
-ggplot(pred_ci %>% filter(stock == "Colmb")) +
+pred_ci_trim <- pred_ci %>% 
+  filter(ests == "fix") %>% 
+  select(-year, -facs, -facs_n) %>% 
+  distinct()
+saveRDS(pred_ci_trim,
+        here::here("data", "gsiCatchData", "commTroll", 
+                   "multinomial_preds.RDS"))
+
+ggplot(pred_ci_trim) +
   geom_pointrange(aes(x = as.factor(month), y = pred_prob, ymin = pred_prob_low, 
-                      ymax = pred_prob_up, fill = catchReg), shape = 21) +
+                      ymax = pred_prob_up, fill = statArea), shape = 21) +
   labs(y = "Probability", x = "Month") +
-  facet_wrap(ests ~ year, nrow = 2)
+  facet_wrap(~ stock)
 
