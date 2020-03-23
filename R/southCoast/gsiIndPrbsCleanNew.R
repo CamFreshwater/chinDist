@@ -113,7 +113,9 @@ dat2 <- dat %>%
 dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                            "wcviIndProbsLong.rds"))
 
-#Roll up to regional aggregates (region 3 first)
+
+## Roll up to regional aggregates ----------------------------------------------
+# Region 3 first (i.e. large regional aggregats)
 reg3 <- dat2 %>% 
   group_by(flatFileID, Region3Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
@@ -129,6 +131,40 @@ reg3 <- dat2 %>%
 saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
                            "reg3RollUpCatchProb.RDS"))
 
+# Region 1 next (approximately equivalent to PSC groupings eg MUFR)
+reg1 <- dat2 %>% 
+  group_by(flatFileID, Region1Name) %>% 
+  dplyr::summarize(aggProb = sum(adjProb)) %>% 
+  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
+  left_join(dat %>% 
+              select(flatFileID, statArea, year, month, week, jDay, gear, 
+                     fishNum, date),
+            .,
+            by = "flatFileID") %>% 
+  distinct() %>% 
+  dplyr::rename(pscName = Region1Name)
+
+saveRDS(reg1, here::here("data", "gsiCatchData", "commTroll",
+                         "reg1RollUpCatchProb.RDS"))
+
+# Region 2 next (intermediate to 1 and 3)
+reg2 <- dat2 %>% 
+  group_by(flatFileID, Region2Name) %>% 
+  dplyr::summarize(aggProb = sum(adjProb)) %>% 
+  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
+  left_join(dat %>% 
+              select(flatFileID, statArea, year, month, week, jDay, gear, 
+                     fishNum, date),
+            .,
+            by = "flatFileID") %>% 
+  distinct() %>% 
+  dplyr::rename(pscName = Region2Name)
+
+saveRDS(reg2, here::here("data", "gsiCatchData", "commTroll",
+                         "reg2RollUpCatchProb.RDS"))
+
+
+# Compare to catch data --------------------------------------------------------
 #Add weekly catches and sampling effort
 dailyCatch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                     "dailyCatch_WCVI.rds")) %>% 
