@@ -112,7 +112,7 @@ fct_to_tmb_num <- function(x) {
 m1 <- lm(log(catch + 0.0001) ~ catchReg + month, data = catch)
 
 # make fixed effects factor key based on stock composition data
-fac_dat <- catch %>% 
+fac_dat <- gsi_wide %>% 
   mutate(facs = as.factor(paste(as.character(catchReg), 
                                 as.character(month), sep = "_")),
          #so far unable to automate this...
@@ -180,3 +180,95 @@ sdr <- sdreport(obj)
 sdr
 ssdr <- summary(sdr)
 ssdr
+
+
+# PREDICTIONS ------------------------------------------------------------------
+log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
+logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
+pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
+
+pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName), 
+                                             each = length(unique(fac_key$facs_n)))), 
+                      logit_prob_est = logit_probs[ , "Estimate"],
+                      logit_prob_se =  logit_probs[ , "Std. Error"]) %>%
+  mutate(facs_n = rep(fac_key$facs_n, times = n_groups)) %>% 
+  mutate(pred_prob = plogis(logit_prob_est),
+         pred_prob_low = plogis(logit_prob_est +
+                                  (qnorm(0.025) * logit_prob_se)),
+         pred_prob_up = plogis(logit_prob_est +
+                                 (qnorm(0.975) * logit_prob_se)),
+         abund_est = pred_abund[ , "Estimate"],
+         abund_se =  pred_abund[ , "Std. Error"],
+         abund_low = abund_est + (qnorm(0.025) * abund_se),
+         abund_up = abund_est + (qnorm(0.975) * abund_se)) %>%
+  left_join(., fac_key, by = c("facs_n")) 
+
+# calculate raw summary data for comparison
+raw_prop <- gsi_trim %>% 
+  group_by(catchReg, month, year, regName) %>%
+  summarize(samp_g = length(unique(flatFileID))) %>% 
+  group_by(catchReg, month, year) %>%
+  mutate(samp_total = sum(samp_g)) %>% 
+  ungroup() %>% 
+  mutate(samp_g_ppn = samp_g / samp_total) %>% 
+  rename(stock = regName) 
+
+raw_abund <- catch %>% 
+  group_by(catchReg, month, year) %>%
+  summarize(sum_catch = sum(catch),
+            sum_effort = sum(boatDays),
+            agg_cpue = sum_catch / sum_effort) %>% 
+  ungroup() %>% 
+  left_join(., raw_prop, by = c("catchReg", "month", "year")) %>% 
+  mutate(cpue_g = samp_g_ppn * agg_cpue,
+         catchReg = as.factor(catchReg)) %>% 
+  # rename(stock = regName) %>% 
+  filter(!is.na(stock))
+
+# combined estimates of stock-specific CPUE
+ggplot() +
+  geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
+                                      ymin = abund_low,
+                                      ymax = abund_up), col = "red") +
+  geom_point(data = raw_abund, aes(x = month, y = cpue_g),
+             alpha = 0.4) +
+  facet_wrap(stock ~ catchReg, nrow = 4, scales = "free_y") +
+  ggsidekick::theme_sleek()
+
+gsi_trim %>% 
+  filter(catchReg == "SWVI",
+         regName == "FR-Early",
+         month == "8")
+
+# estimates of stock compostion
+ggplot() +
+  geom_pointrange(data = pred_ci, aes(x = month, y = pred_prob, 
+                                      ymin = pred_prob_low,
+                                      ymax = pred_prob_up),
+                  col = "red") +
+  geom_point(data = raw_prop,
+             aes(x = month, y = samp_g_ppn),
+             alpha = 0.4) +
+  facet_wrap(stock ~ catchReg, nrow = 4, scales = "free_y") +
+  ggsidekick::theme_sleek()
+
+# estimates of aggregate CPUE
+dum <- data.frame(
+  facs_n = fac_key$facs_n,
+  raw_abund_est = log_pred[ , "Estimate"],
+  raw_abund_se = log_pred[ , "Std. Error"]) %>% 
+  mutate(
+    raw_mu = exp(raw_abund_est),
+    raw_abund_low = exp(raw_abund_est + (qnorm(0.025) * raw_abund_se)),
+    raw_abund_up = exp(raw_abund_est + (qnorm(0.975) * raw_abund_se))
+  ) %>% 
+  left_join(pred_ci, ., by = "facs_n")
+
+ggplot() +
+  geom_boxplot(data = catch, aes(x = month, y = cpue),  
+             alpha = 0.4) +
+  geom_pointrange(data = dum, aes(x =  month, y = raw_mu,
+                                  ymin = raw_abund_low,
+                                  ymax = raw_abund_up), color= "red") +
+  facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
+  ggsidekick::theme_sleek()
