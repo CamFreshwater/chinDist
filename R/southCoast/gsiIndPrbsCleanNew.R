@@ -102,7 +102,7 @@ dat <- cbind(id, datRaw) %>%
 # saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
 # stock key generated in stockKey repo
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Mar2020.rds"))
 
 dat2 <- dat %>%
   select(-Region1Name) %>%

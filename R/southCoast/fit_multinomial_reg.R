@@ -9,6 +9,7 @@ library(tidyverse)
 library(TMB)
 library(ggplot2)
 
+
 # Import various regional roll ups and initial cleaning
 # region3 roll up
 reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
@@ -24,16 +25,13 @@ reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          ),
          regName = as.factor(abbreviate(regName, minlength = 5))
   )
+reg3_key <- reg3 %>% select(flatFileID, aggName = regName)
 # region1 roll up
 reg1 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "reg1RollUpCatchProb.RDS")) %>% 
-  left_join(., reg3 %>% select(flatFileID, regName), by = "flatFileID") %>% 
-  rename(aggName = regName)
+                           "reg1RollUpCatchProb.RDS")) 
 # region1 roll up
 reg2 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "reg2RollUpCatchProb.RDS")) %>% 
-  left_join(., reg3 %>% select(flatFileID, regName), by = "flatFileID") %>% 
-  rename(aggName = regName)
+                           "reg2RollUpCatchProb.RDS")) 
 
 
 #cleaning function to filter out non-dominant assignments below threshold
@@ -75,20 +73,37 @@ clean_dat <- function(dat, threshold = 0.75) {
 #                 catchReg)
 # focus on Fraser stocks
 gsi <- reg1 %>% 
-  clean_dat() %>% 
+  clean_dat() %>%
+  left_join(., 
+            reg3_key,
+            by = "flatFileID") %>% 
   mutate(
     # regName = case_when(
     #   aggName == "Fraser River" ~ pscName,
     #   TRUE ~ "Other"
     # )
     regName = case_when(
-      aggName == "Fraser River" & grepl("TH", pscName) ~ "Thomp-Early",
+      aggName == "FrsrR" & grepl("TH", pscName) ~ "Thomp-Early",
       pscName %in% c("LWFR-Su", "LWFR-Sp", "MUFR", "UPFR") ~ "FR-Early",
       pscName == "LWFR-F" ~ "LWFR-Late",
-      aggName == "Fraser River" ~ pscName,
+      aggName == "FrsrR" ~ pscName,
       TRUE ~ "Other"
     )
     ) 
+
+gsi %>% 
+  filter(aggName == "FrsrR") %>% 
+  group_by(pscName) %>%
+  tally
+
+reg1 %>% 
+  select(flatFileID, year, month, fishNum, pscName, aggProb, aggName) %>% 
+  filter(fishNum == "40" & pscName == "Alsek")
+
+gsi %>% 
+  select(year, month, fishNum, pscName, aggProb, aggName:max_assignment, 
+         regName) %>% 
+  filter(pscName == "Alsek") 
 
 gsi_trim <- gsi %>% 
   filter(!month_n < 4,

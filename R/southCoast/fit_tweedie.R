@@ -1,6 +1,6 @@
 ## Tweedie model fit
 # March 20, 2020
-# Fit gamma model to CPUE data from WCVI troll fishery
+# Fit tweedie model to CPUE data from WCVI troll fishery
 
 library(tidyverse)
 library(TMB)
