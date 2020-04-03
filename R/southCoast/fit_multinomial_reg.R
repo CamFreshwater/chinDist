@@ -1,6 +1,6 @@
 ## Multinomial model fit
 # January 20, 2020
-# Fit multinomial model to stock composition data at regional aggregate level
+# Fit multinomial model to stock composition data at various aggregate levels
 # (assumes perfect GSI assignment); in both cases aggregate probability reflects
 # summed probabilities of a given region of origin (ie reg1 or 3) for a given
 # individual
@@ -13,105 +13,22 @@ library(ggplot2)
 # Import various regional roll ups and initial cleaning
 # region3 roll up
 reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "reg3RollUpCatchProb.RDS")) %>% 
-  mutate(regName = fct_recode(regName, ECVI = "SOG"),
-         regName = as.character(regName),
-         regName = case_when(
-           regName %in% c("Columbia", "Snake") ~ "Columbia",
-           regName %in% c("Coastal Washington", "Washington Coast",
-                          "Alaska South SE", "North/Central BC", "SOG", 
-                          "Oregon/California", "ECVI", "WCVI") ~ "Other",
-           TRUE ~ regName
-         ),
-         regName = as.factor(abbreviate(regName, minlength = 5))
-  )
-reg3_key <- reg3 %>% select(flatFileID, aggName = regName)
+                           "reg3RollUpCatchProb.RDS")) 
 # region1 roll up
-reg1 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "reg1RollUpCatchProb.RDS")) 
-# region1 roll up
-reg2 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "reg2RollUpCatchProb.RDS")) 
+reg1_fr <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
+                           "reg1RollUpCatchProb_Fraser.RDS")) 
 
-
-#cleaning function to filter out non-dominant assignments below threshold
-clean_dat <- function(dat, threshold = 0.75) {
+# Trim based on dataset
+trim_gen <- function(dat, month_range = c(1, 12)) {
   dat %>% 
-    group_by(flatFileID) %>% 
-    mutate(max_assignment = max(aggProb)) %>% 
-    # Remove samples where top stock ID is less than 75% probability
-    filter(!aggProb < max_assignment, 
-           !max_assignment < threshold) %>% 
-    ungroup() %>% 
-    distinct() %>% 
-    mutate(
-      season_c = case_when(
-        month %in% c("12", "1", "2") ~ "w",
-        month %in% c("3", "4", "5") ~ "sp",
-        month %in% c("6", "7", "8") ~ "su",
-        month %in% c("9", "10", "11") ~ "f"
-      ),
-      season = fct_relevel(season_c, "sp", "su", "f", "w"),
-      month_n = as.numeric(month),
-      month = as.factor(month_n),
-      year =  as.factor(year),
-      pres = 1,
-      area_n = as.numeric(as.character(statArea)),
-      catchReg = case_when(
-        area_n < 125 & area_n > 27 ~ "SWVI",
-        area_n < 25 ~ "SWVI",
-        TRUE ~ "NWVI"
-      ),
-      catchReg = as.factor(catchReg), 
-      statArea = as.factor(statArea)) 
+    filter(!month_n < month_range[1],
+           !month_n > month_range[2]) %>% 
+    droplevels() %>% 
+    dplyr::select(flatFileID, statArea, year, month, season, regName, 
+                  pres, catchReg) 
 }
 
-# focus on aggregates stocks
-# gsi <- reg3 %>% 
-#   clean_dat() %>% %>%
-#   dplyr::select(flatFileID, statArea, year, month, season, regName, pres, 
-#                 catchReg)
-# focus on Fraser stocks
-gsi <- reg1 %>% 
-  clean_dat() %>%
-  left_join(., 
-            reg3_key,
-            by = "flatFileID") %>% 
-  mutate(
-    # regName = case_when(
-    #   aggName == "Fraser River" ~ pscName,
-    #   TRUE ~ "Other"
-    # )
-    regName = case_when(
-      aggName == "FrsrR" & grepl("TH", pscName) ~ "Thomp-Early",
-      pscName %in% c("LWFR-Su", "LWFR-Sp", "MUFR", "UPFR") ~ "FR-Early",
-      pscName == "LWFR-F" ~ "LWFR-Late",
-      aggName == "FrsrR" ~ pscName,
-      TRUE ~ "Other"
-    )
-    ) 
-
-gsi %>% 
-  filter(aggName == "FrsrR") %>% 
-  group_by(pscName) %>%
-  tally
-
-reg1 %>% 
-  select(flatFileID, year, month, fishNum, pscName, aggProb, aggName) %>% 
-  filter(fishNum == "40" & pscName == "Alsek")
-
-gsi %>% 
-  select(year, month, fishNum, pscName, aggProb, aggName:max_assignment, 
-         regName) %>% 
-  filter(pscName == "Alsek") 
-
-gsi_trim <- gsi %>% 
-  filter(!month_n < 4,
-         !month_n > 10) %>% 
-  # filter(!statArea %in% c("24", "26")) %>% 
-  droplevels() %>% 
-  dplyr::select(flatFileID, statArea, year, month, season, regName, 
-                pres, catchReg) 
+gsi_trim <- trim_gen(reg1_fr, month_range = c(4, 10))
 
 table(gsi_trim$regName, gsi_trim$month)
 table(gsi_trim$regName, gsi_trim$season, gsi_trim$catchReg)
@@ -131,36 +48,20 @@ dum <- expand.grid(
 rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
 dum$year <- rand_yrs
 # add one value from each strata that was observed
-dum2 <- gsi_trim %>% 
-  select(month, catchReg, regName, pres) %>% 
-  distinct() %>% 
-  mutate(year = sample(unique(gsi_trim$year), size = nrow(.), replace = TRUE)) %>% 
-  rbind(., dum)
+# dum2 <- gsi_trim %>% 
+#   select(month, catchReg, regName, pres) %>% 
+#   distinct() %>% 
+#   mutate(year = sample(unique(gsi_trim$year), size = nrow(.), replace = TRUE)) %>% 
+#   rbind(., dum)
 
 gsi_wide <- gsi_trim %>%
   full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
-  # full_join(., dum2, by = c("year", "month", "regName", "pres", "statArea")) %>%
   mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>%
   droplevels()
 
-# alternative way of avoiding zero values, add 1 to each category
-# dum <- expand.grid(
-#   statArea = unique(gsi_trim$statArea),
-#   year = unique(gsi_trim$year),
-#   month = unique(gsi_trim$month),
-#   regName = unique(gsi_trim$regName),
-#   pres = 1)
-# 
-# gsi_wide <- gsi_trim %>% 
-#   select(-flatFileID, -catchReg, -season) %>% 
-#   rbind(., dum) %>% 
-#   mutate(id = seq(from = 1, to = nrow(.), by = 1)) %>% 
-#   pivot_wider(., names_from = regName, values_from = pres) %>%
-#   mutate_if(is.numeric, ~replace_na(., 0)) %>% 
-#   droplevels() %>% 
-#   arrange(statArea, year, month)
+table(gsi_wide$regName, gsi_wide$month, gsi_wide$catchReg)
 
 # table(gsi_wide$year, gsi_wide$month, gsi_wide$regName, gsi_wide$statArea)
 # table(gsi_wide$month, gsi_wide$regName, gsi_wide$statArea)

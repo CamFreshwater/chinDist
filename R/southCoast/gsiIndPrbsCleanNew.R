@@ -115,6 +115,39 @@ dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 
 ## Roll up to regional aggregates ----------------------------------------------
+
+#cleaning function to filter out non-dominant assignments below threshold
+clean_dat <- function(dat, threshold = 0.75) {
+  dat %>% 
+    group_by(flatFileID) %>% 
+    mutate(max_assignment = max(aggProb)) %>% 
+    # Remove samples where top stock ID is less than 75% probability
+    filter(!aggProb < max_assignment, 
+           !max_assignment < threshold) %>% 
+    ungroup() %>% 
+    distinct() %>% 
+    mutate(
+      season_c = case_when(
+        month %in% c("12", "1", "2") ~ "w",
+        month %in% c("3", "4", "5") ~ "sp",
+        month %in% c("6", "7", "8") ~ "su",
+        month %in% c("9", "10", "11") ~ "f"
+      ),
+      season = fct_relevel(season_c, "sp", "su", "f", "w"),
+      month_n = as.numeric(month),
+      month = as.factor(month_n),
+      year =  as.factor(year),
+      pres = 1,
+      area_n = as.numeric(as.character(statArea)),
+      catchReg = case_when(
+        area_n < 125 & area_n > 27 ~ "SWVI",
+        area_n < 25 ~ "SWVI",
+        TRUE ~ "NWVI"
+      ),
+      catchReg = as.factor(catchReg), 
+      statArea = as.factor(statArea)) 
+}
+
 # Region 3 first (i.e. large regional aggregats)
 reg3 <- dat2 %>% 
   group_by(flatFileID, Region3Name) %>% 
@@ -126,10 +159,28 @@ reg3 <- dat2 %>%
              .,
              by = "flatFileID") %>% 
   distinct() %>% 
-  dplyr::rename(regName = Region3Name)
+  dplyr::rename(regName = Region3Name) %>% 
+  # aggregate based on likely stocks of interest
+  mutate(regName = fct_recode(regName, ECVI = "SOG"),
+         regName = as.character(regName),
+         regName = case_when(
+           regName %in% c("Columbia", "Snake") ~ "Columbia",
+           regName %in% c("Coastal Washington", "Washington Coast",
+                          "Alaska South SE", "North/Central BC", "SOG", 
+                          "Oregon/California", "ECVI", "WCVI") ~ "Other",
+           TRUE ~ regName
+         ),
+         regName = as.factor(abbreviate(regName, minlength = 5))
+  ) %>% 
+  #remove non-dom assignments based on above
+  clean_dat(threshold = 0.75)
 
 saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
                            "reg3RollUpCatchProb.RDS"))
+
+#key for adding aggregates to below 
+reg3_key <- reg3 %>%
+  select(flatFileID, aggName = regName)
 
 # Region 1 next (approximately equivalent to PSC groupings eg MUFR)
 reg1 <- dat2 %>% 
@@ -142,10 +193,30 @@ reg1 <- dat2 %>%
             .,
             by = "flatFileID") %>% 
   distinct() %>% 
-  dplyr::rename(pscName = Region1Name)
+  dplyr::rename(pscName = Region1Name) %>% 
+  clean_dat() %>% 
+  left_join(.,
+            reg3_key,
+            by = "flatFileID")
 
 saveRDS(reg1, here::here("data", "gsiCatchData", "commTroll",
                          "reg1RollUpCatchProb.RDS"))
+
+# Modified region 1 with Fraser focus
+fr_reg1 <- reg1 %>%
+  mutate(
+    regName = case_when(
+      aggName == "FrsrR" & grepl("TH", pscName) ~ "Thomp-Early",
+      pscName %in% c("LWFR-Su", "LWFR-Sp", "MUFR", "UPFR") ~ "FR-Early",
+      pscName == "LWFR-F" ~ "LWFR-Late",
+      aggName == "FrsrR" ~ pscName,
+      TRUE ~ "Other"
+    )
+  ) 
+
+saveRDS(fr_reg1, here::here("data", "gsiCatchData", "commTroll",
+                         "reg1RollUpCatchProb_Fraser.RDS"))
+
 
 # Region 2 next (intermediate to 1 and 3)
 reg2 <- dat2 %>% 
@@ -158,7 +229,11 @@ reg2 <- dat2 %>%
             .,
             by = "flatFileID") %>% 
   distinct() %>% 
-  dplyr::rename(pscName = Region2Name)
+  dplyr::rename(pscName = Region2Name) %>% 
+  clean_dat() %>% 
+  left_join(.,
+            reg3_key,
+            by = "flatFileID")
 
 saveRDS(reg2, here::here("data", "gsiCatchData", "commTroll",
                          "reg2RollUpCatchProb.RDS"))
