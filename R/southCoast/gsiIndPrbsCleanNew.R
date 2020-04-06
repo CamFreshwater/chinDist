@@ -91,8 +91,14 @@ dat <- cbind(id, datRaw) %>%
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
                           "Area124_24"))
-# %>% 
-#   left_join(., stockKey, by = c("stock", "Region1Name"))
+
+# Export example GSI data to Wilf 
+dat[1:1000, ] %>% 
+  select(flatFileID:prob, stock, region = Region1Name, statArea, gear, 
+         fish_number = fishNum, 
+         date, year, month, yday = jDay) %>% 
+  write.csv(., here::here("data", "gsiCatchData", "commTroll",
+                          "example_gsi_input.csv"), row.names = FALSE)
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # stockKey repo 

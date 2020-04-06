@@ -173,6 +173,14 @@ sumCatch <- areaCatch %>%
 areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                  "fosCatch.csv"))
 
+# generate example data necessary for Wilf
+areaCatch[1:1000, ] %>% 
+  select(ESTIMATE_TYPE, OPNG_CAT,OPNG_DESC, STAT_WEEK:MGMT_AREA, 
+         CATCH_REGION:COMMENTS) %>% 
+  arrange(FISHING.YEAR, MGMT_AREA, FISHING.MONTH) %>% 
+  write.csv(., here::here("data", "gsiCatchData", "commTroll",
+                       "example_catch_input.csv"), row.names = FALSE)
+  
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
                                            format="%Y-%m-%d"))) %>% 

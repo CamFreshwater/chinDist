@@ -14,7 +14,7 @@ month_range = c(4, 10) #month range (generally chosen based on gsi data)
 
 #add dummy catch data for one month that's missing based on gsi data
 min_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                                "reg1RollUpCatchProb_Fraser.RDS"))  %>% 
+                                "reg1RollUpCatchProb_Fraser.RDS")) %>% 
   filter(catchReg == "SWVI",
          month == "7") %>%
   group_by(year) %>% 
@@ -30,7 +30,8 @@ min_catch_dat <- data.frame(catch = min_catch$n,
   mutate(cpue = catch / boatDays) %>% 
   select(catchReg:year, catch, boatDays, cpue)
 
-catch <- catch_full %>% 
+catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                            "dailyCatch_WCVI.rds")) %>% 
   rbind(., min_catch_dat) %>% 
   mutate(reg = factor(catchReg),
          area = as.factor(area),
