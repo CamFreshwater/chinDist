@@ -12,9 +12,12 @@ library(ggplot2)
 # Import Catch -----------------------------------------------------------------
 month_range = c(4, 10) #month range (generally chosen based on gsi data)
 
+# gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
+#                           "reg1RollUpCatchProb_Fraser.RDS"))
+gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                           "reg3RollUpCatchProb.RDS"))
 #add dummy catch data for one month that's missing based on gsi data
-min_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                                "reg1RollUpCatchProb_Fraser.RDS")) %>% 
+min_catch <- gsi %>% 
   filter(catchReg == "SWVI",
          month == "7") %>%
   group_by(year) %>% 
@@ -46,14 +49,6 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 
 # Import Genetics --------------------------------------------------------------
-# region3 roll up
-# reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-#                            "reg3RollUpCatchProb.RDS")) 
-# region1 roll up
-reg1_fr <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                              "reg1RollUpCatchProb_Fraser.RDS")) 
-
-
 # Trim based on dataset
 trim_gen <- function(dat, month_range = c(1, 12)) {
   dat %>% 
@@ -64,7 +59,7 @@ trim_gen <- function(dat, month_range = c(1, 12)) {
                   regName, pres, catchReg) 
 }
 
-gsi_trim <- trim_gen(reg1_fr, month_range = month_range)
+gsi_trim <- trim_gen(gsi, month_range = month_range)
 
 table(gsi_trim$regName, gsi_trim$month)
 
@@ -226,6 +221,10 @@ raw_abund <- catch %>%
   # rename(stock = regName) %>% 
   filter(!is.na(stock))
 
+pred_ci %>% 
+  filter(month == "4", catchReg == "SWVI") %>% 
+  select(facs, stock, pred_prob)
+
 # combined estimates of stock-specific CPUE
 ggplot() +
   geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
@@ -235,11 +234,6 @@ ggplot() +
              alpha = 0.4) +
   facet_wrap(stock ~ catchReg, nrow = 4, scales = "free_y") +
   ggsidekick::theme_sleek()
-
-gsi_trim %>% 
-  filter(catchReg == "SWVI",
-         regName == "FR-Early",
-         month == "8")
 
 # estimates of stock compostion
 ggplot() +
