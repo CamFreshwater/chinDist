@@ -88,8 +88,6 @@ parameters = list(
 )
 
 
-
-
 # FIT --------------------------------------------------------------------------
 # Compile
 compile(here::here("R", "southCoast", "tmb", "negbin_1re.cpp"))

@@ -10,12 +10,20 @@ library(ggplot2)
 
 
 # Import Catch -----------------------------------------------------------------
-month_range = c(1, 12) #month range (generally chosen based on gsi data)
-
 # gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
 #                           "reg1RollUpCatchProb_Fraser.RDS"))
 gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "reg3RollUpCatchProb.RDS"))
+                          "reg3RollUpCatchProb.RDS"))
+# pull months that are common to both strata and subset
+comm_months <- gsi %>% 
+  select(catchReg, month) %>% 
+  distinct() %>% 
+  split(., .$catchReg) %>% 
+  map(., function(x) x %>% pull(as.numeric(month))) %>% 
+  Reduce(intersect, .)
+#alternatively select a range of months to utilize
+month_range = c(1, 12) #month range (generally chosen based on gsi data)
+
 #add dummy catch data for one month that's missing based on gsi data
 min_catch <- gsi %>% 
   filter(catchReg == "SWVI",
@@ -42,8 +50,11 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          month = as.factor(month_n),
          year = as.factor(year)) %>% 
   filter(!is.na(cpue),
+         #first constrain by range
          !month_n < month_range[1],
-         !month_n > month_range[2]) %>% 
+         !month_n > month_range[2],
+         #then drop missing months
+         month_n %in% comm_months) %>% 
   droplevels() %>% 
   arrange(catchReg, month)
 
@@ -62,6 +73,7 @@ trim_gen <- function(dat, month_range = c(1, 12)) {
 gsi_trim <- trim_gen(gsi, month_range = month_range)
 
 table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
+table(catch$month, catch$catchReg)
 
 # multinomial model won't converge if fixed effects have 0 counts, add one to
 # all categories where this occurs
@@ -126,8 +138,11 @@ fac_dat <- gsi_wide %>%
   mutate(facs = as.factor(paste(as.character(catchReg), 
                                 as.character(month), sep = "_")),
          #so far unable to automate this...
-         facs = fct_relevel(facs, "NWVI_10", after = 7),
-         facs = fct_relevel(facs, "SWVI_10", after = Inf),
+         # facs = fct_relevel(facs, "NWVI_10", after = 7),
+         # facs = fct_relevel(facs, "SWVI_10", after = Inf),
+         facs = fct_reorder2(facs,  
+                             desc(as.numeric(as.character(month))),
+                             desc(catchReg)),
          facs_n = as.numeric(facs) - 1) %>% 
   select(catchReg, month, facs, facs_n)
 fac_key <- fac_dat %>% 
@@ -194,6 +209,10 @@ ssdr
 saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_.RDS"))
 
 # PREDICTIONS ------------------------------------------------------------------
+
+ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_.RDS"))
+
+
 log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
 logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
 pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
@@ -235,10 +254,6 @@ raw_abund <- catch %>%
          catchReg = as.factor(catchReg)) %>% 
   # rename(stock = regName) %>% 
   filter(!is.na(stock))
-
-pred_ci %>% 
-  filter(month == "4", catchReg == "SWVI") %>% 
-  select(facs, stock, pred_prob)
 
 # combined estimates of stock-specific CPUE
 ggplot() +
