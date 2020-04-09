@@ -93,12 +93,12 @@ dat <- cbind(id, datRaw) %>%
                           "Area124_24"))
 
 # Export example GSI data to Wilf 
-dat[1:1000, ] %>% 
-  select(flatFileID:prob, stock, region = Region1Name, statArea, gear, 
-         fish_number = fishNum, 
-         date, year, month, yday = jDay) %>% 
-  write.csv(., here::here("data", "gsiCatchData", "commTroll",
-                          "example_gsi_input.csv"), row.names = FALSE)
+# dat[1:1000, ] %>% 
+#   select(flatFileID:prob, stock, region = Region1Name, statArea, gear, 
+#          fish_number = fishNum, 
+#          date, year, month, yday = jDay) %>% 
+#   write.csv(., here::here("data", "gsiCatchData", "commTroll",
+#                           "example_gsi_input.csv"), row.names = FALSE)
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # stockKey repo 
@@ -208,6 +208,10 @@ reg1 <- dat2 %>%
 saveRDS(reg1, here::here("data", "gsiCatchData", "commTroll",
                          "reg1RollUpCatchProb.RDS"))
 
+tt <- fr_reg1B %>% 
+  filter(aggName == "FrsrR")
+table(tt$pscName, tt$month_n)
+
 # Modified region 1 with Fraser focus
 fr_reg1 <- reg1 %>%
   mutate(
@@ -219,9 +223,24 @@ fr_reg1 <- reg1 %>%
       TRUE ~ "Other"
     )
   ) 
-
 saveRDS(fr_reg1, here::here("data", "gsiCatchData", "commTroll",
-                         "reg1RollUpCatchProb_Fraser.RDS"))
+                            "reg1RollUpCatchProb_Fraser.RDS"))
+# alternative option w/ finer resolution 
+fr_reg1B <- reg1 %>%
+  mutate(
+    regName = case_when(
+      pscName == "SOTH" ~ "South Thomp.",
+      pscName %in% c("LWTH", "NOTH") ~ "Thomp. 1.x",
+      pscName %in% c("LWFR-Su", "LWFR-Sp", "MUFR", "UPFR") ~ "FR 1.x",
+      pscName == "LWFR-F" ~ "FR-Fall",
+      aggName == "FrsrR" ~ pscName,
+      TRUE ~ "Other"
+    )
+  ) 
+saveRDS(fr_reg1B, here::here("data", "gsiCatchData", "commTroll",
+                            "reg1RollUpCatchProb_FraserB.RDS"))
+table(fr_reg1$regName, fr_reg1$month_n)
+table(fr_reg1B$regName, fr_reg1B$month_n)
 
 
 # Region 2 next (intermediate to 1 and 3)

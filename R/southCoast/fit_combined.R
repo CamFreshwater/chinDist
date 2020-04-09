@@ -10,10 +10,11 @@ library(ggplot2)
 
 
 # Import Catch -----------------------------------------------------------------
-# gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-#                           "reg1RollUpCatchProb_Fraser.RDS"))
 gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                          "reg3RollUpCatchProb.RDS"))
+                          "reg1RollUpCatchProb_FraserB.RDS"))
+# gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+#                           "reg3RollUpCatchProb.RDS"))
+
 # pull months that are common to both strata and subset
 comm_months <- gsi %>% 
   select(catchReg, month) %>% 
@@ -21,9 +22,16 @@ comm_months <- gsi %>%
   split(., .$catchReg) %>% 
   map(., function(x) x %>% pull(as.numeric(month))) %>% 
   Reduce(intersect, .)
-#alternatively select a range of months to utilize
-month_range = c(1, 12) #month range (generally chosen based on gsi data)
-
+#select a range of months to utilize based on fraser focus or aggregate 
+#and spatial strata based on data availability
+if(is.null(gsi$pscName)) {
+  month_range <- c(1, 12)
+  sp_var = "area"
+} else {
+  month_range <- c(3, 9)
+  sp_var = "reg"
+}
+                      
 #add dummy catch data for one month that's missing based on gsi data
 min_catch <- gsi %>% 
   filter(catchReg == "SWVI",
@@ -56,7 +64,15 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          #then drop missing months
          month_n %in% comm_months) %>% 
   droplevels() %>% 
-  arrange(catchReg, month)
+  arrange(catchReg, area, month)
+
+# if(is.null(gsi$pscName)) {
+#   catch <- catch %>% 
+#     mutate(sp_var = "area")
+# } else {
+#   month_range <- c(4, 10)
+#   sp_var = "reg"
+# }
 
 
 # Import Genetics --------------------------------------------------------------
@@ -72,7 +88,9 @@ trim_gen <- function(dat, month_range = c(1, 12)) {
 
 gsi_trim <- trim_gen(gsi, month_range = month_range)
 
+# sp_var_g <- gsi_trim %>% pull(sp_var)
 table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
+# sp_var_c <- catch %>% pull(sp_var)
 table(catch$month, catch$catchReg)
 
 # multinomial model won't converge if fixed effects have 0 counts, add one to
@@ -96,7 +114,7 @@ missing_sample_events <- anti_join(dum, gsi_trim,
 infill_data <- do.call("rbind", replicate(length(stock_names), 
                                           missing_sample_events, 
                                           simplify = FALSE)) %>% 
-  mutate(regName = stock_names)
+  mutate(regName = rep(stock_names, each = nrow(missing_sample_events)))
 
 # combine and check for no zeros
 temp <- gsi_trim %>%
@@ -116,8 +134,11 @@ gsi_wide <- temp %>%
 # Prep Data for TMB ------------------------------------------------------------
 
 # fixed effects model matrices
-fix_mm_c <- model.matrix(~ catchReg + month, data = catch)
-fix_mm_gsi <- model.matrix(~ catchReg + month, data = gsi_wide)
+# form_c <- paste("~ -1 + (catchReg : month)")
+form_c <- paste("~ catchReg + month")
+form <- formula(form_c)
+fix_mm_c <- model.matrix(form, data = catch)
+fix_mm_gsi <- model.matrix(form, data = gsi_wide)
 
 # observed stock composition
 y_obs <- gsi_wide %>% 
@@ -131,25 +152,25 @@ fct_to_tmb_num <- function(x) {
 }
 
 # fit dummy model to speed up tweedie estimates
-m1 <- lm(log(catch + 0.0001) ~ catchReg + month, data = catch)
+form2 <- formula(paste("log(catch + 0.0001)", form_c, sep = ""))
+m1 <- lm(form2, data = catch)
 
 # make fixed effects factor key based on stock composition data
 fac_dat <- gsi_wide %>% 
   mutate(facs = as.factor(paste(as.character(catchReg), 
                                 as.character(month), sep = "_")),
-         #so far unable to automate this...
-         # facs = fct_relevel(facs, "NWVI_10", after = 7),
-         # facs = fct_relevel(facs, "SWVI_10", after = Inf),
-         facs = fct_reorder2(facs,  
+         facs = fct_reorder2(facs, 
                              desc(as.numeric(as.character(month))),
                              desc(catchReg)),
+         # facs = fct_relevel(facs, "SWVI_10", after = 7),
+         # facs = fct_relevel(facs, "NWVI_10", after = Inf),
          facs_n = as.numeric(facs) - 1) %>% 
   select(catchReg, month, facs, facs_n)
 fac_key <- fac_dat %>% 
   distinct() %>% 
   arrange(facs_n)
 # predictive model matrix
-mm_pred <- model.matrix(~ catchReg + month, data = fac_key)
+mm_pred <- model.matrix(form, data = fac_key)
 
 # other parameters
 n_groups <- ncol(y_obs)
@@ -206,19 +227,23 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_.RDS"))
+# saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
+saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 
 # PREDICTIONS ------------------------------------------------------------------
 
-ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_.RDS"))
+#frB versions have a different subset of stocks and months at finer spatial scale
+ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_fr_int.RDS"))
+# ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
 
 
 log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
 logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
 pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
 
-pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName), 
-                                             each = length(unique(fac_key$facs_n)))), 
+pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
+                                               each = 
+                                                 length(unique(fac_key$facs_n)))), 
                       logit_prob_est = logit_probs[ , "Estimate"],
                       logit_prob_se =  logit_probs[ , "Std. Error"]) %>%
   mutate(facs_n = rep(fac_key$facs_n, times = n_groups)) %>% 
@@ -232,6 +257,7 @@ pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
          abund_low = abund_est + (qnorm(0.025) * abund_se),
          abund_up = abund_est + (qnorm(0.975) * abund_se)) %>%
   left_join(., fac_key, by = c("facs_n")) 
+
 
 # calculate raw summary data for comparison
 raw_prop <- gsi_trim %>% 
@@ -255,6 +281,18 @@ raw_abund <- catch %>%
   # rename(stock = regName) %>% 
   filter(!is.na(stock))
 
+agg_abund <- data.frame(
+  facs_n = fac_key$facs_n,
+  raw_abund_est = log_pred[ , "Estimate"],
+  raw_abund_se = log_pred[ , "Std. Error"]) %>% 
+  mutate(
+    raw_mu = exp(raw_abund_est),
+    raw_abund_low = exp(raw_abund_est + (qnorm(0.025) * raw_abund_se)),
+    raw_abund_up = exp(raw_abund_est + (qnorm(0.975) * raw_abund_se))
+  ) %>% 
+  left_join(pred_ci, ., by = "facs_n")
+
+
 # combined estimates of stock-specific CPUE
 ggplot() +
   geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
@@ -262,7 +300,7 @@ ggplot() +
                                       ymax = abund_up), col = "red") +
   geom_point(data = raw_abund, aes(x = month, y = cpue_g),
              alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = 4, scales = "free_y") +
+  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
   ggsidekick::theme_sleek()
 
 # estimates of stock compostion
@@ -274,26 +312,44 @@ ggplot() +
   geom_point(data = raw_prop,
              aes(x = month, y = samp_g_ppn),
              alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = 4, scales = "free_y") +
+  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
   ggsidekick::theme_sleek()
 
 # estimates of aggregate CPUE
-dum <- data.frame(
-  facs_n = fac_key$facs_n,
-  raw_abund_est = log_pred[ , "Estimate"],
-  raw_abund_se = log_pred[ , "Std. Error"]) %>% 
-  mutate(
-    raw_mu = exp(raw_abund_est),
-    raw_abund_low = exp(raw_abund_est + (qnorm(0.025) * raw_abund_se)),
-    raw_abund_up = exp(raw_abund_est + (qnorm(0.975) * raw_abund_se))
-  ) %>% 
-  left_join(pred_ci, ., by = "facs_n")
-
 ggplot() +
   geom_boxplot(data = catch, aes(x = month, y = cpue),  
              alpha = 0.4) +
-  geom_pointrange(data = dum, aes(x =  month, y = raw_mu,
+  geom_pointrange(data = agg_abund, aes(x =  month, y = raw_mu,
                                   ymin = raw_abund_low,
                                   ymax = raw_abund_up), color= "red") +
   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
   ggsidekick::theme_sleek()
+
+
+## export plotting data for Rmd
+list(pred_ci, raw_prop, raw_abund, agg_abund) %>% 
+  saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
+
+
+# look at predicted cumulative abundance
+plot_cum_dens <- function(dat, station = "JDF") {
+  dat %>% 
+    filter(project_name == station) %>% 
+    ggplot(., aes(yday, colour = CU)) +
+    stat_ecdf()
+}
+
+pred_ci %>% 
+  group_by(stock) %>% 
+  mutate(total_abund = sum(abund_est),
+         cum_abund = cumsum(abund_est) / total_abund) %>%
+  ungroup() %>% 
+  ggplot(., aes(x = month, y = cum_abund, colour = stock)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~catchReg)
+
+
+ggplot(pred_ci, aes(month, colour = stock)) +
+  stat_ecdf() +
+  facet_wrap(~catchReg)
