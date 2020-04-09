@@ -10,7 +10,7 @@ library(ggplot2)
 
 
 # Import Catch -----------------------------------------------------------------
-month_range = c(4, 10) #month range (generally chosen based on gsi data)
+month_range = c(1, 12) #month range (generally chosen based on gsi data)
 
 # gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
 #                           "reg1RollUpCatchProb_Fraser.RDS"))
@@ -61,26 +61,40 @@ trim_gen <- function(dat, month_range = c(1, 12)) {
 
 gsi_trim <- trim_gen(gsi, month_range = month_range)
 
-table(gsi_trim$regName, gsi_trim$month)
+table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
 
+# multinomial model won't converge if fixed effects have 0 counts, add one to
+# all categories where this occurs
 # dummy dataset to replace missing values 
+stock_names <- unique(gsi_trim$regName)
 dum <- expand.grid(
   month = unique(gsi_trim$month),
   catchReg = unique(gsi_trim$catchReg),
-  regName = unique(gsi_trim$regName),
+  regName = stock_names,
   pres = 1)
 #add random subset of yrs to avoid overparameterizing model
 rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
 dum$year <- rand_yrs
+#retain only values from the dummy set that are not already present
+missing_sample_events <- anti_join(dum, gsi_trim,
+                      by = c("month", "regName", "pres", "catchReg")) %>% 
+  select(-regName) %>% 
+  distinct()
+#duplicate for all stocks (to balance the addition)
+infill_data <- do.call("rbind", replicate(length(stock_names), 
+                                          missing_sample_events, 
+                                          simplify = FALSE)) %>% 
+  mutate(regName = stock_names)
 
+# combine and check for no zeros
 temp <- gsi_trim %>%
-  full_join(., dum, by = c("year", "month", "regName", "pres", "catchReg")) %>%
+  full_join(., infill_data, 
+            by = c("year", "month", "regName", "pres", "catchReg")) %>%
   mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1))
-
-# check for no zeros
 table(temp$regName, temp$month, temp$catchReg)
 table(catch$month, catch$catchReg)
 
+# spread
 gsi_wide <- temp %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>%
@@ -177,6 +191,7 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
+saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_.RDS"))
 
 # PREDICTIONS ------------------------------------------------------------------
 log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance

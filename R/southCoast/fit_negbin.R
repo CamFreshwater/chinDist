@@ -20,7 +20,8 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          year = as.factor(year),
          log_cpue = log(cpue + 0.0001),
          eff_z = as.numeric(scale(eff)),
-         eff_z2 = eff_z^2) %>% 
+         eff_z2 = eff_z^2,
+         eff_z3 = eff_z^3) %>% 
   arrange(catchReg, month)
 hist(catch$cpue)
 hist(catch$catch)
@@ -64,7 +65,20 @@ data <- list(y1_i = catch$catch,
 
 # Fit simple model to initialize tmb
 # m1 <- lm(log(catch + 0.0001) ~ catchReg + month + eff_z + eff_z2, data = catch)
-m1 <- lm(log(catch + 0.0001) ~ -1 + (catchReg : month) + eff_z + eff_z2, data = catch)
+m1 <- lm(log(catch + 0.0001) ~ -1 + (catchReg : month) + eff_z + eff_z2, 
+         data = catch)
+m2 <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z, data = catch, 
+                       family = glmmTMB::nbinom2(link = "log")
+)
+m2a <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2, data = catch, 
+                       family = glmmTMB::nbinom2(link = "log")
+)
+m2b <- glmmTMB::glmmTMB(catch ~ -1 + (catchReg : month) + eff_z + eff_z2, data = catch, 
+                        family = glmmTMB::nbinom2(link = "log")
+)
+summary(m2)
+summary(m2a)
+summary(m2b)
 
 parameters = list(
   b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
@@ -93,8 +107,12 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
+saveRDS(ssdr, here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
+
 
 # PREDICTIONS ------------------------------------------------------------------
+
+ssdr <- readRDS(here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
 
 ## Plot predictions
 log_pred_fe <- ssdr[rownames(ssdr) %in% "log_prediction", ]
@@ -129,6 +147,11 @@ ggplot() +
 ggplot(catch) +
   geom_point(aes(x = eff_z, y = catch), 
              alpha = 0.2) +
-  stat_function(fun = function(x) exp(4.3 + 1.91*x + (-0.28*(x^2))))
+  lims(x = c(0, 4)) +
+  # stat_function(fun = function(x) 204 + 412*x)
+  stat_function(fun = function(x) exp(4.13 + 1.873*x - 0.2662*x^2)) +
+  stat_function(fun = function(x) exp(3.99 + 1.275*x), color = "blue") +
+  stat_function(fun = function(x) exp(4.34 + 1.876*x - 0.263*x^2), color = "red")
+
 
 xx <- rnbinom(10000, mu = pred_ci$pred_est, size = exp(0.154))
