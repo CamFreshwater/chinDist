@@ -233,7 +233,7 @@ saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 # PREDICTIONS ------------------------------------------------------------------
 
 #frB versions have a different subset of stocks and months at finer spatial scale
-ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_fr_int.RDS"))
+ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 # ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
 
 
@@ -327,7 +327,8 @@ ggplot() +
 
 
 ## export plotting data for Rmd
-list(pred_ci, raw_prop, raw_abund, agg_abund) %>% 
+list(pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
+           raw_agg_abund = agg_abund) %>% 
   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
 
 

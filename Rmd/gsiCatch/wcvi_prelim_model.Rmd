@@ -1,0 +1,23 @@
+---
+title: "Initial Westcoast GSI Predictions"
+output: word_document
+---
+
+```{r initial_data, include=FALSE}
+library(tidyverse)
+
+plot_list <- readRDS(here::here("generatedData", "model_fits",
+                                "frB_plot_list.RDS"))
+
+# reorder factor levels
+stk_plot_list <- map(plot_list[1:3], function(x) 
+  x %>% 
+    mutate(stock = fct_relevel(stock, "FR 1.x", "Thomp. 1.x", "FR-Fall", 
+                               "South Thomp.", "Other")))
+```
+
+The goal of this modeling approach is to leverage existing catch/effort and genetics data to predict the abundance of stock groups of interest at finer ecological, spatial, and temporal scales than permitted with coded wire tag data alone. The basic premise is to simultaneously estimate abundance and stock composition by integrating two models, which allows uncertainty to be more fully accounted for. By using a hierarchical model that treats sampling year as a random intercept, we can generate predictions of abundance in an "average" year, while accounting for interannual changes in sampling effort or fishery closures. 
+
+The scale at which spatio-temporal predictions can be made is a function of data availability because the stock composition component of the model requires non-zero data (i.e. a stock can be at very low abundance but cannot be absent). This issue can be resolved by aggregating stocks or aggregating time/area strata. As more data are added to the model, this becomes less of an issue.
+
+Here we show preliminary predictions of abundance and stock composition for four different pooled Fraser River stock aggregates: Fraser River yearlings (predominantly lower Fraser spring/summer runs, as well as middle and upper Fraser fish), Thompson yearlings, Fraser River subyearlings (predominantly lower Fraser River fall run), and South Thompson. We constrained the predictions to only March through September due to very low sample sizes of early run fish late in the year. 

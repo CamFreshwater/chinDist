@@ -225,6 +225,8 @@ fr_reg1 <- reg1 %>%
   ) 
 saveRDS(fr_reg1, here::here("data", "gsiCatchData", "commTroll",
                             "reg1RollUpCatchProb_Fraser.RDS"))
+fr_reg1 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                            "reg1RollUpCatchProb_Fraser.RDS"))
 # alternative option w/ finer resolution 
 fr_reg1B <- reg1 %>%
   mutate(
