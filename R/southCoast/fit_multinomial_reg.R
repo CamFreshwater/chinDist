@@ -84,10 +84,10 @@ fix_mm <- model.matrix(~ catchReg + month, gsi_wide) #fixed covariates only
 
 #make combined factor levels (necessary for increasing speed of prob. estimates)
 fac_dat <- gsi_wide %>% 
-  mutate(facs = as.factor(paste(catchReg, month, year, sep = "_")),
+  mutate(facs = as.factor(paste(catchReg, month, sep = "_")),
          #facs = as.factor(paste(statArea, month, year, sep = "_")),
          facs_n = (as.numeric(facs) - 1)) %>% #subtract for indexing by 0 
-  select(catchReg, month, year, facs, facs_n)
+  select(catchReg, month, facs, facs_n)
 fac_key <- fac_dat %>% 
   distinct() %>% 
   arrange(facs_n)

@@ -126,16 +126,16 @@ pred_ci <- data.frame(log_pred_est = log_pred_fe[ , "Estimate"],
   left_join(., fac_key, by = "facs_n") 
 
 ggplot() +
-  geom_boxplot(data = catch %>% filter(!catch == 0), 
-               aes(x = as.factor(month), y = log(catch)), alpha = 0.2) +
+  geom_boxplot(data = catch, 
+               aes(x = as.factor(month), y = log(catch + 0.001)), alpha = 0.2) +
   geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = log_pred_est,
                                       ymin = log_pred_low, 
                                       ymax = log_pred_up)) +
   ggsidekick::theme_sleek() +
   facet_wrap(~catchReg)
 
-ggplot() +
-  geom_boxplot(data = catch, aes(x = as.factor(month), y = catch), 
+pred_catch <- ggplot() +
+  geom_boxplot(data = catch, aes(x = as.factor(month), y = catch / eff_z), 
                alpha = 0.2) +
   geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = pred_est,
                                       ymin = pred_low, ymax = pred_up)) +
@@ -153,3 +153,11 @@ ggplot(catch) +
 
 
 xx <- rnbinom(10000, mu = pred_ci$pred_est, size = exp(0.154))
+
+
+pdf(here::here("figs", "model_pred", "nb_catch_pred.pdf"),
+    height = 4.5, width = 6)
+pred_catch
+pred_catch +
+  lims(y = c(0, 1000))
+dev.off()

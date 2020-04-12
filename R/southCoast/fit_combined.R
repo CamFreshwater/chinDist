@@ -1,6 +1,6 @@
 ## Combined model fits
 # April 3, 2020
-# Fit combined multionomial/tweedie model to stock composition and abundnace data
+# Fit combined multionomial/tweedie model to stock composition and abundance data
 # aggregate probability reflects summed probabilities of a given region of 
 # origin (ie reg1 or 3) for a given individual
 
@@ -28,7 +28,7 @@ if(is.null(gsi$pscName)) {
   month_range <- c(1, 12)
   sp_var = "area"
 } else {
-  month_range <- c(3, 9)
+  month_range <- c(3, 10)
   sp_var = "reg"
 }
                       
@@ -93,42 +93,52 @@ table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
 # sp_var_c <- catch %>% pull(sp_var)
 table(catch$month, catch$catchReg)
 
-# multinomial model won't converge if fixed effects have 0 counts, add one to
-# all categories where this occurs
+# multinomial model predictions are a little wonky w/ missing values - this is 
+# one infilling option (currently not used)
 # dummy dataset to replace missing values 
-stock_names <- unique(gsi_trim$regName)
-dum <- expand.grid(
-  month = unique(gsi_trim$month),
-  catchReg = unique(gsi_trim$catchReg),
-  regName = stock_names,
-  pres = 1)
-#add random subset of yrs to avoid overparameterizing model
-rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
-dum$year <- rand_yrs
-#retain only values from the dummy set that are not already present
-missing_sample_events <- anti_join(dum, gsi_trim,
-                      by = c("month", "regName", "pres", "catchReg")) %>% 
-  select(-regName) %>% 
-  distinct()
-#duplicate for all stocks (to balance the addition)
-infill_data <- do.call("rbind", replicate(length(stock_names), 
-                                          missing_sample_events, 
-                                          simplify = FALSE)) %>% 
-  mutate(regName = rep(stock_names, each = nrow(missing_sample_events)))
-
-# combine and check for no zeros
-temp <- gsi_trim %>%
-  full_join(., infill_data, 
-            by = c("year", "month", "regName", "pres", "catchReg")) %>%
-  mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1))
-table(temp$regName, temp$month, temp$catchReg)
-table(catch$month, catch$catchReg)
+# stock_names <- unique(gsi_trim$regName)
+# #retain only values from the dummy set that are not already present
+# missing_sample_events <- expand.grid(
+#   flatFileID = NA,
+#   statArea = NA,
+#   year = NA,
+#   month = unique(gsi_trim$month),
+#   month_n = NA,
+#   season = NA,
+#   regName = stock_names,
+#   pres = 1, 
+#   catchReg = unique(gsi_trim$catchReg)
+#   ) %>% 
+#   anti_join(., gsi_trim,
+#                       by = c("month", "regName", "pres", "catchReg")) %>% 
+#   select(-regName) %>% 
+#   distinct()
+# #add random subset of yrs to avoid overparameterizing model
+# rand_yrs <- sample(unique(gsi_trim$year), size = nrow(missing_sample_events), 
+#                    replace = TRUE)
+# missing_sample_events$year <- rand_yrs
+# 
+# #duplicate for all stocks (to balance the addition)
+# infill_data <- do.call("rbind", replicate(length(stock_names), 
+#                                           missing_sample_events, 
+#                                           simplify = FALSE)) %>% 
+#   mutate(regName = rep(stock_names, each = nrow(missing_sample_events))) %>% 
+#   select(flatFileID:season, regName, pres, catchReg)
+# 
+# # combine and check for no zeros
+# temp <- gsi_trim %>%
+#   rbind(., infill_data)
+#   # full_join(., infill_data, 
+#   #           by = c("year", "month", "regName", "pres", "catchReg"))
+# table(temp$regName, temp$month, temp$catchReg)
+# table(catch$month, catch$catchReg)
 
 # spread
-gsi_wide <- temp %>% 
+gsi_wide <- gsi_trim %>%  #temp %>% 
+  mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>%
-  droplevels()
+  droplevels() 
 
 
 # Prep Data for TMB ------------------------------------------------------------
@@ -162,8 +172,8 @@ fac_dat <- gsi_wide %>%
          facs = fct_reorder2(facs, 
                              desc(as.numeric(as.character(month))),
                              desc(catchReg)),
-         # facs = fct_relevel(facs, "SWVI_10", after = 7),
-         # facs = fct_relevel(facs, "NWVI_10", after = Inf),
+         facs = fct_relevel(facs, "SWVI_10", after = 8),
+         facs = fct_relevel(facs, "NWVI_10", after = Inf),
          facs_n = as.numeric(facs) - 1) %>% 
   select(catchReg, month, facs, facs_n)
 fac_key <- fac_dat %>% 
@@ -252,6 +262,10 @@ pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
                                   (qnorm(0.025) * logit_prob_se)),
          pred_prob_up = plogis(logit_prob_est +
                                  (qnorm(0.975) * logit_prob_se)),
+         # pred_prob_up = case_when(
+         #   pred_prob_up > 0.9999  ~ NA_real_,
+         #   TRUE ~ pred_prob_up
+         # ),
          abund_est = pred_abund[ , "Estimate"],
          abund_se =  pred_abund[ , "Std. Error"],
          abund_low = abund_est + (qnorm(0.025) * abund_se),
