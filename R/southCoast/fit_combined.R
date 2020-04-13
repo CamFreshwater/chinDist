@@ -94,44 +94,47 @@ table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
 table(catch$month, catch$catchReg)
 
 # multinomial model predictions are a little wonky w/ missing values - this is 
-# one infilling option (currently not used)
+# one infilling option
 # dummy dataset to replace missing values 
-# stock_names <- unique(gsi_trim$regName)
-# #retain only values from the dummy set that are not already present
-# missing_sample_events <- expand.grid(
-#   flatFileID = NA,
-#   statArea = NA,
-#   year = NA,
-#   month = unique(gsi_trim$month),
-#   month_n = NA,
-#   season = NA,
-#   regName = stock_names,
-#   pres = 1, 
-#   catchReg = unique(gsi_trim$catchReg)
-#   ) %>% 
-#   anti_join(., gsi_trim,
-#                       by = c("month", "regName", "pres", "catchReg")) %>% 
-#   select(-regName) %>% 
-#   distinct()
-# #add random subset of yrs to avoid overparameterizing model
-# rand_yrs <- sample(unique(gsi_trim$year), size = nrow(missing_sample_events), 
-#                    replace = TRUE)
-# missing_sample_events$year <- rand_yrs
-# 
-# #duplicate for all stocks (to balance the addition)
-# infill_data <- do.call("rbind", replicate(length(stock_names), 
-#                                           missing_sample_events, 
-#                                           simplify = FALSE)) %>% 
-#   mutate(regName = rep(stock_names, each = nrow(missing_sample_events))) %>% 
-#   select(flatFileID:season, regName, pres, catchReg)
-# 
-# # combine and check for no zeros
-# temp <- gsi_trim %>%
-#   rbind(., infill_data)
-#   # full_join(., infill_data, 
-#   #           by = c("year", "month", "regName", "pres", "catchReg"))
-# table(temp$regName, temp$month, temp$catchReg)
-# table(catch$month, catch$catchReg)
+stock_names <- unique(gsi_trim$regName)
+#retain only values from the dummy set that are not already present
+missing_sample_events <- expand.grid(
+  flatFileID = NA,
+  statArea = NA,
+  year = NA,
+  month = unique(gsi_trim$month),
+  month_n = NA,
+  season = NA,
+  regName = stock_names,
+  pres = 1,
+  catchReg = NA#unique(gsi_trim$catchReg)
+  ) %>%
+  anti_join(., gsi_trim,
+                      by = c("month", "regName", "pres"#, "catchReg"
+                             )) %>%
+  select(-regName) %>%
+  distinct()
+#add random subset of yrs to avoid overparameterizing model
+rand_yrs <- sample(unique(gsi_trim$year), size = nrow(missing_sample_events),
+                   replace = TRUE)
+rand_catch_reg <- sample(unique(gsi_trim$catchReg), 
+                         size = nrow(missing_sample_events),
+                   replace = TRUE)
+missing_sample_events$year <- rand_yrs
+missing_sample_events$catchReg <- rand_catch_reg
+
+#duplicate for all stocks (to balance the addition)
+infill_data <- do.call("rbind", replicate(length(stock_names),
+                                          missing_sample_events,
+                                          simplify = FALSE)) %>%
+  mutate(regName = rep(stock_names, each = nrow(missing_sample_events))) %>%
+  select(flatFileID:season, regName, pres, catchReg)
+
+# combine and check for no zeros
+temp <- gsi_trim %>%
+  rbind(., infill_data)
+table(temp$regName, temp$month, temp$catchReg)
+table(catch$month, catch$catchReg)
 
 # spread
 gsi_wide <- gsi_trim %>%  #temp %>% 
@@ -262,10 +265,6 @@ pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
                                   (qnorm(0.025) * logit_prob_se)),
          pred_prob_up = plogis(logit_prob_est +
                                  (qnorm(0.975) * logit_prob_se)),
-         # pred_prob_up = case_when(
-         #   pred_prob_up > 0.9999  ~ NA_real_,
-         #   TRUE ~ pred_prob_up
-         # ),
          abund_est = pred_abund[ , "Estimate"],
          abund_se =  pred_abund[ , "Std. Error"],
          abund_low = abund_est + (qnorm(0.025) * abund_se),
