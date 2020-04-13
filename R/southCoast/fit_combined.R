@@ -137,7 +137,7 @@ table(temp$regName, temp$month, temp$catchReg)
 table(catch$month, catch$catchReg)
 
 # spread
-gsi_wide <- gsi_trim %>%  #temp %>% 
+gsi_wide <- temp %>% 
   mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>%
   mutate_if(is.numeric, ~replace_na(., 0)) %>%
@@ -340,7 +340,7 @@ ggplot() +
 
 
 ## export plotting data for Rmd
-list(pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
+list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
            raw_agg_abund = agg_abund) %>% 
   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
 
