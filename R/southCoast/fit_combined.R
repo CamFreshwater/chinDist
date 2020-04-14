@@ -57,9 +57,7 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          area = as.factor(area),
          month_n = as.numeric(month),
          month = as.factor(month_n),
-         year = as.factor(year),
-         eff_z = as.numeric(scale(boatDays)),
-         eff_z2 = eff_z^2
+         year = as.factor(year)
   ) %>% 
   filter(!is.na(cpue),
          #first constrain by range
@@ -68,6 +66,9 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          #then drop missing months
          month_n %in% comm_months) %>% 
   droplevels() %>% 
+  mutate(eff_z = as.numeric(scale(boatDays)),
+         eff_z2 = eff_z^2
+  ) %>% 
   arrange(catchReg, area, month)
 
 # if(is.null(gsi$pscName)) {
@@ -195,8 +196,8 @@ fac_key <- fac_dat %>%
 # predictive model matrix for abundance based on fac key with the potential for
 # the addition of covariate effects
 fac_key_eff <- fac_key %>% 
-  mutate(eff_z = 0,
-         eff_z2 = 0)
+  mutate(eff_z = mean(catch$eff_z),
+         eff_z2 = mean(catch$eff_z2))
 mm_pred <- if (mod == "tweedie") {
   model.matrix(sp_t_form, data = fac_key)
 } else {
@@ -252,7 +253,7 @@ parameters = list(
   logit_p = boot::logit(0.8),
   z1_k = rep(0, length(unique(fac1k))),
   log_sigma_zk1 = log(0.25),
-  b2_jg = matrix(0, nrow = ncol(mm_pred), ncol = (n_groups - 1)), 
+  b2_jg = matrix(0, nrow = ncol(fix_mm_gsi), ncol = (n_groups - 1)), 
   z2_k = rep(0, times = length(unique(fac2k))),
   log_sigma_zk2 = log(0.25)
 )
@@ -332,7 +333,8 @@ raw_abund <- catch %>%
             agg_cpue = sum_catch / sum_effort) %>% 
   ungroup() %>% 
   left_join(., raw_prop, by = c("catchReg", "month", "year")) %>% 
-  mutate(cpue_g = samp_g_ppn * agg_cpue,
+  mutate(catch_g = samp_g_ppn * sum_catch,
+         cpue_g = samp_g_ppn * agg_cpue,
          catchReg = as.factor(catchReg)) %>% 
   # rename(stock = regName) %>% 
   filter(!is.na(stock))
@@ -354,6 +356,8 @@ ggplot() +
   geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
                                       ymin = abund_low,
                                       ymax = abund_up), col = "red") +
+  # geom_point(data = raw_abund, aes(x = month, y = catch_g),
+  #            alpha = 0.4) +
   geom_point(data = raw_abund, aes(x = month, y = cpue_g),
              alpha = 0.4) +
   facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
@@ -381,11 +385,22 @@ ggplot() +
   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
   ggsidekick::theme_sleek()
 
-
 ## export plotting data for Rmd
 list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
            raw_agg_abund = agg_abund) %>% 
   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
+
+
+## estimates of effort effects on catch
+n_betas <- length(coef(m1))
+abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
+eff_b <- abund_b[c(1, n_betas - 1, n_betas) , 1]
+
+ggplot(catch) +
+  geom_point(aes(x = eff_z, y = catch), 
+             alpha = 0.2) +
+  # lims(x = c(0, 4)) +
+  stat_function(fun = function(x) exp(eff_b[1] + eff_b[2]*x + eff_b[3]*x^2)) 
 
 
 # look at predicted cumulative abundance
@@ -397,7 +412,8 @@ plot_cum_dens <- function(dat, station = "JDF") {
 }
 
 pred_ci %>% 
-  group_by(stock) %>% 
+  arrange(month) %>% 
+  group_by(stock, catchReg) %>% 
   mutate(total_abund = sum(abund_est),
          cum_abund = cumsum(abund_est) / total_abund) %>%
   ungroup() %>% 
@@ -406,7 +422,3 @@ pred_ci %>%
   geom_point() +
   facet_wrap(~catchReg)
 
-
-ggplot(pred_ci, aes(month, colour = stock)) +
-  stat_ecdf() +
-  facet_wrap(~catchReg)
