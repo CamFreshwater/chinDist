@@ -32,7 +32,7 @@ plot(catch ~ eff, data = catch)
 yr_vec <- as.numeric(as.factor(as.character(catch$year))) - 1
 
 # model matrix for fixed effects
-fix_mm <- model.matrix(~ -1 + (catchReg : month) + eff_z + eff_z2, catch)
+fix_mm <- model.matrix(~ catchReg + month + eff_z + eff_z2, catch)
 # model matrix for predictions
 # mm_pred1 <- fix_mm[,-c(1,2)] %>% 
 #   unique() 
@@ -51,10 +51,14 @@ fac_key <- catch %>%
          facs_n = as.numeric(as.factor(facs))
   ) %>%
   arrange(facs_n)
-mm_pred <- model.matrix(~ facs - 1, fac_key) %>% 
-  cbind(eff_z = rep(0, n = nrow(.)),
-        eff_z2 = rep(0, n = nrow(.)),
-        .)
+# mm_pred <- model.matrix(~ facs - 1, fac_key) %>% 
+#   cbind(eff_z = rep(0, n = nrow(.)),
+#         eff_z2 = rep(0, n = nrow(.)),
+#         .)
+mm_pred <- model.matrix(~ catchReg + month, fac_key) %>% 
+  cbind(.,
+        eff_z = rep(0, n = nrow(.)),
+        eff_z2 = rep(0, n = nrow(.)))
 
 data <- list(y1_i = catch$catch,
              X1_ij = fix_mm,
@@ -64,9 +68,9 @@ data <- list(y1_i = catch$catch,
 )
 
 # Fit simple model to initialize tmb
-# m1 <- lm(log(catch + 0.0001) ~ catchReg + month + eff_z + eff_z2, data = catch)
-m1 <- lm(log(catch + 0.0001) ~ -1 + (catchReg : month) + eff_z + eff_z2, 
-         data = catch)
+m1 <- lm(log(catch + 0.0001) ~ catchReg + month + eff_z + eff_z2, data = catch)
+# m1 <- lm(log(catch + 0.0001) ~ -1 + (catchReg : month) + eff_z + eff_z2, 
+#          data = catch)
 m2 <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z, data = catch, 
                        family = glmmTMB::nbinom2(link = "log")
 )
@@ -79,6 +83,7 @@ m2b <- glmmTMB::glmmTMB(catch ~ -1 + (catchReg : month) + eff_z + eff_z2, data =
 summary(m2)
 summary(m2a)
 summary(m2b)
+AIC(m2, m2a, m2b)
 
 parameters = list(
   b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),

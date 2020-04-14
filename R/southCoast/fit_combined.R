@@ -1,6 +1,7 @@
 ## Combined model fits
 # April 3, 2020
-# Fit combined multionomial/tweedie model to stock composition and abundance data
+# Fit combined multionomial/tweedie or multinomial/nb model to 
+# stock composition and abundance data
 # aggregate probability reflects summed probabilities of a given region of 
 # origin (ie reg1 or 3) for a given individual
 
@@ -56,7 +57,10 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
          area = as.factor(area),
          month_n = as.numeric(month),
          month = as.factor(month_n),
-         year = as.factor(year)) %>% 
+         year = as.factor(year),
+         eff_z = as.numeric(scale(boatDays)),
+         eff_z2 = eff_z^2
+  ) %>% 
   filter(!is.na(cpue),
          #first constrain by range
          !month_n < month_range[1],
@@ -146,27 +150,32 @@ gsi_wide <- temp %>%
 
 # Prep Data for TMB ------------------------------------------------------------
 
-# fixed effects model matrices
+# fixed effects model matrices that either include or exclude effort
 # form_c <- paste("~ -1 + (catchReg : month)")
-form_c <- paste("~ catchReg + month")
-form <- formula(form_c)
-fix_mm_c <- model.matrix(form, data = catch)
-fix_mm_gsi <- model.matrix(form, data = gsi_wide)
+sp_t_ch <- paste("~ catchReg + month")
+sp_t_form <- formula(sp_t_ch)
+sp_t_eff_ch <- paste("~ catchReg + month + eff_z + eff_z2")
+sp_t_eff_form <- formula(sp_t_eff_ch)
 
-# observed stock composition
-y_obs <- gsi_wide %>% 
-  select(-c(flatFileID:dummy_id)) %>% 
-  as.matrix()
-head(y_obs)
+fix_mm_gsi <- model.matrix(sp_t_form, data = gsi_wide)
+fix_mm_c <- if (mod == "tweedie") {
+  model.matrix(sp_t_form, data = catch)
+} else {
+  model.matrix(sp_t_eff_form, data = catch)
+} 
 
 #helper function to convert factors 
 fct_to_tmb_num <- function(x) {
   as.numeric(as.factor(as.character(x))) - 1
 }
 
-# fit dummy model to speed up tweedie estimates
-form2 <- formula(paste("log(catch + 0.0001)", form_c, sep = ""))
-m1 <- lm(form2, data = catch)
+# fit dummy model to speed up tweedie estimatess
+form_dum <- if (mod == "tweedie") {
+  formula(paste("log(cpue + 0.0001)", sp_t_ch, sep = ""))
+} else {
+  formula(paste("log(catch + 0.0001)", sp_t_eff_ch, sep = ""))
+}
+m1 <- lm(form_dum, data = catch)
 
 # make fixed effects factor key based on stock composition data
 fac_dat <- gsi_wide %>% 
@@ -182,8 +191,27 @@ fac_dat <- gsi_wide %>%
 fac_key <- fac_dat %>% 
   distinct() %>% 
   arrange(facs_n)
-# predictive model matrix
-mm_pred <- model.matrix(form, data = fac_key)
+
+# predictive model matrix for abundance based on fac key with the potential for
+# the addition of covariate effects
+fac_key_eff <- fac_key %>% 
+  mutate(eff_z = 0,
+         eff_z2 = 0)
+mm_pred <- if (mod == "tweedie") {
+  model.matrix(sp_t_form, data = fac_key)
+} else {
+  model.matrix(sp_t_eff_form, data = fac_key_eff)
+}
+
+if(!identical(colnames(mm_pred), colnames(fix_mm_c))) {
+  warning("Mismatch between estimated and predicted abundance model matrices.")
+}
+
+# observed stock composition
+y_obs <- gsi_wide %>% 
+  select(-c(flatFileID:dummy_id)) %>% 
+  as.matrix()
+head(y_obs)
 
 # other parameters
 n_groups <- ncol(y_obs)
@@ -195,10 +223,16 @@ fac2k <- fct_to_tmb_num(gsi_wide$year)
 nk1 <- length(unique(fac1k))
 nk2 <- length(unique(fac2k))
 
+response <- if (mod == "tweedie") {
+  catch$cpue
+} else{
+  catch$catch
+}
+
 # combine
 data <- list(
   #abundance data
-  y1_i = catch$cpue,
+  y1_i = response,
   X1_ij = fix_mm_c,
   factor1k_i = fac1k,
   nk1 = nk1,
@@ -223,6 +257,9 @@ parameters = list(
   log_sigma_zk2 = log(0.25)
 )
 
+if(!mod == "tweedie") {
+  parameters[["logit_p"]] <- NULL
+}
 
 # Fit Model --------------------------------------------------------------------
 
@@ -233,6 +270,12 @@ dyn.load(dynlib(here::here("R", "southCoast", "tmb",
 obj <- MakeADFun(data, parameters, random = c("z1_k", "z2_k"), 
                  DLL = "tweedie_multinomial_1re")
 
+compile(here::here("R", "southCoast", "tmb", "nb_multinomial_1re.cpp"))
+dyn.load(dynlib(here::here("R", "southCoast", "tmb", 
+                           "nb_multinomial_1re")))
+obj <- MakeADFun(data, parameters, random = c("z1_k", "z2_k"), 
+                 DLL = "nb_multinomial_1re")
+
 opt <- nlminb(obj$par, obj$fn, obj$gr)
 
 sdr <- sdreport(obj)
@@ -241,12 +284,12 @@ ssdr <- summary(sdr)
 ssdr
 
 # saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
-saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
+# saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 
 # PREDICTIONS ------------------------------------------------------------------
 
 #frB versions have a different subset of stocks and months at finer spatial scale
-ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
+# ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 # ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
 
 
