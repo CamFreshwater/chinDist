@@ -333,7 +333,7 @@ raw_abund <- catch %>%
             agg_cpue = sum_catch / sum_effort) %>% 
   ungroup() %>% 
   left_join(., raw_prop, by = c("catchReg", "month", "year")) %>% 
-  mutate(catch_g = samp_g_ppn * sum_catch,
+  mutate(catch_g = samp_g_ppn * z_catch,
          cpue_g = samp_g_ppn * agg_cpue,
          catchReg = as.factor(catchReg)) %>% 
   # rename(stock = regName) %>% 
