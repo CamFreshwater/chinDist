@@ -67,23 +67,28 @@ data <- list(y1_i = catch$catch,
              X1_pred_ij = mm_pred
 )
 
-# Fit simple model to initialize tmb
+# Fit simple model to initialize tmb 
 m1 <- lm(log(catch + 0.0001) ~ catchReg + month + eff_z + eff_z2, data = catch)
-# m1 <- lm(log(catch + 0.0001) ~ -1 + (catchReg : month) + eff_z + eff_z2, 
-#          data = catch)
-m2 <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z, data = catch, 
+
+m2 <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + (1|year), 
+                       data = catch, 
                        family = glmmTMB::nbinom2(link = "log")
 )
-m2a <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2, data = catch, 
+m2a <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2 + (1|year), 
+                        data = catch, 
                        family = glmmTMB::nbinom2(link = "log")
 )
-m2b <- glmmTMB::glmmTMB(catch ~ -1 + (catchReg : month) + eff_z + eff_z2, data = catch, 
+m2z <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2 + (1|year), 
+                        zi = ~ catchReg + month,
+                        data = catch,
                         family = glmmTMB::nbinom2(link = "log")
 )
+
 summary(m2)
 summary(m2a)
-summary(m2b)
-AIC(m2, m2a, m2b)
+summary(m2z)
+AIC(m2, m2a, m2z) 
+# some support for including zero inflation but may not be worth trouble
 
 parameters = list(
   b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
