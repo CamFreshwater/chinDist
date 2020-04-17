@@ -161,14 +161,12 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
 
   # predictive model matrix for abundance based on fac key with the potential for
   # the addition of covariate effects
-  fac_key_eff <- fac_key %>% 
-    mutate(eff_z = mean(catch$eff_z),
-           eff_z2 = mean(catch$eff_z2))
-  mm_pred <- if (mod == "tweedie") {
-    model.matrix(sp_t_form, data = fac_key)
-  } else {
-    model.matrix(sp_t_eff_form, data = fac_key_eff)
-  }
+  mm_pred <- model.matrix(sp_t_eff_form, data = fac_key)
+  # mm_pred <- if (mod == "tweedie") {
+  #   model.matrix(sp_t_form, data = fac_key)
+  # } else {
+  #   model.matrix(sp_t_eff_form, data = fac_key_eff)
+  # }
   
   if(!identical(colnames(mm_pred), colnames(fix_mm_c))) {
     warning("Mismatch between estimated and predicted abundance model matrices.")
@@ -249,8 +247,13 @@ fac_dat <- gsi_wide %>%
 fac_key <- fac_dat %>% 
   distinct() %>% 
   arrange(facs_n)
+fac_key_eff <- fac_key %>%
+  mutate(eff_z = mean(catch$eff_z),
+         eff_z2 = mean(catch$eff_z2))
 
-inputs <- tmb_dat(catch, gsi_wide, fac_dat, fac_key, mod = "nb")
+
+
+inputs <- tmb_dat(catch, gsi_wide, fac_dat, fac_key_eff, mod = "nb")
 
 ## Make a function object
 # compile(here::here("R", "southCoast", "tmb", "tweedie_multinomial_1re.cpp"))
@@ -292,6 +295,8 @@ gsi_trim <- gsi %>%
   dplyr::select(flatFileID, statArea, year, month, month_n, season, 
                 regName, pres, catchReg)
 n_groups <- length(unique(gsi_trim$regName))
+
+glimpse(inputs$data$X1_pred_ij)
 
 pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
                                                each = 
@@ -346,6 +351,8 @@ agg_abund <- data.frame(
 
 
 # combined estimates of stock-specific CPUE
+# note that effort is standardized differently between raw data and predictions,
+# not apples to apples comparison
 ggplot() +
   geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
                                       ymin = abund_low,
@@ -369,9 +376,15 @@ ggplot() +
   facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
   ggsidekick::theme_sleek()
 
-# estimates of aggregate CPUE
+# estimates of aggregate CPUE (replace with simulated approach below)
+catch <- catch %>% 
+  group_by(month, catchReg) %>% 
+  mutate(month_eff = mean(boatDays)) %>% 
+  ungroup() %>% 
+  mutate(catch_z = catch / month_eff)
+
 ggplot() +
-  geom_boxplot(data = catch, aes(x = month, y = cpue),  
+  geom_boxplot(data = catch %>% filter(!catch == 0), aes(x = month, y = cpue),  
              alpha = 0.4) +
   geom_pointrange(data = agg_abund, aes(x =  month, y = raw_mu,
                                   ymin = raw_abund_low,
@@ -385,6 +398,66 @@ list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abun
   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
 
 
+## generate better comparison of abundance model predictions by using betas
+## to calculate catch across range of effort values
+
+# n_draw = 500
+# eff_vec <- sample(catch$eff_z, size = n_draw)
+# mm_pred2 <- inputs$data$X1_pred_ij %>% 
+#   as.data.frame() %>% 
+#   select(-eff_z, -eff_z2) %>%
+#   expand_grid(., eff_z = eff_vec) %>% 
+#   mutate(eff_z2 = eff_z^2) %>% 
+#   as.matrix()
+
+# pred_catch <-  data.frame(log_est = mm_pred2 %*% abund_b[ , 1]) %>% 
+#   mutate(catch = exp(log_est),
+#          facs_n = rep(fac_key$facs_n, each = n_draw),
+#          dataset =  "pred") %>%
+#   left_join(., fac_key, by = "facs_n")  %>% 
+#   select(-log_est, -facs_n, -facs)
+
+pred_catch <- fac_key %>% 
+  mutate(
+    #add model estimates
+    int = abund_b[1],
+    reg_b = case_when(
+      catchReg == "NWVI" ~ 0,
+      catchReg == "SWVI" ~ abund_b[2]
+    ),
+    month_b = rep(c(0, abund_b[3:11]), times = 2),
+    eff_b = abund_b[12],
+    eff2_b = abund_b[13]) %>% 
+  split(., .$facs_n) %>% 
+  map(., function(x) {
+    mm <- catch %>% 
+      filter(month == x$month) 
+    expand_grid(x, z_eff = sample(mm$eff_z, size = 50, replace = T))
+  }) %>% 
+  bind_rows() %>% 
+  #add estimates
+  mutate(z_eff2 = z_eff^2,
+         log_catch = int + reg_b + month_b + (eff_b * z_eff) + 
+           (eff2_b * z_eff2),
+         catch = exp(log_catch),
+         dataset = "pred")
+
+catch %>% 
+  mutate(dataset = "obs") %>% 
+  select(catch, dataset, catchReg, month) %>% 
+  rbind(., 
+        pred_catch %>% 
+          select(catch, dataset, catchReg, month)
+        ) %>% 
+  ggplot(.) +
+  geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
+  facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
+  ggsidekick::theme_sleek()
+# looks good! some deviations because effort isn't stratified by region, but 
+# otherwise solid
+
+
+
 ## estimates of effort effects on catch
 n_betas <- length(coef(m1))
 abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
@@ -395,6 +468,7 @@ ggplot(catch) +
              alpha = 0.2) +
   # lims(x = c(0, 4)) +
   stat_function(fun = function(x) exp(eff_b[1] + eff_b[2]*x + eff_b[3]*x^2)) 
+
 
 
 # look at predicted cumulative abundance
