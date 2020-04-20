@@ -16,6 +16,9 @@ library(ggplot2)
 gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                           "reg3RollUpCatchProb.RDS"))
 
+# month range dictated by ecological scale
+month_range = c(1, 10)
+
 # pull months that are common to both strata and subset
 comm_months <- gsi %>% 
   select(catchReg, month) %>% 
@@ -24,7 +27,8 @@ comm_months <- gsi %>%
   map(., function(x) x %>% pull(as.numeric(month))) %>% 
   Reduce(intersect, .)
 
-#add dummy catch data for one month that's missing based on gsi data
+#add dummy catch data for one month that's missing logbook data based on observed
+# catch in gsi data
 min_catch <- gsi %>% 
   filter(catchReg == "SWVI",
          month == "7") %>%
@@ -162,12 +166,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
   # predictive model matrix for abundance based on fac key with the potential for
   # the addition of covariate effects
   mm_pred <- model.matrix(sp_t_eff_form, data = fac_key)
-  # mm_pred <- if (mod == "tweedie") {
-  #   model.matrix(sp_t_form, data = fac_key)
-  # } else {
-  #   model.matrix(sp_t_eff_form, data = fac_key_eff)
-  # }
-  
+
   if(!identical(colnames(mm_pred), colnames(fix_mm_c))) {
     warning("Mismatch between estimated and predicted abundance model matrices.")
   }
@@ -231,7 +230,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
 
 # Fit Model --------------------------------------------------------------------
 
-gsi_wide <- clean_gsi(gsi, month_range = c(1, 10))
+gsi_wide <- clean_gsi(gsi, month_range = month_range)
 
 # make fixed effects factor key based on stock composition data
 fac_dat <- gsi_wide %>% 
@@ -250,8 +249,6 @@ fac_key <- fac_dat %>%
 fac_key_eff <- fac_key %>%
   mutate(eff_z = mean(catch$eff_z),
          eff_z2 = mean(catch$eff_z2))
-
-
 
 inputs <- tmb_dat(catch, gsi_wide, fac_dat, fac_key_eff, mod = "nb")
 
@@ -275,7 +272,7 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-# saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
+saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_agg.RDS"))
 # saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 
 # PREDICTIONS ------------------------------------------------------------------
@@ -338,17 +335,6 @@ raw_abund <- catch %>%
   # rename(stock = regName) %>% 
   filter(!is.na(stock))
 
-agg_abund <- data.frame(
-  facs_n = fac_key$facs_n,
-  raw_abund_est = log_pred[ , "Estimate"],
-  raw_abund_se = log_pred[ , "Std. Error"]) %>% 
-  mutate(
-    raw_mu = exp(raw_abund_est),
-    raw_abund_low = exp(raw_abund_est + (qnorm(0.025) * raw_abund_se)),
-    raw_abund_up = exp(raw_abund_est + (qnorm(0.975) * raw_abund_se))
-  ) %>% 
-  left_join(pred_ci, ., by = "facs_n")
-
 
 # combined estimates of stock-specific CPUE
 # note that effort is standardized differently between raw data and predictions,
@@ -377,46 +363,38 @@ ggplot() +
   ggsidekick::theme_sleek()
 
 # estimates of aggregate CPUE (replace with simulated approach below)
-catch <- catch %>% 
-  group_by(month, catchReg) %>% 
-  mutate(month_eff = mean(boatDays)) %>% 
-  ungroup() %>% 
-  mutate(catch_z = catch / month_eff)
+# agg_abund <- data.frame(
+#   facs_n = fac_key$facs_n,
+#   raw_abund_est = log_pred[ , "Estimate"],
+#   raw_abund_se = log_pred[ , "Std. Error"]) %>% 
+#   mutate(
+#     raw_mu = exp(raw_abund_est),
+#     raw_abund_low = exp(raw_abund_est + (qnorm(0.025) * raw_abund_se)),
+#     raw_abund_up = exp(raw_abund_est + (qnorm(0.975) * raw_abund_se))
+#   ) %>% 
+#   left_join(pred_ci, ., by = "facs_n")
 
-ggplot() +
-  geom_boxplot(data = catch %>% filter(!catch == 0), aes(x = month, y = cpue),  
-             alpha = 0.4) +
-  geom_pointrange(data = agg_abund, aes(x =  month, y = raw_mu,
-                                  ymin = raw_abund_low,
-                                  ymax = raw_abund_up), color= "red") +
-  facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
-  ggsidekick::theme_sleek()
-
-## export plotting data for Rmd
-list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
-           raw_agg_abund = agg_abund) %>% 
-  saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
+# catch <- catch %>% 
+#   group_by(month, catchReg) %>% 
+#   mutate(month_eff = mean(boatDays)) %>% 
+#   ungroup() %>% 
+#   mutate(catch_z = catch / month_eff)
+# 
+# ggplot() +
+#   geom_boxplot(data = catch %>% filter(!catch == 0), aes(x = month, y = cpue),  
+#              alpha = 0.4) +
+#   geom_pointrange(data = agg_abund, aes(x =  month, y = raw_mu,
+#                                   ymin = raw_abund_low,
+#                                   ymax = raw_abund_up), color= "red") +
+#   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
+#   ggsidekick::theme_sleek()
 
 
 ## generate better comparison of abundance model predictions by using betas
 ## to calculate catch across range of effort values
 
-# n_draw = 500
-# eff_vec <- sample(catch$eff_z, size = n_draw)
-# mm_pred2 <- inputs$data$X1_pred_ij %>% 
-#   as.data.frame() %>% 
-#   select(-eff_z, -eff_z2) %>%
-#   expand_grid(., eff_z = eff_vec) %>% 
-#   mutate(eff_z2 = eff_z^2) %>% 
-#   as.matrix()
-
-# pred_catch <-  data.frame(log_est = mm_pred2 %*% abund_b[ , 1]) %>% 
-#   mutate(catch = exp(log_est),
-#          facs_n = rep(fac_key$facs_n, each = n_draw),
-#          dataset =  "pred") %>%
-#   left_join(., fac_key, by = "facs_n")  %>% 
-#   select(-log_est, -facs_n, -facs)
-
+#betas for abundance model
+abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
 pred_catch <- fac_key %>% 
   mutate(
     #add model estimates
@@ -453,14 +431,22 @@ catch %>%
   geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
   ggsidekick::theme_sleek()
-# looks good! some deviations because effort isn't stratified by region, but 
-# otherwise solid
+# looks good! some deviations because effort isn't stratified by region and 
+# July data are wonky, but otherwise solid
 
+## export plotting data for Rmd (version 1)
+# list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
+#      raw_agg_abund = agg_abund) %>% 
+#   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
+
+## export plotting data for Rmd (version 1)
+list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund,
+     pred_catch = pred_catch) %>%
+  saveRDS(., here::here("generatedData", "model_fits", "reg3_plot_list.RDS"))
 
 
 ## estimates of effort effects on catch
 n_betas <- length(coef(m1))
-abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
 eff_b <- abund_b[c(1, n_betas - 1, n_betas) , 1]
 
 ggplot(catch) +
