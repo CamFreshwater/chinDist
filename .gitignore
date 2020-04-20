@@ -36,3 +36,5 @@ scripts/*cache*
 R/defunct/
 data/gsiCatchData/commTroll/defunct/
 data/stockKeys/old/
+data/hargreaves/
+R/hargreaves/
