@@ -113,7 +113,8 @@ stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Mar2020.rds"
 dat2 <- dat %>%
   select(-Region1Name) %>%
   left_join(., stockKey, by = c("stock")) %>% 
-  arrange(statArea, year, month, jDay, fishNum)
+  arrange(statArea, year, month, jDay, fishNum) %>% 
+  rename(id = flatFileID)
 # saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
 #                          "wcviIndProbsLong.rds"))
 dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",

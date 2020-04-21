@@ -30,38 +30,39 @@ write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll",
 # import generated tag_code key (from rmis)
 key <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                            "cwt_tag_key.txt"), 
-                stringsAsFactors = FALSE)
+                stringsAsFactors = FALSE) %>% 
+  mutate(
+    stock_location_name = case_when(
+      is.na(stock_location_name) ~ hatchery_location_name,
+      TRUE ~ stock_location_name
+    )
+  )
 
 #pull unique stock, region, basin combinations to combine with gsi in stockkey
 #repo
-key_out <- key %>% 
-  select(release = release_location_name, 
-         hatchery = hatchery_location_name,
-         stock = stock_location_name, 
-         rmis_region = release_location_rmis_region, 
-         basin = release_location_rmis_basin, 
-         state = release_location_state) %>% 
+key_out <- key %>%
+  select(release = release_location_name,
+         stock = stock_location_name,
+         rmis_region = release_location_rmis_region,
+         basin = release_location_rmis_basin,
+         state = release_location_state) %>%
   distinct()
 saveRDS(key_out, here::here("generatedData", "cwt_stock_key.RDS"))
 
 # import completed stock_list
-key_in <- readRDS(here::here("data", "stockKeys", "finalStockList_Apr2020.rds"))
+key_in <- readRDS(here::here("data", "stockKeys", 
+                             "finalStockList_Apr2020.rds")) %>% 
+  filter(id_type == "cwt") 
 
 # add regional aggregates to key
 key_final <- key %>% 
   select(tag_code = tag_code_or_release_id, 
-         cwt_hatchery = hatchery_location_name,
          stock = stock_location_name) %>% 
   mutate(stock = toupper(stock)) %>% 
-  left_join(., key_in, by = c("stock", "cwt_hatchery")) %>% 
-  mutate(
-    stock = case_when(
-      is.na(stock) ~ cwt_hatchery,
-      TRUE ~ stock
-    )
-  ) %>% 
-  select(-cwt_hatchery)
-
+  left_join(., key_in, 
+            by = c("stock"
+                   )) 
+  
 # import recovery location key
 recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                  "cwt_recovery_location_key.csv"), 
@@ -99,9 +100,10 @@ rec_long <- rec_raw %>%
          ) %>% 
   select(year, month, week, jDay, gear, fishNum = recovery_id, date, 
          season_c, season, month_n,
-         pres, catchReg = Basin, Region1Name, Region3Name, Region4Name)
+         pres, catchReg = Basin, pst_agg)
 
 
 #import preliminary gsi dataset for comparison
-gsi_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "wcviIndProbsLong.rds"))
+
+reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                         "reg3RollUpCatchProb.RDS"))
