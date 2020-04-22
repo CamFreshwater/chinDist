@@ -62,7 +62,7 @@ clean_comp <- function(comp, month_range = c(1, 2), check_tables = FALSE) {
   
   ifelse(check_tables == FALSE, 
          return(comp_out), 
-         return(list(data = comp_out, tables = list(original = tab_in, 
-                                                    infilled = tab_out)))
+         return(list(data = comp_out, long_data = temp,
+                     tables = list(original = tab_in, infilled = tab_out)))
   )
 }
