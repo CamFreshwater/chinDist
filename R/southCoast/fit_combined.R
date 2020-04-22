@@ -14,9 +14,7 @@ library(ggplot2)
 # comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #                           "reg1RollUpCatchProb_FraserB.RDS"))
 comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                          "reg3RollUpCatchProb.RDS")) 
-comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "cwt_recovery_clean.rds"))
+                          "reg3RollUpCatchProb.RDS"))
 
 # month range dictated by ecological scale
 month_range = c(1, 10)
@@ -74,7 +72,7 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 # Import Genetics --------------------------------------------------------------
 # Function to trim and infill comp dataset
 clean_gsi <- function(comp, month_range, check_tables = FALSE) {
-  gsi_trim <- comp %>% 
+  comp_trim <- comp %>% 
     filter(!month_n < month_range[1],
            !month_n > month_range[2]) %>% 
     droplevels() %>% 
@@ -84,28 +82,28 @@ clean_gsi <- function(comp, month_range, check_tables = FALSE) {
   # multinomial model predictions are a little wonky w/ missing values - this is 
   # one infilling option
   # dummy dataset to replace missing values 
-  stock_names <- unique(gsi_trim$regName)
+  stock_names <- unique(comp_trim$regName)
   #retain only values from the dummy set that are not already present
   missing_sample_events <- expand.grid(
     id = NA,
     statArea = NA,
     year = NA,
-    month = unique(gsi_trim$month),
+    month = unique(comp_trim$month),
     month_n = NA,
     season = NA,
     regName = stock_names,
     pres = 1,
     catchReg = NA
   ) %>%
-    anti_join(., gsi_trim,
+    anti_join(., comp_trim,
               by = c("month", "regName", "pres")
               ) %>%
     select(-regName) %>%
     distinct()
   #add random subset of yrs to avoid overparameterizing model
-  rand_yrs <- sample(unique(gsi_trim$year), size = nrow(missing_sample_events),
+  rand_yrs <- sample(unique(comp_trim$year), size = nrow(missing_sample_events),
                      replace = TRUE)
-  rand_catch_reg <- sample(unique(gsi_trim$catchReg), 
+  rand_catch_reg <- sample(unique(comp_trim$catchReg), 
                            size = nrow(missing_sample_events),
                            replace = TRUE)
   missing_sample_events$year <- rand_yrs
@@ -119,9 +117,9 @@ clean_gsi <- function(comp, month_range, check_tables = FALSE) {
     select(id:season, regName, pres, catchReg)
   
   # combine and check for no zeros
-  temp <- gsi_trim %>%
+  temp <- comp_trim %>%
     rbind(., infill_data)
-  tab_in <- table(gsi_trim$regName, gsi_trim$month, gsi_trim$catchReg)
+  tab_in <- table(comp_trim$regName, comp_trim$month, comp_trim$catchReg)
   tab_out <- table(temp$regName, temp$month, temp$catchReg)
   
   # spread
@@ -140,14 +138,14 @@ clean_gsi <- function(comp, month_range, check_tables = FALSE) {
 
 
 # Prep Data for TMB ------------------------------------------------------------
-tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
+tmb_dat <- function(catch, comp_wide, fac_dat, fac_key, mod = "nb") {
   # fixed effects model matrices that either include or exclude effort
   sp_t_ch <- paste("~ catchReg + month")
   sp_t_form <- formula(sp_t_ch)
   sp_t_eff_ch <- paste("~ catchReg + month + eff_z + eff_z2")
   sp_t_eff_form <- formula(sp_t_eff_ch)
   
-  fix_mm_gsi <- model.matrix(sp_t_form, data = gsi_wide)
+  fix_mm_gsi <- model.matrix(sp_t_form, data = comp_wide)
   fix_mm_c <- if (mod == "tweedie") {
     model.matrix(sp_t_form, data = catch)
   } else {
@@ -176,7 +174,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
   }
   
   # observed stock composition
-  y_obs <- gsi_wide %>% 
+  y_obs <- comp_wide %>% 
     select(-c(id:dummy_id)) %>% 
     as.matrix()
   head(y_obs)
@@ -187,7 +185,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
   b2_n <- ncol(mm_pred) * (n_groups - 1) #each par est for each non-ref level
   # vectors of random effects
   fac1k <- fct_to_tmb_num(catch$year)
-  fac2k <- fct_to_tmb_num(gsi_wide$year)
+  fac2k <- fct_to_tmb_num(comp_wide$year)
   nk1 <- length(unique(fac1k))
   nk2 <- length(unique(fac2k))
   
@@ -234,10 +232,11 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
 
 # Fit Model --------------------------------------------------------------------
 
-gsi_wide <- clean_gsi(comp, month_range = month_range)
+source(here::here("R", "functions", "clean_composition_dat.R"))
+comp_wide <- clean_gsi(comp, month_range = month_range)
 
 # make fixed effects factor key based on stock composition data
-fac_dat <- gsi_wide %>% 
+fac_dat <- comp_wide %>% 
   mutate(facs = as.factor(paste(as.character(catchReg), 
                                 as.character(month), sep = "_")),
          facs = fct_reorder2(facs, 
@@ -254,7 +253,8 @@ fac_key_eff <- fac_key %>%
   mutate(eff_z = mean(catch$eff_z),
          eff_z2 = mean(catch$eff_z2))
 
-inputs <- tmb_dat(catch, gsi_wide, fac_dat, fac_key_eff, mod = "nb")
+source(here::here("R", "functions", "prep_tmb_dat.R"))
+inputs <- tmb_dat(catch, comp_wide, fac_dat, fac_key_eff, mod = "nb")
 
 ## Make a function object
 # compile(here::here("R", "southCoast", "tmb", "tweedie_multinomial_1re.cpp"))
@@ -289,17 +289,17 @@ log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
 logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
 pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
 
-gsi_trim <- comp %>% 
+comp_trim <- comp %>% 
   filter(!month_n < month_range[1],
          !month_n > month_range[2]) %>% 
   droplevels() %>% 
   dplyr::select(id, statArea, year, month, month_n, season, 
                 regName, pres, catchReg)
-n_groups <- length(unique(gsi_trim$regName))
+n_groups <- length(unique(comp_trim$regName))
 
 glimpse(inputs$data$X1_pred_ij)
 
-pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
+pred_ci <- data.frame(stock = as.character(rep(unique(comp_trim$regName),
                                                each = 
                                                  length(unique(fac_key$facs_n)))), 
                       logit_prob_est = logit_probs[ , "Estimate"],
@@ -317,7 +317,7 @@ pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
   left_join(., fac_key, by = c("facs_n")) 
 
 # calculate raw summary data for comparison
-raw_prop <- gsi_trim %>% 
+raw_prop <- comp_trim %>% 
   group_by(catchReg, month, year, regName) %>%
   summarize(samp_g = length(unique(id))) %>% 
   group_by(catchReg, month, year) %>%
