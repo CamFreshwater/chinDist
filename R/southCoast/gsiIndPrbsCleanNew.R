@@ -2,7 +2,7 @@
 # Updated version of gsiIndProbsClean.R that uses new flat file with full
 # probabilities (i.e. not trimmed to 5 stocks max) for WCVI commercial troll 
 # fishery
-# Oct 10, 2019
+# Apr 22, 2019
 
 library(tidyverse)
 library(ggplot2)
@@ -12,7 +12,7 @@ datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                    stringsAsFactors = FALSE)
 
 # Big chunk of code to separate ID variable into meaningful individual vectors
-id <- datRaw$szLineInfo %>% 
+id_vec <- datRaw$szLineInfo %>% 
   as.vector() %>% 
   strsplit(., split = " ") %>% 
   unlist() %>% 
@@ -77,20 +77,20 @@ id <- datRaw$szLineInfo %>%
   rename(week = adjWeek, unadjWeek = week)
 
 #Merge id vector with original data frame and trim
-dat <- cbind(id, datRaw) %>% 
+dat <- cbind(id_vec, datRaw) %>% 
   #calculate total summed probability for each sample
   group_by(szLineInfo) %>%
   mutate(stock = toupper(szStock),
          totalProb = sum(dProb)) %>% 
   ungroup() %>% 
   mutate(adjProb = dProb / totalProb) %>% 
-  select(-iRun, -iSample, -iYearMix, flatFileID = szLineInfo, stock, -szStock,
+  select(-iRun, -iSample, -iYearMix, id = szLineInfo, stock, -szStock,
          prob = dProb, adjProb, -totalProb, -szExclude, -iRegionId, -unadjWeek,
          Region1Name = szRegion) %>% 
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
-                          "Area124_24"))
+                          "Area124_24")) 
 
 # Export example GSI data to Wilf 
 # dat[1:1000, ] %>% 
@@ -108,13 +108,13 @@ dat <- cbind(id, datRaw) %>%
 # saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
 # stock key generated in stockKey repo
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Mar2020.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Apr2020.rds"))
 
 dat2 <- dat %>%
   select(-Region1Name) %>%
   left_join(., stockKey, by = c("stock")) %>% 
-  arrange(statArea, year, month, jDay, fishNum) %>% 
-  rename(id = flatFileID)
+  arrange(statArea, year, month, jDay, fishNum)
+
 # saveRDS(dat2, here::here("data", "gsiCatchData", "commTroll",
 #                          "wcviIndProbsLong.rds"))
 dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
@@ -126,7 +126,7 @@ dat2 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #cleaning function to filter out non-dominant assignments below threshold
 clean_dat <- function(dat, threshold = 0.75) {
   dat %>% 
-    group_by(flatFileID) %>% 
+    group_by(id) %>% 
     mutate(max_assignment = max(aggProb)) %>% 
     # Remove samples where top stock ID is less than 75% probability
     filter(!aggProb < max_assignment, 
@@ -157,14 +157,14 @@ clean_dat <- function(dat, threshold = 0.75) {
 
 # Region 3 first (i.e. large regional aggregats)
 reg3 <- dat2 %>% 
-  group_by(flatFileID, Region3Name) %>% 
+  group_by(id, Region3Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
-  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
+  dplyr::arrange(id, desc(aggProb)) %>% 
   left_join(dat %>% 
-               select(flatFileID, statArea, year, month, week, jDay, gear, 
+               select(id, statArea, year, month, week, jDay, gear, 
                       fishNum, date),
              .,
-             by = "flatFileID") %>% 
+             by = "id") %>% 
   distinct() %>% 
   dplyr::rename(regName = Region3Name) %>% 
   # aggregate based on likely stocks of interest
@@ -187,31 +187,27 @@ saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
 
 #key for adding aggregates to below 
 reg3_key <- reg3 %>%
-  select(flatFileID, aggName = regName)
+  select(id, aggName = regName)
 
-# Region 1 next (approximately equivalent to PSC groupings eg MUFR)
+# Region 1 next (approximately equivalent to fine-scale PSC groupings eg MUFR)
 reg1 <- dat2 %>% 
-  group_by(flatFileID, Region1Name) %>% 
+  group_by(id, Region1Name) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
-  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
+  dplyr::arrange(id, desc(aggProb)) %>% 
   left_join(dat %>% 
-              select(flatFileID, statArea, year, month, week, jDay, gear, 
+              select(id, statArea, year, month, week, jDay, gear, 
                      fishNum, date),
             .,
-            by = "flatFileID") %>% 
+            by = "id") %>% 
   distinct() %>% 
   dplyr::rename(pscName = Region1Name) %>% 
   clean_dat() %>% 
   left_join(.,
             reg3_key,
-            by = "flatFileID")
+            by = "id")
 
 saveRDS(reg1, here::here("data", "gsiCatchData", "commTroll",
                          "reg1RollUpCatchProb.RDS"))
-
-tt <- fr_reg1B %>% 
-  filter(aggName == "FrsrR")
-table(tt$pscName, tt$month_n)
 
 # Modified region 1 with Fraser focus
 fr_reg1 <- reg1 %>%
@@ -225,8 +221,6 @@ fr_reg1 <- reg1 %>%
     )
   ) 
 saveRDS(fr_reg1, here::here("data", "gsiCatchData", "commTroll",
-                            "reg1RollUpCatchProb_Fraser.RDS"))
-fr_reg1 <- saveRDS(here::here("data", "gsiCatchData", "commTroll",
                             "reg1RollUpCatchProb_Fraser.RDS"))
 # alternative option w/ finer resolution 
 fr_reg1B <- reg1 %>%
@@ -246,25 +240,22 @@ table(fr_reg1$regName, fr_reg1$month_n)
 table(fr_reg1B$regName, fr_reg1B$month_n)
 
 
-# Region 2 next (intermediate to 1 and 3)
-reg2 <- dat2 %>% 
-  group_by(flatFileID, Region2Name) %>% 
+# PST aggregates next (based on figures in 2018 Appendix E)
+pst_aggs <- dat2 %>% 
+  group_by(id, pst_agg) %>% 
   dplyr::summarize(aggProb = sum(adjProb)) %>% 
-  dplyr::arrange(flatFileID, desc(aggProb)) %>% 
+  dplyr::arrange(id, desc(aggProb)) %>% 
   left_join(dat %>% 
-              select(flatFileID, statArea, year, month, week, jDay, gear, 
+              select(id, statArea, year, month, week, jDay, gear, 
                      fishNum, date),
             .,
-            by = "flatFileID") %>% 
+            by = "id") %>% 
   distinct() %>% 
-  dplyr::rename(pscName = Region2Name) %>% 
-  clean_dat() %>% 
-  left_join(.,
-            reg3_key,
-            by = "flatFileID")
+  dplyr::rename(pstName = pst_agg) %>% 
+  clean_dat() 
 
-saveRDS(reg2, here::here("data", "gsiCatchData", "commTroll",
-                         "reg2RollUpCatchProb.RDS"))
+saveRDS(pst_aggs, here::here("data", "gsiCatchData", "commTroll",
+                         "pstAggRollUpCatchProb.RDS"))
 
 
 # Compare to catch data --------------------------------------------------------
