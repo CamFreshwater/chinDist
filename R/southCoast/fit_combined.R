@@ -11,29 +11,31 @@ library(ggplot2)
 
 
 # Import Catch -----------------------------------------------------------------
-# gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+# comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #                           "reg1RollUpCatchProb_FraserB.RDS"))
-gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                          "reg3RollUpCatchProb.RDS"))
+comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                          "reg3RollUpCatchProb.RDS")) 
+comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                           "cwt_recovery_clean.rds"))
 
 # month range dictated by ecological scale
 month_range = c(1, 10)
 
 # pull months that are common to both strata and subset
-comm_months <- gsi %>% 
-  select(catchReg, month) %>% 
-  distinct() %>% 
-  split(., .$catchReg) %>% 
-  map(., function(x) x %>% pull(as.numeric(month))) %>% 
-  Reduce(intersect, .)
+# comm_months <- comp %>% 
+#   select(catchReg, month) %>% 
+#   distinct() %>% 
+#   split(., .$catchReg) %>% 
+#   map(., function(x) x %>% pull(as.numeric(month))) %>% 
+#   Reduce(intersect, .)
 
 #add dummy catch data for one month that's missing logbook data based on observed
-# catch in gsi data
-min_catch <- gsi %>% 
+# catch in comp data
+min_catch <- comp %>% 
   filter(catchReg == "SWVI",
          month == "7") %>%
   group_by(year) %>% 
-  summarise(n = length(unique(flatFileID)),
+  summarise(n = length(unique(id)),
             n_days = length(unique(jDay)) * 3)
 min_catch_dat <- data.frame(catch = min_catch$n,
                             catchReg = "SWVI",
@@ -57,9 +59,11 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   filter(!is.na(cpue),
          #first constrain by range
          !month_n < month_range[1],
-         !month_n > month_range[2],
-         #then drop missing months
-         month_n %in% comm_months) %>% 
+         !month_n > month_range[2]
+         # ,
+         # #then drop missing months
+         # month_n %in% comm_months
+         ) %>% 
   droplevels() %>% 
   mutate(eff_z = as.numeric(scale(boatDays)),
          eff_z2 = eff_z^2
@@ -68,13 +72,13 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 
 # Import Genetics --------------------------------------------------------------
-# Function to trim and infill gsi dataset
-clean_gsi <- function(gsi, month_range, check_tables = FALSE) {
-  gsi_trim <- gsi %>% 
+# Function to trim and infill comp dataset
+clean_gsi <- function(comp, month_range, check_tables = FALSE) {
+  gsi_trim <- comp %>% 
     filter(!month_n < month_range[1],
            !month_n > month_range[2]) %>% 
     droplevels() %>% 
-    dplyr::select(flatFileID, statArea, year, month, month_n, season, 
+    dplyr::select(id, statArea, year, month, month_n, season, 
                   regName, pres, catchReg) 
   
   # multinomial model predictions are a little wonky w/ missing values - this is 
@@ -83,7 +87,7 @@ clean_gsi <- function(gsi, month_range, check_tables = FALSE) {
   stock_names <- unique(gsi_trim$regName)
   #retain only values from the dummy set that are not already present
   missing_sample_events <- expand.grid(
-    flatFileID = NA,
+    id = NA,
     statArea = NA,
     year = NA,
     month = unique(gsi_trim$month),
@@ -112,7 +116,7 @@ clean_gsi <- function(gsi, month_range, check_tables = FALSE) {
                                             missing_sample_events,
                                             simplify = FALSE)) %>%
     mutate(regName = rep(stock_names, each = nrow(missing_sample_events))) %>%
-    select(flatFileID:season, regName, pres, catchReg)
+    select(id:season, regName, pres, catchReg)
   
   # combine and check for no zeros
   temp <- gsi_trim %>%
@@ -173,7 +177,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
   
   # observed stock composition
   y_obs <- gsi_wide %>% 
-    select(-c(flatFileID:dummy_id)) %>% 
+    select(-c(id:dummy_id)) %>% 
     as.matrix()
   head(y_obs)
   
@@ -230,7 +234,7 @@ tmb_dat <- function(catch, gsi_wide, fac_dat, fac_key, mod = "nb") {
 
 # Fit Model --------------------------------------------------------------------
 
-gsi_wide <- clean_gsi(gsi, month_range = month_range)
+gsi_wide <- clean_gsi(comp, month_range = month_range)
 
 # make fixed effects factor key based on stock composition data
 fac_dat <- gsi_wide %>% 
@@ -285,11 +289,11 @@ log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
 logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
 pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
 
-gsi_trim <- gsi %>% 
+gsi_trim <- comp %>% 
   filter(!month_n < month_range[1],
          !month_n > month_range[2]) %>% 
   droplevels() %>% 
-  dplyr::select(flatFileID, statArea, year, month, month_n, season, 
+  dplyr::select(id, statArea, year, month, month_n, season, 
                 regName, pres, catchReg)
 n_groups <- length(unique(gsi_trim$regName))
 
@@ -315,7 +319,7 @@ pred_ci <- data.frame(stock = as.character(rep(unique(gsi_trim$regName),
 # calculate raw summary data for comparison
 raw_prop <- gsi_trim %>% 
   group_by(catchReg, month, year, regName) %>%
-  summarize(samp_g = length(unique(flatFileID))) %>% 
+  summarize(samp_g = length(unique(id))) %>% 
   group_by(catchReg, month, year) %>%
   mutate(samp_total = sum(samp_g)) %>% 
   ungroup() %>% 

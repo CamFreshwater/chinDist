@@ -73,8 +73,20 @@ recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
 #merge stock ID and recovery location keys to cwt recoveries
 rec_raw <- datRaw %>% 
   left_join(., key_final, by = "tag_code") %>% 
-  left_join(., recov_key, by = "recovery_loc_code")
-
+  left_join(., recov_key, by = "recovery_loc_code") %>% 
+  mutate(
+    #replace single duplicated recovery id
+    recovery_id = case_when(
+      recovery_id == "C746098" & run_year > 2010 ~ "C746098_b",
+      TRUE ~ recovery_id),
+    #replace ambiguous basin ideas where possible
+    Basin = case_when(
+      grepl("NWTR H", Short.Name) | grepl("NWTR P", Short.Name) ~ "NWVI",
+      TRUE ~ Basin
+    )
+    ) %>% 
+  #remove remaining ambiguous IDs
+  filter(!Basin == "WCVIG")
 
 ## FORMAT CWT DATA TO MATCH GSI ------------------------------------------------
 
@@ -98,12 +110,12 @@ rec_long <- rec_raw %>%
          year =  as.factor(run_year),
          pres = 1
          ) %>% 
-  select(year, month, week, jDay, gear, fishNum = recovery_id, date, 
+  select(id = recovery_id, year, statArea, month, week, jDay, gear, date, 
          season_c, season, month_n,
          pres, catchReg = Basin, pst_agg)
 
+saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
+                             "cwt_recovery_clean.rds"))
 
-#import preliminary gsi dataset for comparison
-
-reg3 <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                         "reg3RollUpCatchProb.RDS"))
+# n_occur <- data.frame(table(rec_long$fishNum))
+# n_occur[n_occur$Freq > 1, ]
