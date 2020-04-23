@@ -2,7 +2,7 @@
 # infilling zero values and pivoting to wide format
 # Should be in long format (e.g. reg3RollUpCatchProb.RDS)
 
-clean_comp <- function(comp, month_range = c(1, 2), check_tables = FALSE) {
+clean_comp <- function(comp, month_range = c(1, 12), check_tables = FALSE) {
   comp_trim <- comp %>% 
     filter(!month_n < month_range[1],
            !month_n > month_range[2]) %>% 
@@ -60,6 +60,10 @@ clean_comp <- function(comp, month_range = c(1, 2), check_tables = FALSE) {
     mutate_if(is.numeric, ~replace_na(., 0)) %>%
     droplevels() 
   
+  # comp_out %>% filter(month == "10", `CR-sp&su` > 0) %>% select(`CR-sp&su`)
+  # temp %>% filter(month == "1", regName == "Other") %>% 
+  #   select(regName, month, pres)
+  # 
   ifelse(check_tables == FALSE, 
          return(comp_out), 
          return(list(data = comp_out, long_data = temp,

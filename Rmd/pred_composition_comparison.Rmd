@@ -32,16 +32,20 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 comp_gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                            "pstAggRollUpCatchProb.RDS")) %>% 
-  rename(regName = pstName)
+  rename(regName = pstName) %>%
+  #remove northern samples for now due to small sample size
+  filter(!regName == "NBC_SEAK")
 comp_cwt <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                            "cwt_recovery_clean.rds")) %>% 
-  rename(regName = pst_agg)
+  rename(regName = pst_agg) %>% 
+  filter(!regName == "NBC_SEAK")
 
 source(here::here("R", "functions", "clean_composition_dat.R"))
 comp_gsi_list <- clean_comp(comp_gsi, month_range = month_range, 
                          check_tables = TRUE)
 comp_cwt_list <- clean_comp(comp_cwt, month_range = month_range, 
                          check_tables = TRUE)
+
 ```
 
 Here are preliminary results of the model that uses commerical catch/effort and genetics data to predict stock-specific abundance of Chinook salmon. Abundance is modeled using a negative binomial distribution with effort (boat days) included as an offset and stock composition is modeled using a multinomial distribution. We generate predictions for strata (catch region or statistical area and month or season) because finer scale spatio-temporal data are unavailable. Sampling (run) years are treated as random intercepts. General predictions are shown in wcvi_prelim_model_nb.Rmd, but the goal here is to contrast estimates using the same model with composition estimates derived from either GSI data or CWT returns.
@@ -179,27 +183,27 @@ if (!exists("combo_list")) {
                                  "nbmult_cwt_gsi_comp.rds"))
 }
 ```
+
+
 ```{r northern_prob_fig, echo=FALSE}
 stk_subset <- c("FR-early", "FR-late", "PSD", "CR-tule", "CR-bright", "WCVI")
-n_plot_list <- map(combo_list, function(x) 
+plot_list <- map(combo_list, function(x) 
   x %>% 
-    filter(stock %in% stk_subset,
-           catchReg == "NWVI")
+    filter(stock %in% stk_subset)
   )
 
-n_plot_list[["pred_ci"]] %>% 
-  filter(month == "6")
+plot_list[["raw_prop"]] %>% 
+  filter(month == 3, stock == "FR-early", dat == "cwt")
 
 ggplot() +
-  geom_pointrange(data = n_plot_list[["pred_ci"]], 
+  geom_pointrange(data = plot_list[["pred_ci"]], 
                   aes(x = month, y = pred_prob, ymin = pred_prob_low,
                       ymax = pred_prob_up, fill = dat), 
                   shape = 21, position = position_dodge(0.6)) +
-  # geom_point(data = plot_list[["raw_prop"]],
-  #            aes(x = month, y = samp_g_ppn),
-  #            alpha = 0.4) +
+  geom_point(data = plot_list[["raw_prop"]],
+             aes(x = month, y = samp_g_ppn, fill = dat),
+             shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
   scale_color_viridis_d() +
-  facet_wrap(~stock, nrow = n_groups, scales = "free_y") +
+  facet_wrap(stock~catchReg, nrow = length(stk_subset), scales = "free_y") +
   ggsidekick::theme_sleek()
-
 ```

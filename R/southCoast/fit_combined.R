@@ -15,9 +15,18 @@ library(ggplot2)
 #                           "reg1RollUpCatchProb_FraserB.RDS"))
 comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                           "reg3RollUpCatchProb.RDS"))
+comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                               "pstAggRollUpCatchProb.RDS")) %>% 
+  rename(regName = pstName) %>% 
+  filter(!regName == "NBC_SEAK")
+# %>% 
+#   mutate(regName = case_when(
+#     regName %in% c("NBC_SEAK", "WACST", "WCVI") ~ "Other",
+#     TRUE ~ regName
+#   ))
 
 # month range dictated by ecological scale
-month_range = c(1, 10)
+month_range = c(3, 10)
 
 # pull months that are common to both strata and subset
 # comm_months <- comp %>% 
@@ -34,6 +43,7 @@ min_catch <- comp %>%
          month == "7") %>%
   group_by(year) %>% 
   summarise(n = length(unique(id)),
+            #scalar (3) represents est effort given average CPUE
             n_days = length(unique(jDay)) * 3)
 min_catch_dat <- data.frame(catch = min_catch$n,
                             catchReg = "SWVI",
@@ -71,7 +81,11 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 # Clean Genetics and Prep Inputs -----------------------------------------------
 source(here::here("R", "functions", "clean_composition_dat.R"))
-comp_wide <- clean_comp(comp, month_range = month_range)
+comp_wide_l <- clean_comp(comp, month_range = month_range, check_tables = T)
+comp_wide_l$tables
+comp_wide <- comp_wide_l$data
+
+comp_wide %>% filter(month == "10", NBC_SEAK > 0) %>% select(NBC_SEAK)
 
 fac_dat <- comp_wide %>% 
   mutate(facs = as.factor(paste(as.character(catchReg), 
@@ -93,6 +107,8 @@ fac_key_eff <- fac_key %>%
 
 source(here::here("R", "functions", "prep_tmb_dat.R"))
 inputs <- tmb_dat(catch, comp_wide, fac_dat, fac_key_eff, mod = "nb")
+#check predictive matrix
+head(inputs$data$X1_pred_ij)
 
 
 # Fit Model --------------------------------------------------------------------
@@ -117,7 +133,7 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_agg.RDS"))
+# saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_agg.RDS"))
 # saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
 
 
@@ -138,8 +154,6 @@ comp_trim <- comp %>%
   dplyr::select(id, statArea, year, month, month_n, season, 
                 regName, pres, catchReg)
 n_groups <- length(unique(comp_trim$regName))
-
-glimpse(inputs$data$X1_pred_ij)
 
 pred_ci <- data.frame(stock = as.character(rep(unique(comp_trim$regName),
                                                each = 
