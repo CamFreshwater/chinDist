@@ -2,10 +2,12 @@
 # infilling zero values and pivoting to wide format
 # Should be in long format (e.g. reg3RollUpCatchProb.RDS)
 
-clean_comp <- function(comp, month_range = c(1, 12), check_tables = FALSE) {
+clean_comp <- function(comp, month_range = NULL, check_tables = FALSE) {
+  if(is.null(month_range)) {
+    month_range <- seq(1, 12, by = 1)
+  }
   comp_trim <- comp %>% 
-    filter(!month_n < month_range[1],
-           !month_n > month_range[2]) %>% 
+    filter(month_n %in% month_range) %>% 
     droplevels() %>% 
     dplyr::select(id, statArea, year, month, month_n, season, 
                   regName, pres, catchReg) 
@@ -24,21 +26,22 @@ clean_comp <- function(comp, month_range = c(1, 12), check_tables = FALSE) {
     season = NA,
     regName = stock_names,
     pres = 1,
-    catchReg = NA
+    catchReg = unique(comp_trim$catchReg)#NA
   ) %>%
     anti_join(., comp_trim,
-              by = c("month", "regName", "pres")
+              by = c("month", "catchReg", "regName", "pres")
     ) %>%
     select(-regName) %>%
     distinct()
   #add random subset of yrs to avoid overparameterizing model
   rand_yrs <- sample(unique(comp_trim$year), size = nrow(missing_sample_events),
                      replace = TRUE)
-  rand_catch_reg <- sample(unique(comp_trim$catchReg), 
-                           size = nrow(missing_sample_events),
-                           replace = TRUE)
+  # option to add random catch regions but results in unstable predictions
+  # rand_catch_reg <- sample(unique(comp_trim$catchReg), 
+  #                          size = nrow(missing_sample_events),
+  #                          replace = TRUE)
   missing_sample_events$year <- rand_yrs
-  missing_sample_events$catchReg <- rand_catch_reg
+  # missing_sample_events$catchReg <- rand_catch_reg
   
   #duplicate for all stocks (to balance the addition)
   infill_data <- do.call("rbind", replicate(length(stock_names),

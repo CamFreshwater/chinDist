@@ -16,7 +16,7 @@ comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   rename(regName = pst_agg)
 
 # month range dictated by ecological scale
-month_range = c(1, 12)
+month_range = c(3, 10)
 
 catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                             "dailyCatch_WCVI.rds")) %>% 
@@ -40,7 +40,9 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 # Clean Composition Data -------------------------------------------------------
 source(here::here("R", "functions", "clean_composition_dat.R"))
-comp_wide <- clean_comp(comp, month_range = month_range)
+comp_wide_l <- clean_comp(comp, month_range = month_range, check_tables = T)
+comp_wide_l$tables
+comp_wide <- comp_wide_l$data
 
 # Prep and Fit Model -----------------------------------------------------------
 
@@ -65,6 +67,8 @@ fac_key_eff <- fac_dat %>%
 source(here::here("R", "functions", "prep_tmb_dat.R"))
 inputs <- tmb_dat(catch, comp_wide, fac_dat, fac_key = fac_key_eff, mod = "nb")
 
+glimpse(inputs$data$X1_pred_ij)
+
 ## Make a function object
 compile(here::here("R", "southCoast", "tmb", "nb_multinomial_1re.cpp"))
 dyn.load(dynlib(here::here("R", "southCoast", "tmb", 
@@ -79,28 +83,26 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
+saveRDS(ssdr, here::here("generatedData", "model_fits", 
+                         "nbmult_ssdr_cwt.RDS"))
+
 # PREDICTIONS ------------------------------------------------------------------
+ssdr <- readRDS(here::here("generatedData", "model_fits", 
+                           "nbmult_ssdr_cwt.RDS"))
 
 log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
 logit_probs <- ssdr[rownames(ssdr) %in% "logit_pred_prob", ] #logit probs of each category
 pred_abund <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ] #pred abundance of each category
 
-comp_trim <- comp %>% 
-  filter(!month_n < month_range[1],
-         !month_n > month_range[2]) %>% 
-  droplevels() %>% 
-  dplyr::select(id, statArea, year, month, month_n, season, 
-                regName, pres, catchReg)
+comp_trim <- comp_wide_l$long_data
 n_groups <- length(unique(comp_trim$regName))
-
-glimpse(inputs$data$X1_pred_ij)
 
 pred_ci <- data.frame(stock = as.character(rep(unique(comp_trim$regName),
                                                each = 
-                                                 length(unique(fac_key$facs_n)))), 
+                                                 length(unique(fac_key_eff$facs_n)))), 
                       logit_prob_est = logit_probs[ , "Estimate"],
                       logit_prob_se =  logit_probs[ , "Std. Error"]) %>%
-  mutate(facs_n = rep(fac_key$facs_n, times = n_groups)) %>% 
+  mutate(facs_n = rep(fac_key_eff$facs_n, times = n_groups)) %>% 
   mutate(pred_prob = plogis(logit_prob_est),
          pred_prob_low = plogis(logit_prob_est +
                                   (qnorm(0.025) * logit_prob_se)),
@@ -110,7 +112,7 @@ pred_ci <- data.frame(stock = as.character(rep(unique(comp_trim$regName),
          abund_se =  pred_abund[ , "Std. Error"],
          abund_low = abund_est + (qnorm(0.025) * abund_se),
          abund_up = abund_est + (qnorm(0.975) * abund_se)) %>%
-  left_join(., fac_key, by = c("facs_n")) 
+  left_join(., fac_key_eff, by = c("facs_n")) 
 
 # calculate raw summary data for comparison
 raw_prop <- comp_trim %>% 
@@ -152,7 +154,7 @@ ggplot() +
   ggsidekick::theme_sleek()
 
 # estimates of stock compostion
-ggplot() +
+prop_plot <- ggplot() +
   geom_pointrange(data = plot_list[[1]], aes(x = month, y = pred_prob, 
                                       ymin = pred_prob_low,
                                       ymax = pred_prob_up),
@@ -162,3 +164,7 @@ ggplot() +
              alpha = 0.4) +
   facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
   ggsidekick::theme_sleek()
+
+pdf(here::here("figs", "model_pred", "cwt_nb_prop_pred.pdf"))
+prop_plot
+dev.off()
