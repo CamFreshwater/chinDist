@@ -8,72 +8,84 @@ library(tidyverse)
 
 # data generated in fit_combined.R
 plot_pst <- readRDS(here::here("generatedData", "model_fits",
-                                "reg3_plot_list.RDS"))
-plot_pst <- readRDS(here::here("generatedData", "model_fits",
-                                "reg3_plot_list.RDS"))
+                                "pst_plot_list.RDS"))
+plot_frB <- readRDS(here::here("generatedData", "model_fits",
+                                "frB_plot_list.RDS"))
 ```
 
-Here are preliminary results of the model that uses commerical catch/effort and genetics data to predict stock-specific abundance of Chinook salmon. Abundance is modeled using a negative binomial distribution with effort (boat days) included as an offset and stock composition is modeled using a multinomial distribution. We generate predictions for strata (catch region or statistical area and month or season) because finer scale spatio-temporal data are unavailable. The goal is to provide information on the "average" probability of encountering stocks of concern so we treat sampling year (2007-2015) as a random intercept in both model components, which should also help to account for interannual differences in sampling and fishing effort.
+Here are preliminary results of the model that uses commerical catch/effort and genetics data to predict stock-specific abundance of Chinook salmon. Abundance is modeled using a negative binomial distribution with effort (boat days) included as an offset and stock composition is modeled using a multinomial distribution. We generate predictions for strata (catch region/statistical area and month/season) because finer scale spatio-temporal data are unavailable. The goal is to provide information on the "average" probability of encountering stocks of concern (or an average index of abundance) so we treat sampling year (2007-2015) as a random intercept in both model components, which should also help to account for interannual differences in sampling and fishing effort.
 
-Since the uncertainty associated with parameter estimates for the multinomial fixed effects explode when there are zero observations of a stock, pre-processing involves aggregating stocks, aggregating strata, or infilling the dataset by adding small values to a subset of strata. Here we focus on larger stock aggregates constrained to January through October to circumvent this issue, but FM is particularly interested in finer scale predictions so any way we can make this portion more robust would be great.
+Since the uncertainty associated with parameter estimates for the multinomial fixed effects explode when there are zero observations of a stock in a given strata, pre-processing involves aggregating stocks, aggregating strata, or infilling the dataset by adding small values (unsure whether it's best to do this only in strata where it's necessary or across the board). Here we focus on larger stock aggregates constrained to January through October to circumvent this issue, as well as finer scale aggregates in the Fraser River constrained to May through October.
 
 Predicted encounter probabilities are generally consistent with observations and anecdotal information about when stocks are observed in these areas. Red points represent median fixed effects predictions from the model with 95% confidence intervals. The grey points represent aggregated monthly estimates of stock composition from the raw GSI data with each point representing a single year. 
 
-```{r plot_comp, echo=FALSE, fig.height = 5, fig.width = 3.5}
-n_groups <- length(unique(stk_plot_list$pred_ci$stock))
-ggplot() +
-  geom_pointrange(data = stk_plot_list$pred_ci,
-                  aes(x = month, y = pred_prob, ymin = pred_prob_low,
-                      ymax = pred_prob_up),
-                  col = "red") +
-  geom_point(data = stk_plot_list$raw_prop,
-             aes(x = month, y = samp_g_ppn),
-             alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
-  ggsidekick::theme_sleek() +
-  labs(y = "Predicted Encounter Probability", x = "Month") +
-  theme(text = element_text(size = 8),
-        axis.text = element_text(size = 7))
+```{r plot_comp, echo=FALSE, fig.height = 10, fig.width = 7, fig.cap="Model predicted mean encounter probabilities (solid points) and annual strata-specific observations (faded points) for Pacific Salmon Treaty stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+prob_plot <- map(list(plot_pst, plot_frB), function (x) {
+  n_groups <- length(unique(x$pred_ci$stock))
+  ggplot() +
+    geom_point(data = x$raw_prop, 
+               aes(x = month, y = samp_g_ppn, fill = catchReg),
+               shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
+    geom_pointrange(data = x$pred_ci, 
+                    aes(x = month, y = pred_prob, ymin = pred_prob_low, 
+                        ymax = pred_prob_up, fill = catchReg), 
+                    shape = 21, position = position_dodge(0.6)) +
+    facet_wrap(~stock, ncol = 2, scales = "free_y") +
+    scale_fill_viridis_d(option = "C", name = "Catch Region") +
+    labs(x = "Month", y = "Predicted Encounter Probability") +
+    ggsidekick::theme_sleek() +
+    theme(legend.position="top")
+})
+prob_plot[[1]]
+```
+
+```{r plot_comp_fr, echo=FALSE, fig.height = 10, fig.width = 7, fig.cap="Model predicted mean encounter probabilities (solid points) and annual strata-specific observations (faded points) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+prob_plot[[1]]
 ```
 
 I've compared predicted and observed abundance by predicting catch (i.e. the negative binomial component of the model) with various levels of month-specific effort (50 draws with resampling for each month) to account for seasonal increases. Estimates for July are wonky because we're currently missing commercial logbook data for one region.
 
-```{r plot_agg_abund, echo=FALSE, fig.height = 4, fig.width = 5.5}
-plot_list[["catch"]] %>% 
+```{r plot_agg_abund, echo=FALSE, fig.height = 6, fig.width = 5.5, fig.cap="Observed and model predicted aggregate catch assuming mean monthly effort."}
+plot_pst[["catch"]] %>% 
   mutate(dataset = "obs") %>% 
   select(catch, dataset, catchReg, month) %>% 
   rbind(., 
-        plot_list[["pred_catch"]] %>% 
+        plot_pst[["pred_catch"]] %>% 
           select(catch, dataset, catchReg, month)
         ) %>% 
   ggplot(.) +
   geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
-  ggsidekick::theme_sleek()
-
+  ggsidekick::theme_sleek() +
+  labs(fill = "Data")
 ```
 
 I combined estimates of total abundance with the probability of encountering individual stocks to generate estimates of stock-specific abundance. Red points represent median estimates of catch assuming mean effort, with 95% confidence intervals, while raw data represent monthly averaged catch per unit effort multiplied by the proportion of the catch belonging to a given stock. In other words, the two are not directly comparable because effort varies strongly among months, but it provides a first pass on whether the models behaving. I have also simulation tested the two model components individually, as well as combined, and am able to recover parameter estimates and generate sensible posterior predictions.
 
-```{r plot_abund, echo=FALSE, fig.height = 5, fig.width = 3.5}
-pred_ci_trim <- stk_plot_list[["pred_ci"]] %>%
-  mutate(abund_low = case_when(
-    abund_low < 0 ~ 0,
-    TRUE ~ abund_low
-  ))
+```{r plot_abund, echo=FALSE, fig.height = 6, fig.width = 6, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for PST stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+abund_plot <- map(list(plot_pst, plot_frB), function (x) {
+  n_groups <- length(unique(x$pred_ci$stock))
+  ggplot() +
+    geom_point(data = x$raw_abund, aes(x = month, y = cpue_g, fill = catchReg),
+               shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
+    geom_pointrange(data = x$pred_ci %>% 
+                       mutate(abund_low = case_when(
+                        abund_low < 0 ~ 0,
+                        TRUE ~ abund_low)), 
+                    aes(x = month, y = abund_est, ymin = abund_low, 
+                        ymax = abund_up, fill = catchReg), 
+                    shape = 21, position = position_dodge(0.6)) +
+    facet_wrap(~stock, ncol = 2, scales = "free_y") +
+    scale_fill_viridis_d(option = "C", name = "Catch Region") +
+    labs(x = "Month", y = "Predicted Catch") +
+    ggsidekick::theme_sleek() +
+    theme(legend.position="top")
+})
+abund_plot[[1]]
+```
 
-ggplot() +
-  geom_pointrange(data = pred_ci_trim,
-                  aes(x = month, y = abund_est, ymin = abund_low,
-                      ymax = abund_up),
-                  col = "red") +
-    geom_point(data = stk_plot_list[["raw_abund"]],
-             aes(x = month, y = cpue_g), alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
-  ggsidekick::theme_sleek() +
-  labs(y = "Predicted Catch (individuals)", x = "Month") +
-  theme(text = element_text(size = 8),
-        axis.text = element_text(size = 7))
+```{r plot_abund_fr, echo=FALSE, fig.height = 5, fig.width = 6, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+abund_plot[[2]]
 ```
 
 Next steps include:
@@ -81,5 +93,3 @@ Next steps include:
 1. _Tweaks to multinomial component_. Ideally account for variation in effective sample size and uncertain genetic stock assignments.
 
 2. _Incorporate more data_. Some commercial data appears to be missing (e.g. no catch/effort records for SWVI in July even though GSI samples exist) and  recreational data from WCVI and the Strait of Georgia should be added. These data may be added at similar spatial/temporal scales to the commercial data or modeled separately to generate fine-scale predictions (i.e. equivalent to juvenile data) when daily lat/longs are available.
-
-3. _Parameterize model with CWT data_. A comparison with predictions from an equivalent CWT-based model will provide an estimate of potential bias introduced by using indicator stocks (salmon-specific management issue of concern).
