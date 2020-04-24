@@ -15,9 +15,9 @@ plot_frB <- readRDS(here::here("generatedData", "model_fits",
 
 Here are preliminary results of the model that uses commerical catch/effort and genetics data to predict stock-specific abundance of Chinook salmon. Abundance is modeled using a negative binomial distribution with effort (boat days) included as an offset and stock composition is modeled using a multinomial distribution. We generate predictions for strata (catch region/statistical area and month/season) because finer scale spatio-temporal data are unavailable. The goal is to provide information on the "average" probability of encountering stocks of concern (or an average index of abundance) so we treat sampling year (2007-2015) as a random intercept in both model components, which should also help to account for interannual differences in sampling and fishing effort.
 
-Since the uncertainty associated with parameter estimates for the multinomial fixed effects explode when there are zero observations of a stock in a given strata, pre-processing involves aggregating stocks, aggregating strata, or infilling the dataset by adding small values (unsure whether it's best to do this only in strata where it's necessary or across the board). Here we focus on larger stock aggregates constrained to January through October to circumvent this issue, as well as finer scale aggregates in the Fraser River constrained to May through October.
+Since the uncertainty associated with parameter estimates for the multinomial fixed effects explode when there are zero observations of a stock in a given strata, pre-processing involves aggregating stocks, aggregating strata, or infilling the dataset by adding small values (unsure whether it's best to do this only in strata where it's necessary or across the board). An alternative approach used by Thorson and Haltuch 2019 was to not estimate these intercepts and fix $\beta$ to small values, but I haven't tried that approach here. For now, we focus on larger stock aggregates constrained to January through October to, as well as finer scale aggregates in the Fraser River constrained to May through October, to avoid excessive in-filling.
 
-Predicted encounter probabilities are generally consistent with observations and anecdotal information about when stocks are observed in these areas. Red points represent median fixed effects predictions from the model with 95% confidence intervals. The grey points represent aggregated monthly estimates of stock composition from the raw GSI data with each point representing a single year. 
+Predicted encounter probabilities are generally consistent with observations and anecdotal information about when stocks are observed in these areas. Solid points represent median fixed effects predictions from the model with 95% confidence intervals. The faded points represent aggregated monthly estimates of stock composition from the raw GSI data with each point representing a single year. 
 
 ```{r plot_comp, echo=FALSE, fig.height = 10, fig.width = 7, fig.cap="Model predicted mean encounter probabilities (solid points) and annual strata-specific observations (faded points) for Pacific Salmon Treaty stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
 prob_plot <- map(list(plot_pst, plot_frB), function (x) {
@@ -39,11 +39,11 @@ prob_plot <- map(list(plot_pst, plot_frB), function (x) {
 prob_plot[[1]]
 ```
 
-```{r plot_comp_fr, echo=FALSE, fig.height = 10, fig.width = 7, fig.cap="Model predicted mean encounter probabilities (solid points) and annual strata-specific observations (faded points) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
-prob_plot[[1]]
+```{r plot_comp_fr, echo=FALSE, fig.height = 5, fig.width = 5, fig.cap="Model predicted mean encounter probabilities (solid points) and annual strata-specific observations (faded points) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+prob_plot[[2]]
 ```
 
-I've compared predicted and observed abundance by predicting catch (i.e. the negative binomial component of the model) with various levels of month-specific effort (50 draws with resampling for each month) to account for seasonal increases. Estimates for July are wonky because we're currently missing commercial logbook data for one region.
+I've compared predicted and observed abundance by predicting catch (i.e. the negative binomial component of the model) with various levels of month-specific effort (50 draws with resampling for each month) to account for seasonal increases. Estimates for July are wonky because we are currently missing commercial logbook data for SWVI.
 
 ```{r plot_agg_abund, echo=FALSE, fig.height = 6, fig.width = 5.5, fig.cap="Observed and model predicted aggregate catch assuming mean monthly effort."}
 plot_pst[["catch"]] %>% 
@@ -60,9 +60,9 @@ plot_pst[["catch"]] %>%
   labs(fill = "Data")
 ```
 
-I combined estimates of total abundance with the probability of encountering individual stocks to generate estimates of stock-specific abundance. Red points represent median estimates of catch assuming mean effort, with 95% confidence intervals, while raw data represent monthly averaged catch per unit effort multiplied by the proportion of the catch belonging to a given stock. In other words, the two are not directly comparable because effort varies strongly among months, but it provides a first pass on whether the models behaving. I have also simulation tested the two model components individually, as well as combined, and am able to recover parameter estimates and generate sensible posterior predictions.
+I combined estimates of aggregate catch rates (index of abundance) with the probability of encountering individual stocks to generate estimates of stock-specific catch rates. Again, solid points represent mean estimates of catch assuming mean effort, with 95% confidence intervals, while raw data represent monthly averaged catch per unit effort multiplied by the proportion of the catch belonging to a given stock. In other words, the two are not directly comparable because effort varies strongly among months, but it provides a first pass on whether the models behaving. I have also simulation tested the two model components individually, as well as combined, and am able to recover parameter estimates and generate sensible posterior predictions.
 
-```{r plot_abund, echo=FALSE, fig.height = 6, fig.width = 6, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for PST stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+```{r plot_abund, echo=FALSE, fig.height = 7, fig.width = 6, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for PST stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
 abund_plot <- map(list(plot_pst, plot_frB), function (x) {
   n_groups <- length(unique(x$pred_ci$stock))
   ggplot() +
@@ -84,7 +84,7 @@ abund_plot <- map(list(plot_pst, plot_frB), function (x) {
 abund_plot[[1]]
 ```
 
-```{r plot_abund_fr, echo=FALSE, fig.height = 5, fig.width = 6, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
+```{r plot_abund_fr, echo=FALSE, fig.height = 5, fig.width = 5, fig.cap = "Model predicted mean standardized catch (i.e. effort, boat days, fixed at the annual mean) for Fraser River stock aggregates. Stocks are ordered from dominant to subordinate contributors to catch composition. Whiskers represent 95% confidence intervals. Note that y-axis labels differ among stocks."}
 abund_plot[[2]]
 ```
 
