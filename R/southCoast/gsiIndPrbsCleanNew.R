@@ -182,6 +182,9 @@ reg3 <- dat2 %>%
   #remove non-dom assignments based on above
   clean_dat(threshold = 0.75)
 
+#how many samples retained based on threshold
+length(unique(reg3$id)) / length(unique(dat2$id))
+
 saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
                            "reg3RollUpCatchProb.RDS"))
 
@@ -255,7 +258,7 @@ pst_aggs <- dat2 %>%
   clean_dat() 
 
 saveRDS(pst_aggs, here::here("data", "gsiCatchData", "commTroll",
-                         "pstAggRollUpCatchProb.RDS"))
+                             "pstAggRollUpCatchProb.RDS"))
 
 
 # Compare to catch data --------------------------------------------------------

@@ -7,16 +7,10 @@ output: html_document
 library(tidyverse)
 
 # data generated in fit_combined.R
-plot_list <- readRDS(here::here("generatedData", "model_fits",
+plot_pst <- readRDS(here::here("generatedData", "model_fits",
                                 "reg3_plot_list.RDS"))
-
-# reorder factor levels
-stk_plot_list <- map(plot_list[2:4], function(x) 
-  x %>% 
-    mutate(stock = fct_relevel(stock, "Other", after = Inf))
-  # mutate(stock = fct_relevel(stock, "FR 1.x", "Thomp. 1.x", "FR-Fall", 
-  #                              "South Thomp.", "Other"))
-  )
+plot_pst <- readRDS(here::here("generatedData", "model_fits",
+                                "reg3_plot_list.RDS"))
 ```
 
 Here are preliminary results of the model that uses commerical catch/effort and genetics data to predict stock-specific abundance of Chinook salmon. Abundance is modeled using a negative binomial distribution with effort (boat days) included as an offset and stock composition is modeled using a multinomial distribution. We generate predictions for strata (catch region or statistical area and month or season) because finer scale spatio-temporal data are unavailable. The goal is to provide information on the "average" probability of encountering stocks of concern so we treat sampling year (2007-2015) as a random intercept in both model components, which should also help to account for interannual differences in sampling and fishing effort.

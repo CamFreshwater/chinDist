@@ -16,17 +16,12 @@ library(ggplot2)
 # comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #                           "reg3RollUpCatchProb.RDS"))
 comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                               "pstAggRollUpCatchProb.RDS")) %>% 
-  rename(regName = pstName) %>% 
+                               "pstAggRollUpCatchProb.RDS")) %>%
+  rename(regName = pstName) %>%
   filter(!regName == "NBC_SEAK")
-# %>% 
-#   mutate(regName = case_when(
-#     regName %in% c("NBC_SEAK", "WACST", "WCVI") ~ "Other",
-#     TRUE ~ regName
-#   ))
 
 # month range dictated by ecological scale
-month_range = c(3, 10)
+month_range = seq(1, 10, by = 1)
 
 # pull months that are common to both strata and subset
 # comm_months <- comp %>% 
@@ -66,8 +61,7 @@ catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   ) %>% 
   filter(!is.na(cpue),
          #first constrain by range
-         !month_n < month_range[1],
-         !month_n > month_range[2]
+         month_n %in% month_range
          # ,
          # #then drop missing months
          # month_n %in% comm_months
@@ -105,6 +99,7 @@ fac_key_eff <- fac_dat %>%
 source(here::here("R", "functions", "prep_tmb_dat.R"))
 inputs <- tmb_dat(catch, comp_wide, fac_dat, fac_key_eff, mod = "nb")
 #check predictive matrix
+head(inputs$data$X1_ij)
 head(inputs$data$X1_pred_ij)
 
 
@@ -120,6 +115,7 @@ head(inputs$data$X1_pred_ij)
 compile(here::here("R", "southCoast", "tmb", "nb_multinomial_1re.cpp"))
 dyn.load(dynlib(here::here("R", "southCoast", "tmb", 
                            "nb_multinomial_1re")))
+
 obj <- MakeADFun(inputs$data, inputs$parameters, random = c("z1_k", "z2_k"), 
                  DLL = "nb_multinomial_1re")
 
@@ -130,14 +126,14 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_pst.RDS"))
-# saveRDS(ssdr, here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
+# saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_pst.RDS"))
+# saveRDS(ssdr, here::here("generatedData", "model_fits", "nbmult_ssdr_frB.RDS"))
 
 
 # PREDICTIONS ------------------------------------------------------------------
 
 #frB versions have a different subset of stocks and months at finer spatial scale
-# ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_frB.RDS"))
+ssdr <- readRDS(here::here("generatedData", "model_fits", "nbmult_ssdr_pst.RDS"))
 # ssdr <- readRDS(here::here("generatedData", "model_fits", "twmult_ssdr_agg.RDS"))
 
 log_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] #log pred of abundance
@@ -162,17 +158,19 @@ pred_ci <- data.frame(stock = as.character(rep(unique(comp_trim$regName),
          abund_se =  pred_abund[ , "Std. Error"],
          abund_low = abund_est + (qnorm(0.025) * abund_se),
          abund_up = abund_est + (qnorm(0.975) * abund_se)) %>%
-  left_join(., fac_key_eff, by = c("facs_n")) 
+  left_join(., fac_key_eff, by = c("facs_n")) %>% 
+  mutate(stock = fct_reorder(stock, desc(pred_prob)))
 
 # calculate raw summary data for comparison
-raw_prop <- comp_trim %>% 
+raw_prop <- comp %>% 
+  filter(month_n %in% month_range) %>% 
   group_by(catchReg, month, year, regName) %>%
   summarize(samp_g = length(unique(id))) %>% 
   group_by(catchReg, month, year) %>%
   mutate(samp_total = sum(samp_g)) %>% 
   ungroup() %>% 
-  mutate(samp_g_ppn = samp_g / samp_total) %>% 
-  rename(stock = regName) 
+  mutate(samp_g_ppn = samp_g / samp_total,
+         stock = fct_reorder(regName, desc(samp_g_ppn))) 
 
 raw_abund <- catch %>% 
   group_by(catchReg, month, year) %>%
@@ -180,11 +178,12 @@ raw_abund <- catch %>%
             sum_effort = sum(boatDays),
             agg_cpue = sum_catch / sum_effort) %>% 
   ungroup() %>% 
+  mutate(month = as.character(month)) %>% 
   left_join(., raw_prop, by = c("catchReg", "month", "year")) %>% 
   mutate(catch_g = samp_g_ppn * sum_catch,
          cpue_g = samp_g_ppn * agg_cpue,
-         catchReg = as.factor(catchReg)) %>% 
-  # rename(stock = regName) %>% 
+         catchReg = as.factor(catchReg), 
+         month = fct_relevel(as.factor(month), "10", after = Inf)) %>% 
   filter(!is.na(stock))
 
 
@@ -192,27 +191,32 @@ raw_abund <- catch %>%
 # note that effort is standardized differently between raw data and predictions,
 # not apples to apples comparison
 ggplot() +
-  geom_pointrange(data = pred_ci, aes(x = month, y = abund_est,
-                                      ymin = abund_low,
-                                      ymax = abund_up), col = "red") +
-  # geom_point(data = raw_abund, aes(x = month, y = catch_g),
-  #            alpha = 0.4) +
-  geom_point(data = raw_abund, aes(x = month, y = cpue_g),
-             alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
-  ggsidekick::theme_sleek()
+  geom_point(data = raw_abund, aes(x = month, y = cpue_g, fill = catchReg),
+             shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
+  geom_pointrange(data = pred_ci, 
+                  aes(x = month, y = abund_est, ymin = abund_low, 
+                      ymax = abund_up, fill = catchReg), 
+                  shape = 21, position = position_dodge(0.6)) +
+  facet_wrap(~stock, ncol = 2, scales = "free_y") +
+  scale_fill_viridis_d(option = "C", name = "Catch Region") +
+  labs(x = "Month", y = "Predicted Catch") +
+  ggsidekick::theme_sleek() +
+  theme(legend.position="top")
 
 # estimates of stock compostion
 ggplot() +
-  geom_pointrange(data = pred_ci, aes(x = month, y = pred_prob, 
-                                      ymin = pred_prob_low,
-                                      ymax = pred_prob_up),
-                  col = "red") +
-  geom_point(data = raw_prop,
-             aes(x = month, y = samp_g_ppn),
-             alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
-  ggsidekick::theme_sleek()
+  geom_point(data = raw_prop, 
+             aes(x = month, y = samp_g_ppn, fill = catchReg),
+             shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
+  geom_pointrange(data = pred_ci, 
+                  aes(x = month, y = pred_prob, ymin = pred_prob_low, 
+                      ymax = pred_prob_up, fill = catchReg), 
+                  shape = 21, position = position_dodge(0.6)) +
+  facet_wrap(~stock, ncol = 2, scales = "free_y") +
+  scale_fill_viridis_d(option = "C", name = "Catch Region") +
+  labs(x = "Month", y = "Predicted Encounter Probability") +
+  ggsidekick::theme_sleek() +
+  theme(legend.position="top")
 
 # estimates of aggregate CPUE (replace with simulated approach below)
 # agg_abund <- data.frame(
@@ -255,9 +259,9 @@ pred_catch <- fac_key_eff %>%
       catchReg == "NWVI" ~ 0,
       catchReg == "SWVI" ~ abund_b[2]
     ),
-    month_b = rep(c(0, abund_b[3:11]), times = 2),
-    eff_b = abund_b[12],
-    eff2_b = abund_b[13]) %>% 
+    month_b = rep(c(0, abund_b[3:(nrow(abund_b) - 2)]), times = 2),
+    eff_b = abund_b[nrow(abund_b) - 1],
+    eff2_b = abund_b[nrow(abund_b)]) %>% 
   split(., .$facs_n) %>% 
   map(., function(x) {
     mm <- catch %>% 
@@ -282,19 +286,15 @@ catch %>%
   ggplot(.) +
   geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
   facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
-  ggsidekick::theme_sleek()
+  ggsidekick::theme_sleek() +
+  labs(fill = "Data")
 # looks good! some deviations because effort isn't stratified by region and 
 # July data are wonky, but otherwise solid
 
-## export plotting data for Rmd (version 1)
-# list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund, 
-#      raw_agg_abund = agg_abund) %>% 
-#   saveRDS(., here::here("generatedData", "model_fits", "frB_plot_list.RDS"))
-
-## export plotting data for Rmd (version 1)
+## export plotting data for Rmd 
 list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund,
      pred_catch = pred_catch) %>%
-  saveRDS(., here::here("generatedData", "model_fits", "reg3_plot_list.RDS"))
+  saveRDS(., here::here("generatedData", "model_fits", "pst_plot_list.RDS"))
 
 
 ## estimates of effort effects on catch
