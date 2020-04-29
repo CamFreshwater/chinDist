@@ -44,7 +44,7 @@ where $\beta_m$ and $\beta_y$ are strata- and year-specific intercepts. Thus enc
 $$\pi^{(g)}_{my} = \frac{e^{\beta^{(g)}_m + \beta^{(g)}_y}} {1 + \sum^{g'-1}_{k=1} e^{\beta^{(k)}_m + \beta^{(k)}_y}}$$
 and for the reference stock group as 
 
-$$ \pi^{(g')}_{my} = 1 - \sum_{k=1}^{g'-1} \pi^{(k)}_{my}. $$
+$$ \pi^{(g')}_{my} = 1 - \sum_{k=1}^{g'-1} \pi^{(k)}_{my}.$$
 
 
 To account for interannual differences in spatio-temporal fishery closures we modeled $\alpha_y$ and $\beta_y$ as random variables from the following hyperdistributions:
