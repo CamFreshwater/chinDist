@@ -29,10 +29,25 @@ Genetic stock identification
 Stock-specific catch and distribution model
 * We assumed catch rate could be used as a proxy for abundance in a given spatio-temporal strata
 
-We modeled catch as a negative binomial process with mean $mu$
+We modeled total catch as a negative binomial process, with mean $mu$ and dispersion $k$, via a link function and the following linear predictor:
 
-$$log(\mu_{lmy}) = \alpha_{lm} + {\beta_1}b_{lm} + {\beta_2b_{lm}^2} + \gamma_y$$
+$$log(\mu_{my}) = \alpha_m + \alpha_y + {\alpha_{b1}}b_{m} + {\alpha_{b2}b_{m}^2} $$
 
-where $$\alpha$$ is the intercept for catch region $l$ and month $m$, while $\beta_1$ and $\beta_2$ describe linear and exponential effects associated with strata-specific effort (boat days). $\gamma$ is a year-specific intercept that was modeled hierarchically 
+where $$\alpha_m$$ is the intercept for strata $m$ (i.e. a unique combination of month and catch region), $$\alpha_y$$ is the intercept for year $y$, and $\alpha_{b1}$ and $\alpha_{b2}$ describe linear and exponential effects associated with strata-specific effort ($b$; boat days). 
 
-$$ \gamma \sim \text{normal}(0, \sigma_{\gamma}) $$
+We modeled stock composition as a multinomial process where $\pi_{g}$ represents the probability of encountering stock group $g$ among $G$ total stock groups. We estimated changes in stock composition across strata by modeling the log odds of encountering $g$ relative to the reference stock group $g'$ (the last value in the vector $\mathbf{g}$ of stock groups)
+
+$$ log(\frac{\pi^{(g)}_{my}}{\pi^{(g')}_{my}}) = \beta_m + \beta_y $$
+
+where $\beta_m$ and $\beta_y$ are strata- and year-specific intercepts. Thus encounter probabilities can be calculated for each non-reference stock group as 
+
+$$\pi^{(g)}_{my} = \frac{e^{\beta^{(g)}_m + \beta^{(g)}_y}} {1 + \sum^{g'-1}_{k=1} e^{\beta^{(k)}_m + \beta^{(k)}_y}}$$
+and for the reference stock group as 
+
+$$ \pi^{(g')}_{my} = 1 - \sum_{k=1}^{g'-1} \pi^{(k)}_{my}. $$
+
+
+To account for interannual differences in spatio-temporal fishery closures we modeled $\alpha_y$ and $\beta_y$ as random variables from the following hyperdistributions:
+
+$$ \alpha_y \sim \text{normal}(\nu_{\alpha_y}, \sigma^2_{\alpha_y}) $$
+$$ \beta_y \sim \text{normal}(\nu_{\beta_y}, \sigma^2_{\beta_y}). $$
