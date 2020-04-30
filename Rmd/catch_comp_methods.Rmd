@@ -12,8 +12,8 @@ Study system
   +	We focused our analysis on populations aggregated at two ecological scales—regional aggregates as defined in Pacific Salmon Treaty documents and finer scale stock aggregates specifically relevant to Canadian management (table)
   +	Each stock grouping contains a mix of hatchery- and wild-origin populations; however, the relative proportion of each is highly variable
 
-Data collection and genotyping
-*	GSI data were collected from 2007-2015 by a mix of at-sea and dockside observers
+GSI data collection
+*	GSI data were collected from 2007-2015 by a mix of at-sea and dockside observers (n=)
   +	On-board observers sampled the first 25-50 fish landed daily; additional 25-50 sampled if the vessel changed PFMAs
   +	Dockside sampling was associated with the mark recovery program which samples commercial catch for CWT recoveries.
   +	~4% of the month- and PFMA-specific catch was sampled 
@@ -25,6 +25,14 @@ Genetic stock identification
 *	Individual stock assignment probabilities were determined using microsatellites (Beacham et al. 2006)
 *	We excluded all individuals with a <75% probability of assignment to a given stock (~15%) of samples
 *	We aggregated individual stocks based on groupings described in DFO and PST documents 
+
+CWT data collection
+* We extracted recoveries of CWT release groups from the RMIS database
+  + We restricted our analysis to equivalent fisheries (i.e. ocean or test fishery troll; fishery codes, 10-15 and 60)
+* We used the unadjusted number of recovered tags, rather than the expanded number that accounts for sampling effort, because an equivalent adjustment is not performed for the GSI samples
+  + Expansion factors also quite low (mean 3.5, sd 1.14)
+* We assigned release groups to equivalent stock groups as the GSI data based on hatchery location and life history type
+
 
 Stock-specific catch and distribution model
 * We assumed catch rate could be used as a proxy for abundance in a given spatio-temporal strata
@@ -51,3 +59,5 @@ To account for interannual differences in spatio-temporal fishery closures we mo
 
 $$ \alpha_y \sim \text{normal}(\nu_{\alpha_y}, \sigma^2_{\alpha_y}) $$
 $$ \beta_y \sim \text{normal}(\nu_{\beta_y}, \sigma^2_{\beta_y}). $$
+
+The two model components allowed us to predict the probability of encountering a given stock group in an "average" year by integrating across random effects. Similarly we generated predictions of stock-specific abundance by multiplying predicted aggregate catch by the probability of encountering a given stock.
