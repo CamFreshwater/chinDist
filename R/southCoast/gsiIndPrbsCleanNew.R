@@ -31,7 +31,7 @@ id_vec <- datRaw$szLineInfo %>%
               statArea %in% c("Area126", "Area126NWVI") ~ "126",
               statArea %in% c("Area127", "Area127NWVI") ~ "127",
               statArea %in% c("Area026") ~ "26",
-              statArea %in% c("Area24", "Area_24", "Area_24xgill") ~ "24",
+              statArea %in% c("Area24", "Area_24") ~ "24",
               TRUE ~ as.character(statArea)
               ),
          abbYear = sapply(strsplit(as.character(year), '[()]'), 
@@ -90,7 +90,7 @@ dat <- cbind(id_vec, datRaw) %>%
   # for now remove ~150 fish that can't be assigned to an individual stat area;
   # eventually could assign based on where majority of effort occurred
   filter(!statArea %in% c("Area123-124", "Area125-126", "Area126-127",
-                          "Area124_24")) 
+                          "Area124_24", "Area_24xgill")) 
 
 # Export example GSI data to Wilf 
 # dat[1:1000, ] %>% 

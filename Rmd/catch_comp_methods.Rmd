@@ -13,22 +13,24 @@ Study system
   +	Each stock grouping contains a mix of hatchery- and wild-origin populations; however, the relative proportion of each is highly variable
 
 GSI data collection
-*	GSI data were collected from 2007-2015 by a mix of at-sea and dockside observers (n=)
-  +	On-board observers sampled the first 25-50 fish landed daily; additional 25-50 sampled if the vessel changed PFMAs
-  +	Dockside sampling was associated with the mark recovery program which samples commercial catch for CWT recoveries.
-  +	~4% of the month- and PFMA-specific catch was sampled 
-  +	GSI samples could be attributed to a statistical area and landing day
+*	GSI data were collected from 2007-2015 dockside and at processing facilities
+  + Sampling was performed by observers under contract to DFO's Mark Recovery Program (MRP), who are responsible for recovering CWTs in commercial fisheries
+  + The MRP program aims to sample 20% of the landed catch for CWTs; these individuals were further sub-sampled to provide GSI samples with a target of 4% of the catch and a minimum of 200 (July-March) or 500 (April-June) samples per catch region and month (barring very small catches)
+* In 2008-2011 additional at-sea sampling occurred during May, June and Sep in SA 123 (keep or ditch this?)
+*	GSI samples could generally be attributed to a statistical area and landing day (Figure 1)
 *	Commercial catch and effort data were retrieved from the FOS database, which contains daily counts of adult Chinook retained in each day and fishery statistical area as recorded in mandatory vessel logbooks.
   +	Effort = boat days
-  +	We paired genetics and abundance data by focusing our analyses at the weekly time scale (trollers are typically at-sea for 3-4 days (pers. comm.))
+  +	We paired genetics and abundance data by focusing our analyses at the weekly time scale; given most troller trips are 3-4 days in length we assigned samples to the previous statistical week if they were landed on or before Tuesday and the current stat week otherwise
+  
 Genetic stock identification
-*	Individual stock assignment probabilities were determined using microsatellites (Beacham et al. 2006)
+*	Individual stock assignment probabilities were determined using microsatellites and the coastwide baseline (Beacham et al. 2006)
 *	We excluded all individuals with a <75% probability of assignment to a given stock (~15%) of samples
 *	We aggregated individual stocks based on groupings described in DFO and PST documents 
 
 CWT data collection
 * We extracted recoveries of CWT release groups from the RMIS database
   + We restricted our analysis to equivalent fisheries (i.e. ocean or test fishery troll; fishery codes, 10-15 and 60)
+* CWTs are recovered by contractors at landing sites; 
 * We used the unadjusted number of recovered tags, rather than the expanded number that accounts for sampling effort, because an equivalent adjustment is not performed for the GSI samples
   + Expansion factors also quite low (mean 3.5, sd 1.14)
 * We assigned release groups to equivalent stock groups as the GSI data based on hatchery location and life history type
