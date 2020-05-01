@@ -7,6 +7,7 @@ library(maptools)
 library(here)
 library(rmapshaper)
 library(geojsonio)
+library(mapdata)
 
 
 theme_set(ggsidekick::theme_sleek())
@@ -18,9 +19,10 @@ areas <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   unique()
 
 #big map
-n_am <- map_data("world", region = c("usa", "canada")) %>%
+n_am <- map_data("worldHires", region = c("usa", "canada")) %>%
   filter(long < -110) %>%
   fortify(.)
+
 
 #pfma polys 
 pfma_simp_df <- readRDS(here("data", "gsiCatchData", "pfma", "trim_pfma_df.rds"))
@@ -61,10 +63,10 @@ alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.7, 1, length = (length(alpha_labs) / 2)), 2)
 
 ggplot() +
-  coord_quickmap(xlim = c(-131, -122), ylim = c(47.5, 51.5), expand = TRUE,
+  coord_quickmap(xlim = c(-129, -122.2), ylim = c(47.75, 51), expand = TRUE,
                  clip = "on") +
   geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
-                                fill = catchReg, alpha = statArea), 
+                                fill = catchReg, alpha = statArea),
                lwd = 1) +
   geom_polygon(data = n_am, aes(x=long, y = lat, group = group)) + 
   scale_fill_manual(name = "Region", labels = cols.vals, values = cols.named) +
