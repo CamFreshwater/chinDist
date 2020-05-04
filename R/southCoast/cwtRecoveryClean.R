@@ -92,25 +92,32 @@ rec_raw <- datRaw %>%
 ## FORMAT CWT DATA TO MATCH GSI ------------------------------------------------
 
 rec_long <- rec_raw %>%
-  mutate(statArea = NA,
-         gear = "troll",
-         date = as.POSIXct(as.character(rec_raw$recovery_date), 
-                           format="%Y%m%d"),
-         month = lubridate::month(date),
-         week = lubridate::week(date), 
-         jDay = lubridate::yday(date),
-         season_c = case_when(
-           month %in% c("12", "1", "2") ~ "w",
-           month %in% c("3", "4", "5") ~ "sp",
-           month %in% c("6", "7", "8") ~ "su",
-           month %in% c("9", "10", "11") ~ "f"
-         ),
-         season = fct_relevel(season_c, "sp", "su", "f", "w"),
-         month_n = as.numeric(month),
-         month = as.factor(month_n),
-         year =  as.factor(run_year),
-         pres = 1
-         ) %>% 
+  mutate(
+    statArea = NA,
+    gear = "troll",
+    date = as.POSIXct(as.character(rec_raw$recovery_date), 
+                     format="%Y%m%d"),
+    month = lubridate::month(date),
+    unadj_week = lubridate::week(date), 
+    weekDay = weekdays(date),
+    #adjust week for sampling date occuring after harvest date
+    week = case_when(
+      weekDay %in% c("Sunday", "Monday") ~ unadj_week - 1,
+      TRUE ~ unadj_week
+    ),
+    jDay = lubridate::yday(date),
+    season_c = case_when(
+     month %in% c("12", "1", "2") ~ "w",
+     month %in% c("3", "4", "5") ~ "sp",
+     month %in% c("6", "7", "8") ~ "su",
+     month %in% c("9", "10", "11") ~ "f"
+    ),
+    season = fct_relevel(season_c, "sp", "su", "f", "w"),
+    month_n = as.numeric(month),
+    month = as.factor(month_n),
+    year =  as.factor(run_year),
+    pres = 1
+    ) %>% 
   select(id = recovery_id, year, statArea, month, week, jDay, gear, date, 
          season_c, season, month_n,
          pres, catchReg = Basin, pst_agg)

@@ -21,58 +21,65 @@ id_vec <- datRaw$szLineInfo %>%
   data.frame() %>% 
   rename("statArea" = X1, "year" = X2, "gear" = X3, "jDay" = X4,
          "fishNum" = X5) %>% 
-  mutate(jDay = as.numeric(as.character(jDay)),
-         statArea = 
-           case_when(
-              statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
-              statArea %in% c("Area123", "Area123SWVI", "Area123Comm") ~ "123",
-              statArea %in% c("Area124", "Area124SWVI", "Area124Comm") ~ "124",
-              statArea %in% c("Area125", "Area125NWVI") ~ "125",
-              statArea %in% c("Area126", "Area126NWVI") ~ "126",
-              statArea %in% c("Area127", "Area127NWVI") ~ "127",
-              statArea %in% c("Area026") ~ "26",
-              statArea %in% c("Area24", "Area_24") ~ "24",
-              TRUE ~ as.character(statArea)
-              ),
-         abbYear = sapply(strsplit(as.character(year), '[()]'), 
-                     function(x) (x)[2]),
-         year = paste("20", abbYear, sep = ""),
-         #adjust sampling day to correct for errors by genetics lab and 
-         jDay = 
-           case_when(
-             statArea == "126" & year == "2012" & jDay > 48 &
-               jDay < 116 ~ 48,
-             statArea == "126" & year == "2012" & jDay > 116 &
-               jDay < 121 ~ 116,
-             TRUE ~ jDay),
-         date = as.Date(as.numeric(as.character(jDay)),
-                        origin = as.Date(paste(year, "01", "01", sep = "-"))),
-         month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
-         week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")),
-         fishNum = as.numeric(as.character(fishNum))) %>% 
+  mutate(
+    jDay = as.numeric(as.character(jDay)),
+    statArea = 
+      case_when(
+         statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
+         statArea %in% c("Area123", "Area123SWVI", "Area123Comm") ~ "123",
+         statArea %in% c("Area124", "Area124SWVI", "Area124Comm") ~ "124",
+         statArea %in% c("Area125", "Area125NWVI") ~ "125",
+         statArea %in% c("Area126", "Area126NWVI") ~ "126",
+         statArea %in% c("Area127", "Area127NWVI") ~ "127",
+         statArea %in% c("Area026") ~ "26",
+         statArea %in% c("Area24", "Area_24") ~ "24",
+         TRUE ~ as.character(statArea)
+         ),
+    abbYear = sapply(strsplit(as.character(year), '[()]'), 
+                function(x) (x)[2]),
+    year = paste("20", abbYear, sep = ""),
+    #adjust sampling day to correct for errors by genetics lab and 
+    jDay = 
+      case_when(
+        statArea == "126" & year == "2012" & jDay > 48 &
+          jDay < 116 ~ 48,
+        statArea == "126" & year == "2012" & jDay > 116 &
+          jDay < 121 ~ 116,
+        TRUE ~ jDay),
+    date = as.Date(as.numeric(as.character(jDay)),
+                   origin = as.Date(paste(year, "01", "01", sep = "-"))),
+    month = lubridate::month(as.POSIXlt(date, format="%Y-%m-%d")),
+    week = lubridate::week(as.POSIXlt(date, format="%Y-%m-%d")),
+    weekDay = weekdays(date),
+    fishNum = as.numeric(as.character(fishNum))
+    ) %>% 
   # adjust sampling week
   # for specific strata based on when samples were landed relative to julian 
   # date of when fishing occurred (based on reviewing FOS database and pers. 
   # comm. Lee Kearey - South Coast)
-  mutate(adjWeek = case_when(
-    statArea == "23" & month == "3" & year == "2013" ~ week - 1,
-    statArea == "24" & month == "5" & year == "2013" ~ week - 1,
-    statArea == "26" & month == "2" & year == "2" ~ week - 1,
-    statArea == "123" & month == "6" & year == "2007" ~ week - 1,
-    statArea == "123" & month == "6" & year == "2008" ~ week - 1,
-    statArea == "125" & month == "6" & year == "2007" ~ week - 1,
-    statArea == "125" & month == "10" & year == "2007" ~ week - 1,
-    statArea == "125" & month == "5" & year == "2014"~ week - 1,
-    statArea == "126" & month == "3" & year == "2007"~ week - 1,
-    statArea == "126" & month == "2" & year == "2012"~ week - 1,
-    statArea == "126" & month == "3" & year == "2013"~ week - 1,
-    statArea == "126" & month == "4" & year == "2013"~ week - 1,
-    statArea == "126" & month == "3" & year == "2015"~ week - 1,
-    statArea == "127" & month == "6" & year == "2007"~ week - 1,
-    statArea == "127" & month == "4" & year == "2014"~ week - 1,
-    statArea == "23" & month == "6" & year == "2007"~ week - 1,
-    TRUE ~ week)
-  ) %>% 
+  mutate(
+    adjWeek = case_when(
+      statArea == "23" & month == "3" & year == "2013" ~ week - 1,
+      statArea == "24" & month == "5" & year == "2013" ~ week - 1,
+      statArea == "26" & month == "2" & year == "2" ~ week - 1,
+      statArea == "123" & month == "6" & year == "2007" ~ week - 1,
+      statArea == "123" & month == "6" & year == "2008" ~ week - 1,
+      statArea == "125" & month == "6" & year == "2007" ~ week - 1,
+      statArea == "125" & month == "10" & year == "2007" ~ week - 1,
+      statArea == "125" & month == "5" & year == "2014"~ week - 1,
+      statArea == "126" & month == "3" & year == "2007"~ week - 1,
+      statArea == "126" & month == "2" & year == "2012"~ week - 1,
+      statArea == "126" & month == "3" & year == "2013"~ week - 1,
+      statArea == "126" & month == "4" & year == "2013"~ week - 1,
+      statArea == "126" & month == "3" & year == "2015"~ week - 1,
+      statArea == "127" & month == "6" & year == "2007"~ week - 1,
+      statArea == "127" & month == "4" & year == "2014"~ week - 1,
+      statArea == "23" & month == "6" & year == "2007"~ week - 1,
+      # shift back to account for catch being harvested 3-4 days before landing
+      weekDay %in% c("Sunday", "Monday") ~ week - 1,
+      TRUE ~ week
+      )
+    ) %>% 
   #shuffle adjusted
   rename(week = adjWeek, unadjWeek = week)
 
