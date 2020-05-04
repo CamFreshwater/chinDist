@@ -63,7 +63,7 @@ alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.7, 1, length = (length(alpha_labs) / 2)), 2)
 
 ggplot() +
-  coord_quickmap(xlim = c(-129, -122.2), ylim = c(47.75, 51), expand = TRUE,
+  coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
                  clip = "on") +
   geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
                                 fill = catchReg, alpha = statArea),
