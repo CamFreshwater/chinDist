@@ -3,45 +3,30 @@ title: "Catch Composition Manuscript Methods"
 output: word_document
 ---
 
-Study system
-* Chinook salmon are harvested in a mix of commercial, recreational, and First Nations fisheries, prior to and during their return migrations to freshwater
-  + In southern BC the specific timing and location of these fisheries changes annually due to fishery management decisions
-  +	Recently, however, the commercial fishery operates in early summer and fall, with monthly quotas. Restricted to WCVI since mid-90s
-  +	The recreational fishery operates year-round, although effort peaks in summer months and retention is restricted in specific areas due to closures
-*	These regions are seasonally occupied by populations originating from northern British Columbia to central California
-  +	We focused our analysis on populations aggregated at two ecological scales—regional aggregates as defined in Pacific Salmon Treaty documents and finer scale stock aggregates specifically relevant to Canadian management (table)
-  +	Each stock grouping contains a mix of hatchery- and wild-origin populations; however, the relative proportion of each is highly variable
+_Study system_
 
-GSI data collection
-*	GSI data were collected from 2007-2015 by a mix of at-sea and dockside observers (n=)
-  +	On-board observers sampled the first 25-50 fish landed daily; additional 25-50 sampled if the vessel changed PFMAs
-  +	Dockside sampling was associated with the mark recovery program which samples commercial catch for CWT recoveries.
-  +	~4% of the month- and PFMA-specific catch was sampled 
-  +	GSI samples could be attributed to a statistical area and landing day
-*	Commercial catch and effort data were retrieved from the FOS database, which contains daily counts of adult Chinook retained in each day and fishery statistical area as recorded in mandatory vessel logbooks.
-  +	Effort = boat days
-  +	We paired genetics and abundance data by focusing our analyses at the weekly time scale (trollers are typically at-sea for 3-4 days (pers. comm.))
-Genetic stock identification
-*	Individual stock assignment probabilities were determined using microsatellites (Beacham et al. 2006)
-*	We excluded all individuals with a <75% probability of assignment to a given stock (~15%) of samples
-*	We aggregated individual stocks based on groupings described in DFO and PST documents 
+  Chinook salmon are harvested in a mix of commercial, recreational, and First Nations fisheries, prior to and during their return migrations to freshwater. The majority of management decisions are applied at the Pacific fishery management area scale (PFMA), which can turn be aggregated into catch regions (Figure 1). Our analysis focused on PFMAs managed by DFO's South Coast area office, including the west coast of Vancouver Island, as well as Canadian portions of the Salish Sea (Juan de Fuca Strait, Strait of Georgia, and Johnstone Strait). The timing of fisheries restrictions in each PFMA may change annually due to closures to avoid stocks of concern, as well as changes in harvestable quota as determined under the Pacific Salmon Treaty. In recent years the commercial troll fishery (restricted to WCVI) has shifted from harvesting in the late fall through early spring to harvesting only in late spring and late summer (ref). The WCVI and inside sport fisheries operate year-round with area-specific retention regulations, but the majority of effort occurs from late spring to early fall (ref). The timing and location of First Nations fisheries are highly variable and were not incorporated here (ref).
 
-CWT data collection
-* We extracted recoveries of CWT release groups from the RMIS database
-  + We restricted our analysis to equivalent fisheries (i.e. ocean or test fishery troll; fishery codes, 10-15 and 60)
-* We used the unadjusted number of recovered tags, rather than the expanded number that accounts for sampling effort, because an equivalent adjustment is not performed for the GSI samples
-  + Expansion factors also quite low (mean 3.5, sd 1.14)
-* We assigned release groups to equivalent stock groups as the GSI data based on hatchery location and life history type
+_Data collection_
+
+  Tissue samples for genetic stock identification were collected from the WCVI commercial troll fishery dockside and at processing facilies from 2007-2015. Sampling was performed by observers contracted annually by DFO's Mark Recovery Program to recover coded wire tags (CWTs). The Mark Recovery Program aims to sample 20% of the landed WCVI commercial catch for CWTs. These individuals were further sub-sampled to provide GSI samples with a target of 4% of the monthly catch. The timing of the commercial fishery's closure is difficult to predict accurately in-season because it occurs immediately after the total allowable catch is achieved. To meet the sampling objects while accounting for this uncertainty, sampling effort was often higher at the beginning of the month. Note that GSI samples could be attributed to a statistical area and landing day, but not to a harvest date or specific spatial location because trollers are often at sea for multiple days before landing their catch. Additional samples were gathered in May, June, and September of 2008-2011 by an at-sea observer aboard a test fishing vessel that was contracted to collect GSI samples from the first 25 fish landed daily. 
+  
+  We extracted CWT recoveries from the online Regional Mark Information System (RMIS), which serves as an official repository for tagging and marking studies on anadromous salmon performed by American and Canadian agencies. RMIS provides data on recoveries associated with a given release group, i.e. a cohort of individuals marked and released at a given time and location. Each release group can be assigned to a stock aggregate based on the release location or, in the case of hatchery fish, brood stock information. We restricted our analysis to years and fisheries for which we had GSI data. Given that genetic sampling was typically performed in concert with CWT sampling (albeit on a smaller number of total fish), we assume that each data source provides information from equivalent harvesting events. The RMIS database provides a scalar estimating the total number of tags belonging to a given release group in a sampling event; however we did not use it here because an equivalent value was not available for GSI data and our analysis accounted for sampling effort at coarser spatio-temporal scales.
+  
+  Commercial catch and effort data were retrieved from DFO's FOS database for all PFMAs and years in which GSI samples were available. These data consist of daily individual catch values from mandatory vessel logbooks, as well as the number of licensed vessels operating on a given day in each PFMA. We aggregated genetics, CWT, and catch data at weekly scales since genetics and CWT data could not be assigned to a specific harvest day. Given most troller trips in the region are three-four days in length, we assigned genetic samples to the previous statistical week if they were landed on or before Tuesday and the current statistical week otherwise.
+
+_Stock Identification_
+
+  Genetic stock assignments were performed using a modified version of cBAYES (Neaves et al. 2005) and a reference baseline derived from microsatellite markers that consisted of 268-populations with more than 50,000 individuals (Beacham et al. 2006). For subsequent analyses we excluded all individuals with a <75% probability of assignment to a given stock (~15% of samples). Since management actions are typically driven by higher order abundance, we generated two sets of stock aggregates by pooling populations with similar freshwater distributions or run timing. The first grouping contained regional aggregates as defined in recent Pacific Salmon Treaty documents, while the second retained fine-scale Canadian-origin aggregates relevant to domestic management and pooled all other stocks (Table). We assigned CWT recoveries to the same stock groups based on stock information or hatchery location, when the former was not available. We note that each stock aggregate contains a mix of hatchery- and wild-origin populations; however the relative proportion of each varies among aggregates, as well as years, and we did not attempt to distinguish between patterns in hatchery and wild abundance. 
 
 
-Stock-specific catch and distribution model
-* We assumed catch rate could be used as a proxy for abundance in a given spatio-temporal strata
+_Stock-specific catch and distribution model_
 
-We modeled total catch as a negative binomial process, with mean $mu$ and dispersion $k$, via a link function and the following linear predictor:
+  We assumed catch rate could be used as a proxy for abundance in a given spatio-temporal strata (a specific catch region and month or PFMA and season). To predict aggregate abundance, we modeled total catch as a negative binomial process, with mean $mu$ and dispersion $k$, via a link function and the following linear predictor:
 
 $$log(\mu_{my}) = \alpha_m + \alpha_y + {\alpha_{b1}}b_{m} + {\alpha_{b2}b_{m}^2} $$
 
-where $$\alpha_m$$ is the intercept for strata $m$ (i.e. a unique combination of month and catch region), $$\alpha_y$$ is the intercept for year $y$, and $\alpha_{b1}$ and $\alpha_{b2}$ describe linear and exponential effects associated with strata-specific effort ($b$; boat days). 
+where $$\alpha_m$$ is the intercept for strata $m$, $$\alpha_y$$ is the intercept for year $y$, and $\alpha_{b1}$ and $\alpha_{b2}$ describe linear and exponential effects associated with strata-specific effort ($b$; boat days). 
 
 We modeled stock composition as a multinomial process where $\pi_{g}$ represents the probability of encountering stock group $g$ among $G$ total stock groups. We estimated changes in stock composition across strata by modeling the log odds of encountering $g$ relative to the reference stock group $g'$ (the last value in the vector $\mathbf{g}$ of stock groups)
 
@@ -55,9 +40,11 @@ and for the reference stock group as
 $$ \pi^{(g')}_{my} = 1 - \sum_{k=1}^{g'-1} \pi^{(k)}_{my}.$$
 
 
-To account for interannual differences in spatio-temporal fishery closures we modeled $\alpha_y$ and $\beta_y$ as random variables from the following hyperdistributions:
+To account for interannual differences in stock-specific abundance or sampling effort, we modeled $\alpha_y$ and $\beta_y$ as random variables from the following hyperdistributions:
 
 $$ \alpha_y \sim \text{normal}(\nu_{\alpha_y}, \sigma^2_{\alpha_y}) $$
 $$ \beta_y \sim \text{normal}(\nu_{\beta_y}, \sigma^2_{\beta_y}). $$
 
-The two model components allowed us to predict the probability of encountering a given stock group in an "average" year by integrating across random effects. Similarly we generated predictions of stock-specific abundance by multiplying predicted aggregate catch by the probability of encountering a given stock.
+  The two model components allowed us to predict the probability of encountering a given stock group in an "average" year by integrating across random effects. Similarly we used the product of predicted aggregate catch and the probability of encountering a given stock to predict stock-specific abundance. We fit the model to four stock composition datasets: Canadian-origin aggregates as defined by GSI (Can-GSI), PST aggregates as defined by GSI (PST-GSI), Canadian-origin aggregates as defined by CWT (Can-CWT), and PST aggregates as defined by GSI (PST-CWT).
+
+  We identified parameter values that maximized the marginal log-likelihood to simultaneously estimate fixed and random effects for both model components. We used the R package "TMB" (ref), which implements the Laplace approximation to integrate across random effects and utilizes the generalized delta method to compute standard errors of all fixed and random effects, as well as derived quantities.

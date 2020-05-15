@@ -22,16 +22,16 @@ datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
          !grepl("60102", tag_code)) %>% 
   mutate(recovery_loc_code = str_squish(recovery_location_code))
 
-# export tag codes to query rmis
-tag_codes <- unique(stringr::str_pad(datRaw$tag_code, 6, pad = "0"))
-write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll", 
-                                        "cwt_tag_code.txt"), 
-            row.names = FALSE, col.names = FALSE)
+# # export tag codes to query rmis
+# tag_codes <- unique(stringr::str_pad(datRaw$tag_code, 6, pad = "0"))
+# write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll", 
+#                                         "cwt_tag_code.txt"), 
+#             row.names = FALSE, col.names = FALSE)
 
 # import generated tag_code key (from rmis)
-key <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                           "cwt_tag_key.txt"), 
-                stringsAsFactors = FALSE) %>% 
+key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                           "cwt_tag_key.txt"),
+                stringsAsFactors = FALSE) %>%
   mutate(
     stock_location_name = case_when(
       is.na(stock_location_name) ~ hatchery_location_name,
@@ -39,30 +39,30 @@ key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
     )
   )
 
-#pull unique stock, region, basin combinations to combine with gsi in stockkey
-#repo
-key_out <- key %>%
-  select(release = release_location_name,
-         stock = stock_location_name,
-         rmis_region = release_location_rmis_region,
-         basin = release_location_rmis_basin,
-         state = release_location_state) %>%
-  distinct()
-saveRDS(key_out, here::here("generatedData", "cwt_stock_key.RDS"))
+# #pull unique stock, region, basin combinations to combine with gsi in stockkey
+# #repo
+# key_out <- key %>%
+#   select(release = release_location_name,
+#          stock = stock_location_name,
+#          rmis_region = release_location_rmis_region,
+#          basin = release_location_rmis_basin,
+#          state = release_location_state) %>%
+#   distinct()
+# saveRDS(key_out, here::here("generatedData", "cwt_stock_key.RDS"))
 
 # import completed stock_list
-key_in <- readRDS(here::here("data", "stockKeys", 
-                             "finalStockList_Apr2020.rds")) %>% 
-  filter(id_type == "cwt") 
+key_in <- readRDS(here::here("data", "stockKeys",
+                             "finalStockList_Apr2020.rds")) %>%
+  filter(id_type == "cwt")
 
 # add regional aggregates to key
-key_final <- key %>% 
-  select(tag_code = tag_code_or_release_id, 
-         stock = stock_location_name) %>% 
-  mutate(stock = toupper(stock)) %>% 
-  left_join(., key_in, 
+key_final <- key %>%
+  select(tag_code = tag_code_or_release_id,
+         stock = stock_location_name) %>%
+  mutate(stock = toupper(stock)) %>%
+  left_join(., key_in,
             by = c("stock"
-                   )) 
+                   ))
   
 # import recovery location key
 recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
@@ -92,25 +92,32 @@ rec_raw <- datRaw %>%
 ## FORMAT CWT DATA TO MATCH GSI ------------------------------------------------
 
 rec_long <- rec_raw %>%
-  mutate(statArea = NA,
-         gear = "troll",
-         date = as.POSIXct(as.character(rec_raw$recovery_date), 
-                           format="%Y%m%d"),
-         month = lubridate::month(date),
-         week = lubridate::week(date), 
-         jDay = lubridate::yday(date),
-         season_c = case_when(
-           month %in% c("12", "1", "2") ~ "w",
-           month %in% c("3", "4", "5") ~ "sp",
-           month %in% c("6", "7", "8") ~ "su",
-           month %in% c("9", "10", "11") ~ "f"
-         ),
-         season = fct_relevel(season_c, "sp", "su", "f", "w"),
-         month_n = as.numeric(month),
-         month = as.factor(month_n),
-         year =  as.factor(run_year),
-         pres = 1
-         ) %>% 
+  mutate(
+    statArea = NA,
+    gear = "troll",
+    date = as.POSIXct(as.character(rec_raw$recovery_date), 
+                     format="%Y%m%d"),
+    month = lubridate::month(date),
+    unadj_week = lubridate::week(date), 
+    weekDay = weekdays(date),
+    #adjust week for sampling date occuring after harvest date
+    week = case_when(
+      weekDay %in% c("Sunday", "Monday") ~ unadj_week - 1,
+      TRUE ~ unadj_week
+    ),
+    jDay = lubridate::yday(date),
+    season_c = case_when(
+     month %in% c("12", "1", "2") ~ "w",
+     month %in% c("3", "4", "5") ~ "sp",
+     month %in% c("6", "7", "8") ~ "su",
+     month %in% c("9", "10", "11") ~ "f"
+    ),
+    season = fct_relevel(season_c, "sp", "su", "f", "w"),
+    month_n = as.numeric(month),
+    month = as.factor(month_n),
+    year =  as.factor(run_year),
+    pres = 1
+    ) %>% 
   select(id = recovery_id, year, statArea, month, week, jDay, gear, date, 
          season_c, season, month_n,
          pres, catchReg = Basin, pst_agg)
