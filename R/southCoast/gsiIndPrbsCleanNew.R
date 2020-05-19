@@ -163,16 +163,7 @@ clean_dat <- function(dat, threshold = 0.75) {
 }
 
 # Region 3 first (i.e. large regional aggregats)
-reg3 <- dat2 %>% 
-  group_by(id, Region3Name) %>% 
-  dplyr::summarize(aggProb = sum(adjProb)) %>% 
-  dplyr::arrange(id, desc(aggProb)) %>% 
-  left_join(dat %>% 
-               select(id, statArea, year, month, week, jDay, gear, 
-                      fishNum, date),
-             .,
-             by = "id") %>% 
-  distinct() %>% 
+reg3_unfiltered <- dat2 %>% 
   dplyr::rename(regName = Region3Name) %>% 
   # aggregate based on likely stocks of interest
   mutate(regName = fct_recode(regName, ECVI = "SOG"),
@@ -185,13 +176,26 @@ reg3 <- dat2 %>%
            TRUE ~ regName
          ),
          regName = as.factor(abbreviate(regName, minlength = 5))
-  ) %>% 
-  #remove non-dom assignments based on above
-  clean_dat(threshold = 0.75)
+  )  %>% 
+  group_by(id, regName) %>% 
+  dplyr::summarize(aggProb = sum(adjProb)) %>% 
+  dplyr::arrange(id, desc(aggProb)) %>% 
+  left_join(dat %>% 
+               select(id, statArea, year, month, week, jDay, gear, 
+                      fishNum, date),
+             .,
+             by = "id") %>% 
+  distinct() 
+
+#remove non-dom assignments based on above
+reg3 <- reg3_unfiltered %>% 
+  clean_dat(., threshold = 0.75)
 
 #how many samples retained based on threshold
 length(unique(reg3$id)) / length(unique(dat2$id))
 
+saveRDS(reg3_unfiltered, here::here("data", "gsiCatchData", "commTroll",
+                         "reg3RollUpCatchProb_unfiltered.RDS"))
 saveRDS(reg3, here::here("data", "gsiCatchData", "commTroll",
                            "reg3RollUpCatchProb.RDS"))
 
