@@ -47,6 +47,33 @@ rec_dat %>%
 
 
 # DATA CLEAN -------------------------------------------------------------------
+
+# pull stocks to add to stockkey repo
+stk_out <- rec_full %>% 
+  filter(!DNA_RESULTS_STOCK_1 == "",
+         !is.na(PROB_1)) %>% 
+  select(s1 = DNA_RESULTS_STOCK_1, s2 = DNA_STOCK_2, s3 = DNA_STOCK_3, 
+         s4 = DNA_STOCK_4, s5 = DNA_STOCK_5, REGION_1_ROLLUP) %>% 
+  pivot_longer(., cols = s1:s5, names_to = "rank", values_to = "stock") %>%
+  select(stock, sc_reg1 = REGION_1_ROLLUP) %>% 
+  filter(!stock == "") %>% 
+  distinct()
+saveRDS(stk_out, here::here("data", "stockKeys", "rec_gsi_stocks.rds"))
+
+
+rec_full %>% 
+  filter(DNA_RESULTS_STOCK_1 == "Duplicate fish of 52405")
+
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Apr2020.rds"))
+
+temp <- rec_full %>% 
+  filter(!DNA_RESULTS_STOCK_1 == "") %>% 
+  select(s1 = DNA_RESULTS_STOCK_1, s2 = DNA_STOCK_2, s3 = DNA_STOCK_3, 
+         s4 = DNA_STOCK_4, s5 = DNA_STOCK_5) %>% 
+  pivot_longer(., cols = s1:s5, names_to = "rank", values_to = "stock") %>% 
+  select(stock) %>% 
+  left_join(., stockKey, by = "stock") %>% 
+  distinct()
 # convert to format equivalent to commercial catch
 
 
