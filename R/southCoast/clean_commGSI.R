@@ -2,7 +2,7 @@
 # Updated version of gsiIndProbsClean.R that uses new flat file with full
 # probabilities (i.e. not trimmed to 5 stocks max) for WCVI commercial troll 
 # fishery
-# Apr 22, 2019
+# May 25, 2020
 
 library(tidyverse)
 library(ggplot2)
@@ -115,7 +115,7 @@ dat <- cbind(id_vec, datRaw) %>%
 # saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
 
 # stock key generated in stockKey repo
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Apr2020.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_May2020.rds"))
 
 dat2 <- dat %>%
   select(-Region1Name) %>%
