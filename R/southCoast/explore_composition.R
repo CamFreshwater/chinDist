@@ -75,12 +75,23 @@ reg1_gsi <- gsi %>%
   group_by(id, reg1_trim) %>% 
   calc_max_prob(.)
 
+
 # number of samples by area
 pst_gsi %>% 
   # filter(!is.na(area)) %>% 
   ggplot(.) +
   geom_bar(aes(x = as.factor(month), fill = fishery)) +
   facet_wrap(~region)
+
+# number of samples by week
+pst_gsi %>% 
+  group_by(week, region, fishery) %>% 
+  tally() %>% 
+  ggplot(.) +
+  geom_point(aes(x = week, y = n, colour = fishery)) +
+  facet_wrap(~region) +
+  ggsidekick::theme_sleek()
+
 
 # helper function to plot composition data based on aggregation
 plot_comp <- function(gsi_in) {
