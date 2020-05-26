@@ -138,11 +138,12 @@ comm_long <- dat_comm %>%
     area = as.factor(area)
     ) %>% 
   select(id, fish_num, region, area, year, month, week, jDay, date,
-         gear, adj_prob, stock, Region1Name:pst_agg, pres, season, month_n, 
-         area_n)
+         gear, pres, season, month_n, area_n, adj_prob, stock, 
+         Region1Name:pst_agg) %>% 
+  arrange(year, region, id, desc(adj_prob))
 
-# saveRDS(comm_long, here::here("data", "gsiCatchData", "commTroll",
-#                          "wcviIndProbsLong.rds"))
+saveRDS(comm_long, here::here("data", "gsiCatchData", "commTroll",
+                         "wcviIndProbsLong.rds"))
 # comm_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #                            "wcviIndProbsLong.rds"))
 
@@ -224,8 +225,9 @@ rec_long <- rec_full %>%
   ) %>% 
   select(id = BIOKEY, fish_num = FISH_NO, region, area, subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = SAMPLE_TYPE, 
-         fl = LENGTH_MM, sex = SEX, adj_prob, stock, Region1Name:pst_agg,
-         pres, season, month_n, area_n)  
+         fl = LENGTH_MM, sex = SEX, pres, season, month_n, area_n, adj_prob, 
+         stock, Region1Name:pst_agg) %>% 
+  arrange(year, region, id, desc(adj_prob))
 
 saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
                             "recIndProbsLong.rds"))

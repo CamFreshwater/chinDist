@@ -22,16 +22,6 @@ gsi <- comm_gsi %>%
          pst_agg, fishery) %>% 
   rbind(., rec_trim) %>% 
   mutate(
-    region = case_when(
-      area > 124 ~ "NWVI",
-      area < 28 & area > 24 ~ "NWVI",
-      area < 125 & area > 120 ~ "SWVI",
-      area < 25 & area > 20 ~ "SWVI",
-      area < 20 & area > 12 ~ "Georgia Strait",
-      area %in% c("28", "29") ~ "Georgia Strait",
-      area %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
-      area %in% c("20") ~ "Juan de Fuca",
-      is.na(area) ~ "Juan de Fuca"),
     reg1_trim = case_when(
       grepl("FR", pst_agg) ~ Region1Name,
       TRUE ~ "Non-Fraser"
@@ -70,6 +60,8 @@ calc_max_prob <- function(dat_in, thresh = 0.75) {
 pst_gsi <- gsi %>% 
   group_by(id, pst_agg) %>% 
   calc_max_prob(.)
+saveRDS(pst_gsi, here::here("data", "gsiCatchData", "commTroll", 
+                            "recPSTRollUp.rds"))
 
 reg1_gsi <- gsi %>% 
   group_by(id, reg1_trim) %>% 
