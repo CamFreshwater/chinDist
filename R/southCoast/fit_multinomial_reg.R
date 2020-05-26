@@ -4,6 +4,7 @@
 # (assumes perfect GSI assignment); in both cases aggregate probability reflects
 # summed probabilities of a given region of origin (ie reg1 or 3) for a given
 # individual
+# Also plot fixed effect version to evaluate impact on prediction intervals
 
 library(tidyverse)
 library(TMB)
@@ -174,7 +175,8 @@ sdr
 ssdr <- summary(sdr)
 ssdr
 
-## Plot predictions
+
+## PLOT PREDICTIONS ------------------------------------------------------------
 k <- ncol(y_obs) # number of stocks
 stk_names <- colnames(y_obs)
 N <- nrow(y_obs)
@@ -227,7 +229,6 @@ raw_prop <- gsi_trim %>%
   mutate(samp_g_ppn = samp_g / samp_total,
          stock = fct_reorder(agg, desc(samp_g_ppn))) 
 
-
 ggplot(pred_ci_trim) +
   geom_point(data = raw_prop, 
              aes(x = month, y = samp_g_ppn, fill = region),
@@ -240,19 +241,49 @@ ggplot(pred_ci_trim) +
   ggsidekick::theme_sleek()
 
 
+## FIT FIXED MODEL -------------------------------------------------------------
+
+compile("src/multinomial_fixInt.cpp")
+dyn.load(dynlib("src/multinomial_fixInt"))
+
+## Fit multinomial TMB without random effects
+obj_m <- MakeADFun(data = list(fx_cov = fix_mm,
+                               y_obs = y_obs,
+                               all_fac = fac_dat$facs_n,
+                               fac_key = fac_key$facs_n),
+                 parameters = list(z_ints = matrix(0, nrow = ncol(fix_mm), 
+                                                   ncol = ncol(y_obs) - 1)),
+                 DLL="multinomial_fixInt")
+opt_m <- nlminb(obj_m$par, obj_m$fn, obj_m$gr)
+sdr_m <- sdreport(obj_m)
+ssdr_m <- summary(sdr_m)
 
 
+logit_probs_mat2 <- ssdr_m[rownames(ssdr_m) %in% "logit_probs_out", ]
+pred_ci2 <- data.frame(stock_n = stock_n_vec, 
+                      stock = stock_vec, 
+                      logit_prob_est = logit_probs_mat2[ , "Estimate"],
+                      logit_prob_se =  logit_probs_mat2[ , "Std. Error"]) %>%
+  mutate(facs_n = rep(fac_key$facs_n, times = k)) %>% 
+  mutate(pred_prob = plogis(logit_prob_est),
+         pred_prob_se = plogis(logit_prob_se),
+         pred_prob_low = plogis(logit_prob_est +
+                                  (qnorm(0.025) * logit_prob_se)),
+         pred_prob_up = plogis(logit_prob_est +
+                                 (qnorm(0.975) * logit_prob_se))) %>%
+  left_join(., fac_key, by = "facs_n") %>%
+  select(-logit_prob_est, -logit_prob_se, -facs, -facs_n) %>% 
+  mutate(model = "fix")
 
-ggplot() +
-  geom_point(data = raw_prop, 
-             aes(x = month, y = samp_g_ppn, fill = catchReg),
-             shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
-  geom_pointrange(data = pred_ci, 
-                  aes(x = month, y = pred_prob, ymin = pred_prob_low, 
-                      ymax = pred_prob_up, fill = catchReg), 
-                  shape = 21, position = position_dodge(0.6)) +
-  facet_wrap(~stock, ncol = 2, scales = "free_y") +
-  scale_fill_viridis_d(option = "C", name = "Catch Region") +
-  labs(x = "Month", y = "Predicted Encounter Probability") +
-  ggsidekick::theme_sleek() +
-  theme(legend.position="top")
+pred_ci_trim %>% 
+  mutate(model = "hier") %>% 
+  select(-ests) %>% 
+  rbind(., pred_ci2) %>% 
+  ggplot(.) +
+  geom_pointrange(aes(x = as.factor(month), y = pred_prob, ymin = pred_prob_low,
+                      ymax = pred_prob_up, fill = model), 
+                  position = position_dodge(0.3),
+                  shape = 21, size = 0.4) +
+  labs(y = "Probability", x = "Month") +
+  facet_grid(stock ~ region, scales = "free_y") +
+  ggsidekick::theme_sleek()
