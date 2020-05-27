@@ -151,7 +151,7 @@ saveRDS(comm_long, here::here("data", "gsiCatchData", "commTroll",
 ## Clean recreation GSI data ---------------------------------------------------
 
 rec_full <- read.csv(here::here("data", "gsiCatchData", "rec", 
-                                "rec_gsi_may2020.csv"), stringsAsFactors = F)
+                                "rec_gsi_may2020.txt"), stringsAsFactors = F)
 
 # pull stocks to add to stockkey repo
 # stk_out <- rec_full %>% 
@@ -225,14 +225,17 @@ rec_long <- rec_full %>%
   ) %>% 
   select(id = BIOKEY, fish_num = FISH_NO, region, area, subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = SAMPLE_TYPE, 
-         fl = LENGTH_MM, sex = SEX, pres, season, month_n, area_n, adj_prob, 
-         stock, Region1Name:pst_agg) %>% 
+         fl = LENGTH_MM, release = KEPTREL, sex = SEX, pres, season, month_n, 
+         area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
 
 saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
                             "recIndProbsLong.rds"))
 
 
+ggplot(rec_full) + 
+  geom_histogram(aes(LENGTH_MM)) +
+  facet_wrap(~KEPTREL)
 
 ### FOLLOWING IS DEPRECATED ###
 

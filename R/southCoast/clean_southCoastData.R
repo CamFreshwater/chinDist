@@ -1,10 +1,15 @@
-## Clean data from southcoast GSI Access database
-# Provided by Bryan Rusch Aug 19, 2019
+## Clean catch/effort data from southcoast 
+# Commercial data provided by Bryan Rusch Aug 19, 2019 as Access database
 # Note: the tables within the access database are not joined, limiting the
 # utility of multitable queries; to ensure repeatability the majority of data
 # cleaning occurs after tables have been imported to R
+# Recreational data provided by Wilf Luedke May 27, 2020 as Excel file
+# Note: information on data selection for rec is in .txt file in directory
 
 library(RODBC); library(tidyverse); library(ggplot2)
+
+
+## CLEAN COMMERCIAL ------------------------------------------------------------
 
 # Access database saved locally to work computer
 file_path <- "C:/Users/FRESHWATERC/Documents/chinook/southCoastDatabase/southCoastGSICatch.accdb"
@@ -144,43 +149,11 @@ sumCatch <- areaCatch %>%
 #   geom_line() +
 #   facet_wrap(~year)
 
-# combine monthly summed catches w/ monthly GSI to calculate stock specific 
-# catches (divide by 100 since they're percentages currently)
-# stockCatch <- stockComp %>% 
-#   left_join(., sumCatch, by = c("catchReg", "month", "year")) %>% 
-#   mutate(estCatch = (Estimate / 100) * sumCatch,
-#          varCatch = ((SD / 100) * sumCatch)^2,
-#          Stock = as.character(Stock),
-#          samplePpn = Lab.Reported.N / sumCatch) %>% 
-#   left_join(., trimRegKey, by = "Stock") %>% 
-#   select(catchReg, month, year, sumEffort, labN = Lab.Reported.N, samplePpn,
-#          estCatch, varCatch, Stock, Region1Name, Region2Name, Region3Name,
-#          Region1Code:FraserGroupCode)
-# 
-# dd <- stockCatch %>% 
-#   filter(is.na(samplePpn))
-# 
-# ee <- areaCatch %>% 
-#   filter(FISHING.YEAR == "2013", 
-#   FISHING.MONTH %in% c("6","8"))
-# 
-# write.csv(stockCatch, here::here("data", "gsiCatchData", "commTroll", 
-#                                  "stockCatch_WCVI.csv"), row.names = FALSE)
-
-
 ## Generate aggregate catch by Julian Day to match individual data from genetics
 # lab
 areaCatch <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                  "fosCatch.csv"))
 
-# generate example data necessary for Wilf
-areaCatch[1:1000, ] %>% 
-  select(ESTIMATE_TYPE, OPNG_CAT,OPNG_DESC, STAT_WEEK:MGMT_AREA, 
-         CATCH_REGION:COMMENTS) %>% 
-  arrange(FISHING.YEAR, MGMT_AREA, FISHING.MONTH) %>% 
-  write.csv(., here::here("data", "gsiCatchData", "commTroll",
-                       "example_catch_input.csv"), row.names = FALSE)
-  
 dailyCatch <- areaCatch %>% 
   mutate(jDay = lubridate::yday(as.POSIXlt(FISHING_DATE, 
                                            format="%Y-%m-%d"))) %>% 
@@ -216,3 +189,99 @@ ggplot(data = dailyCatch %>% filter(!boatDays == 0)) +
 # areaCatch %>% 
 #   filter(AREA_NAME == "management area 123", FISHING.YEAR == "2013", 
 #          FISHING.MONTH == "5")
+
+
+# CLEAN REC DATA ---------------------------------------------------------------
+
+rec_catch <- read.csv(here::here("data", "gsiCatchData", "rec",
+                                 "southcoast_rec_cpue_Feb2020.csv")) %>% 
+  mutate(strata = paste(PFMA, YEAR, MONTH, DISPOSITION, sep = "_"))
+
+#initial explore
+# spatio-temporal data coverage
+rec_catch %>% 
+  select(PFMA, YEAR, MONTH, DISPOSITION) %>%
+  distinct() %>% 
+  ggplot() + 
+  geom_bar(aes(x = MONTH, fill = DISPOSITION)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~PFMA)
+
+# estimate type breakdown
+rec_catch %>% 
+  group_by(STATUS) %>% 
+  tally()
+
+unpub_strata <- rec_catch %>% 
+  filter(STATUS != "Published Estimate - Full Month") %>% 
+  pull(strata)
+
+rec_catch %>% 
+  filter(STATUS == "Published Estimate - Full Month",
+         strata %in% unpub_strata)
+#none seem to be cross referenced so retain both
+
+# clean
+rec_catch1 <- rec_catch %>% 
+  mutate(
+    pfma_n = as.numeric(str_remove_all(PFMA, "PFMA ")),
+    region = case_when(
+      pfma_n > 124 ~ "NWVI",
+      pfma_n < 28 & pfma_n > 24 ~ "NWVI",
+      pfma_n < 125 & pfma_n > 120 ~ "SWVI",
+      pfma_n < 25 & pfma_n > 20 ~ "SWVI",
+      pfma_n < 20 & pfma_n > 12 ~ "Georgia Strait",
+      pfma_n %in% c("28", "29") ~ "Georgia Strait",
+      pfma_n %in% c("10", "11", "12", "13", "111") ~ "Johnstone Strait",
+      pfma_n %in% c("20") ~ "Juan de Fuca",
+      is.na(pfma_n) ~ "Juan de Fuca"),
+    strata = paste(pfma_n, CREEL_SUB_AREA, YEAR, MONTH, sep = "_"),
+    month = fct_relevel(MONTH, "January", "February", "March", "April", 
+                        "May", "June", "July", "August", "September", 
+                        "October", "November", "December"),
+    month_n = as.numeric(month)
+  ) %>%
+  select(strata, month, month_n, year = YEAR, area = pfma_n,
+         subarea = CREEL_SUB_AREA, region, 
+         DISPOSITION, ADIPOSE_MARK, ESTIMATE, STANDARD_ERROR)
+
+# separate effort and catch data, reformat, then recombine  
+rec_eff <- rec_catch1 %>% 
+  filter(DISPOSITION == "Effort") %>% 
+  select(strata:region, mu_boat_trips = ESTIMATE, 
+         se_boat_trips = STANDARD_ERROR)
+
+rec_catch2 <- rec_catch1 %>% 
+  filter(!DISPOSITION == "Effort") %>% 
+  mutate(
+    kept = case_when(
+      DISPOSITION == "Kept" ~ "y",
+      grepl("Released", DISPOSITION) ~ "n"
+    ),
+    legal = case_when(
+      DISPOSITION == "Released Sub-Legal" ~ "sublegal",
+      DISPOSITION %in% c("Released Legal", "Kept") ~ "legal"
+      ),
+    adipose_clip = case_when(
+      ADIPOSE_MARK == "Adipose Marked" ~ "y",
+      ADIPOSE_MARK == "Not Adipose Marked" ~ "n",
+      TRUE ~ NA_character_)
+    ) %>% 
+  select(strata:region, kept, legal, adipose_clip, mu_catch = ESTIMATE,
+         se_catch = STANDARD_ERROR) 
+
+# save list that includes uncertainty in both variables
+rec_list <- list("catch" = rec_catch2, "effort" = rec_eff)
+
+# combine into single dataframe that excludes uncertainty
+rec_dat_out <- rec_catch2 %>% 
+  select(-se_catch) %>% 
+  left_join(.,
+            rec_eff %>% 
+              select(strata, mu_boat_trips),
+            by = "strata")
+
+saveRDS(rec_list, here::here("data", "gsiCatchData", "rec",
+                             "monthlyCatchList_rec.RDS"))
+saveRDS(rec_dat_out, here::here("data", "gsiCatchData", "rec",
+                             "monthlyCatch_rec.RDS"))
