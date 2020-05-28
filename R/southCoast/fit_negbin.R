@@ -107,7 +107,8 @@ prep_catch <- function(catch, data_type = NULL) {
   }
   
   list("fix_mm" = fix_mm, "fac_key" = fac_key, "mm_pred" = mm_pred, 
-       "data" = data, "parameters" = parameters, "data_type" = data_type)
+       "data" = data, "parameters" = parameters, "data_type" = data_type,
+       "input_data" = catch)
 }
 
 comm_list <- prep_catch(comm_catch, data_type = "comm")
@@ -122,12 +123,6 @@ rec_list <- rec_list1 %>%
 fishery_list <- list(comm_list, rec_list[[1]], rec_list[[2]], rec_list[[3]])
 names(fishery_list) <- c("comm", nms)
 
-map(fishery_list, function (x) head(x$data$y1_i))
-
-for (i in seq_along(rec_list[[1]])) {
-  print(head(rec_list[[1]][[i]]))
-  print(head(comm_list[[i]]))
-}
 
 # FIT --------------------------------------------------------------------------
 # Compile
@@ -158,93 +153,77 @@ for (i in seq_along(fishery_list)) {
 
 ssdr <- readRDS(here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
 
-ssdr <- ssdr_list[[1]]
-
-## Plot predictions
-log_pred_fe <- ssdr[rownames(ssdr) %in% "log_prediction", ]
-pred_ci <- data.frame(log_pred_est = log_pred_fe[ , "Estimate"],
-                      log_pred_se =  log_pred_fe[ , "Std. Error"]) %>%
-  mutate(facs_n = fac_key$facs_n) %>% 
-  mutate(log_pred_low = log_pred_est + (qnorm(0.025) * log_pred_se),
-         log_pred_up = log_pred_est + (qnorm(0.975) * log_pred_se),
-         pred_est = exp(log_pred_est),
-         pred_se = exp(log_pred_se),
-         pred_low = exp(log_pred_low),
-         pred_up = exp(log_pred_up)) %>%
-  left_join(., fac_key, by = "facs_n") 
-
-ggplot() +
-  geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = log_pred_est,
-                                      ymin = log_pred_low, 
-                                      ymax = log_pred_up)) +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~reg_f)
-
-real_preds <- ggplot() +
-  geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = pred_est,
-                                      ymin = pred_low, ymax = pred_up)) +
-  labs(x = "month", y = "predicted catch (mean effort)") +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~catchReg)
-
-
-## plot predictions across different levels of effort
-# pull coeficients
-abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
-
-# generate data for each factor level
-pred_catch <- fac_key %>%
-  #add model estimates
-  mutate(
-    int = abund_b[1],
-    reg_b = case_when(
-      reg_f == "NWVI" ~ 0,
-      reg_f == "SWVI" ~ abund_b[2]
-    ),
-    month_b = rep(c(0, abund_b[3:(nrow(abund_b) - 2)]), times = 2),
-    eff_b = abund_b[nrow(abund_b) - 1],
-    eff2_b = abund_b[nrow(abund_b)]) %>%
-  glimpse()
-  split(., .$facs_n) %>% 
-  # sample effort from original dataset
-  map(., function(x) {
-    mm <- catch %>% 
-      filter(month == x$month) 
-    expand_grid(x, z_eff = sample(mm$eff_z, size = 50, replace = T))
-  }) %>% 
-  bind_rows() %>% 
-  glimpse()
-  #add estimates
-  mutate(z_eff2 = z_eff^2,
-         log_catch = int + reg_b + month_b + (eff_b * z_eff) + 
-           (eff2_b * z_eff2),
-         catch = exp(log_catch),
-         dataset = "pred")
+pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
+  catch <- in_list$input_data
+  ssdr <- in_ssdr
+  fac_key <- in_list$fac_key
+  data_type <- in_list$data_type
   
-mm_pred %>% 
-  as.data.frame() %>% 
-  mutate(id = seq(1, nrow(mm_pred), by = 1)) %>% 
-  split(., .$id) %>% 
-  map(., function(x) {
-    mm <- catch %>% 
-      filter(month == x$month) 
-    expand_grid(x, z_eff = sample(mm$eff_z, size = 50, replace = T))
-  })
-
-var_effort_preds <- catch %>% 
-  mutate(dataset = "obs") %>% 
-  select(catch, dataset, catchReg, month) %>% 
-  rbind(., 
-        pred_catch %>% 
-          select(catch, dataset, catchReg, month)
-  ) %>% 
-  ggplot(.) +
-  geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
-  facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
-  ggsidekick::theme_sleek() +
-  labs(fill = "Data")
-
-pdf(here::here("figs", "model_pred", "neg_bin_predictions_comm.pdf"))
-real_preds
-var_effort_preds
-dev.off()
+  log_pred_fe <- ssdr[rownames(ssdr) %in% "log_prediction", ]
+  pred_ci <- data.frame(log_pred_est = log_pred_fe[ , "Estimate"],
+                        log_pred_se =  log_pred_fe[ , "Std. Error"]) %>%
+    mutate(facs_n = fac_key$facs_n) %>% 
+    mutate(log_pred_low = log_pred_est + (qnorm(0.025) * log_pred_se),
+           log_pred_up = log_pred_est + (qnorm(0.975) * log_pred_se),
+           pred_est = exp(log_pred_est),
+           pred_se = exp(log_pred_se),
+           pred_low = exp(log_pred_low),
+           pred_up = exp(log_pred_up)) %>%
+    left_join(., fac_key, by = "facs_n") 
+  
+  log_preds <- ggplot() +
+    geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = log_pred_est,
+                                        ymin = log_pred_low, 
+                                        ymax = log_pred_up)) +
+    labs(x = "month", y = "predicted log catch (mean effort)",
+         title = data_type) +
+    ggsidekick::theme_sleek() +
+    facet_wrap(~reg_f)
+  
+  real_preds <- ggplot() +
+    geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = pred_est,
+                                        ymin = pred_low, ymax = pred_up)) +
+    labs(x = "month", y = "predicted real catch (mean effort)",
+         title = data_type) +
+    ggsidekick::theme_sleek() +
+    facet_wrap(~reg_f)
+  
+  
+  ## plot predictions across different levels of effort
+  # pull coeficients
+  abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
+  
+  # generate data for each factor level
+  pred_eff <- catch %>% 
+    select(reg_f, month, eff_z, eff_z2) %>% 
+    group_by(reg_f, month) %>% 
+    sample_n(., size = 50, replace = TRUE) %>% 
+    ungroup()
+  pred_mm2 <- model.matrix(~ reg_f + month + eff_z + eff_z2, pred_eff)
+  pred_catch <- pred_mm2 %*% abund_b 
+  pred_plot <- pred_eff %>% 
+    mutate(log_catch = pred_catch[ , 'Estimate'],
+           catch = exp(log_catch),
+           dataset = "pred")
+  
+  var_effort_preds <- catch %>% 
+    mutate(dataset = "obs") %>% 
+    select(catch, dataset, reg_f, month) %>% 
+    rbind(., 
+          pred_plot %>% 
+            select(catch, dataset, reg_f, month)
+    ) %>% 
+    ggplot(.) +
+    geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
+    facet_wrap(~ reg_f, nrow = 2, scales = "free_y") +
+    ggsidekick::theme_sleek() +
+    labs(fill = "Data", title = data_type)
+  
+   f_name <- paste(data_type, "negbin_prediction.pdf", sep = "_")
+  
+  pdf(here::here("figs", "model_pred", "neg_bin_only", f_name))
+  print(log_preds)
+  print(real_preds)
+  print(var_effort_preds)
+  dev.off()
+})
