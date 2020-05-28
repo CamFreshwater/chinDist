@@ -262,20 +262,27 @@ rec_catch2 <- rec_catch1 %>%
       DISPOSITION == "Released Sub-Legal" ~ "sublegal",
       DISPOSITION %in% c("Released Legal", "Kept") ~ "legal"
       ),
+    kept_legal = paste(kept, legal, sep = "_"),
     adipose_clip = case_when(
       ADIPOSE_MARK == "Adipose Marked" ~ "y",
       ADIPOSE_MARK == "Not Adipose Marked" ~ "n",
       TRUE ~ NA_character_)
     ) %>% 
-  select(strata:region, kept, legal, adipose_clip, mu_catch = ESTIMATE,
-         se_catch = STANDARD_ERROR) 
+  select(strata:region, kept_legal, adipose_clip, mu_catch = ESTIMATE,
+         se_catch = STANDARD_ERROR) %>% 
+  distinct() %>% 
+  filter(!is.na(mu_catch))
+
+# rec_catch2 %>% 
+#   group_by(strata, kept_legal, adipose_clip) %>% 
+#   filter(n()>1)
 
 # save list that includes uncertainty in both variables
 rec_list <- list("catch" = rec_catch2, "effort" = rec_eff)
 
 # combine into single dataframe that excludes uncertainty
 rec_dat_out <- rec_catch2 %>% 
-  select(-se_catch) %>% 
+  select(-se_catch) %>%
   left_join(.,
             rec_eff %>% 
               select(strata, mu_boat_trips),

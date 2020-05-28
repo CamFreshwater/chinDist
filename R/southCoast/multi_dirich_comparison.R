@@ -130,8 +130,10 @@ temp <- dat_p2 %>%
   select(id:catchReg)
 temp$comp <- DR_data(y_dir)
 
-fit_dr <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp)
-betas_dr2 <- coef(fit_dr) %>%
+# fit_dr <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp)
+fit_drB <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp,
+                                  model = "alternative")
+betas_dr2 <- coef(fit_drB) %>%
   do.call(c, .) %>%
   as.vector()
 
@@ -146,6 +148,11 @@ pred_dat2 <- dat_p2 %>%
             PgtSn = mean(PgtSn)) %>% 
   ungroup() %>% 
   mutate(model = "dr")
+
+## Fit dirichlet regression from second package
+resp <- temp[, c("month", "catchReg")]
+fit_dr2 <- diri.reg(y_dir, resp)
+fit_dr2$be
 
 # combine and compare
 rbind(pred_dat1, pred_dat2) %>% 

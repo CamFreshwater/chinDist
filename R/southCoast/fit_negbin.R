@@ -1,126 +1,164 @@
 ## Neg bin model fit
 # April 6, 2020
 # Fit neg binomial model to catch data from WCVI troll fishery
-# Persistently underperforms compared to CPUE model w/ tweedie; don't use for 
-# now; should probably include a zero inflated or heavy-tailed version
 
 library(tidyverse)
 library(TMB)
 
-catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+# clean function 
+clean_catch <- function(dat) {
+  dat %>% 
+    filter(!is.na(eff),
+           !eff == "0") %>% 
+    mutate(reg_f = factor(region),
+           area = as.factor(area),
+           month = as.factor(month),
+           month_n = as.numeric(month),
+           month = as.factor(month_n),
+           year = as.factor(year),
+           eff_z = as.numeric(scale(eff)),
+           eff_z2 = eff_z^2,
+           eff_z3 = eff_z^3) %>% 
+    arrange(reg_f, month) 
+}
+
+#commercial catch data
+comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
-  filter(!is.na(boatDays),
-         !boatDays == "0",
-         !month == "7") %>% 
-  rename(eff = boatDays) %>% 
-  mutate(reg = factor(catchReg),
-         area = as.factor(area),
-         month = as.factor(month),
-         month_n = as.numeric(month),
-         year = as.factor(year),
-         log_cpue = log(cpue + 0.0001),
-         eff_z = as.numeric(scale(eff)),
-         eff_z2 = eff_z^2,
-         eff_z3 = eff_z^3) %>% 
-  arrange(catchReg, month)
-hist(catch$cpue)
-hist(catch$catch)
-hist(catch$eff_z2)
-plot(catch ~ eff, data = catch)
+  rename(eff = boatDays, region = catchReg) %>% 
+  clean_catch(.) %>% 
+  filter(!month == "7") %>% 
+  mutate(month = droplevels(month))
+
+
+#recreational catch data
+rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
+                                 "monthlyCatch_rec.RDS")) %>% 
+  # drop months that lack data from all regions
+  rename(catch = mu_catch, eff = mu_boat_trips) %>% 
+  mutate(cpue = catch / eff,
+         region = abbreviate(region, minlength = 4)) %>% 
+  clean_catch(.) %>% 
+  filter(month_n > 4, month_n < 10) %>% 
+  mutate(month = droplevels(month))
+  
+# visualize relative catch/effort
+temp <- comm_catch %>% 
+  select(month, year, reg_f, eff, catch, cpue) %>% 
+  mutate(dat = "comm")
+plot_catch <- rec_catch %>% 
+  mutate(dat = kept_legal) %>% 
+  select(month, year, reg_f, eff, catch, cpue, dat) %>% 
+  rbind(., temp)
+
+# ggplot(plot_catch) +
+#   geom_histogram(aes(x = cpue)) +
+#   facet_wrap(~dat, scales = "free")
+# ggplot(plot_catch, aes(x = eff, y = catch)) +
+#   geom_point(alpha = 0.4) +
+#   geom_smooth(method = "gam") +
+#   facet_wrap(~dat, scales = "free") +
+#   ggsidekick::theme_sleek()
+
 
 # Prep data to pass to model
-yr_vec <- as.numeric(as.factor(as.character(catch$year))) - 1
+prep_catch <- function(catch, data_type = NULL) {
+  yr_vec <- as.numeric(as.factor(as.character(catch$year))) - 1
+  
+  # model matrix for fixed effects
+  fix_mm <- model.matrix(~ reg_f + month + eff_z + eff_z2, catch)
+  
+  # Factor key of unique combinations to generate predictions
+  fac_key <- catch %>%
+    select(reg_f, month_n) %>%
+    distinct() %>%
+    mutate(month = as.factor(month_n),
+           facs = paste(reg_f, month_n, sep = "_"),
+           facs = fct_reorder2(facs, reg_f, 
+                               desc(month_n)),
+           facs_n = as.numeric(as.factor(facs)) - 1
+    ) %>%
+    arrange(facs_n)
+  
+  mm_pred <- model.matrix(~ reg_f + month, fac_key) %>% 
+    cbind(.,
+          eff_z = rep(0, n = nrow(.)),
+          eff_z2 = rep(0, n = nrow(.)))
+  
+  data <- list(y1_i = catch$catch,
+               X1_ij = fix_mm,
+               factor1k_i = yr_vec,
+               nk1 = length(unique(yr_vec)),
+               X1_pred_ij = mm_pred
+  )
+  
+  # Fit simple model to initialize tmb 
+  m1 <- lm(log(catch + 0.0001) ~ reg_f + month + eff_z + eff_z2, data = catch)
+  
+  parameters = list(
+    b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
+    log_phi = log(1.5),
+    z1_k = rep(0, length(unique(yr_vec))),
+    log_sigma_zk1 = log(0.25)
+  )
+  
+  if (is.null(data_type)) {
+    data_type <- unique(catch$kept_legal)
+  }
+  
+  list("fix_mm" = fix_mm, "fac_key" = fac_key, "mm_pred" = mm_pred, 
+       "data" = data, "parameters" = parameters, "data_type" = data_type)
+}
 
-# model matrix for fixed effects
-fix_mm <- model.matrix(~ catchReg + month + eff_z + eff_z2, catch)
-# model matrix for predictions
-# mm_pred1 <- fix_mm[,-c(1,2)] %>% 
-#   unique() 
-# mm_pred <- cbind(mm_pred1,
-#                  eff_z = rep(0, n = nrow(mm_pred1)),
-#                  eff_z2 = rep(0, n = nrow(mm_pred1)))
+comm_list <- prep_catch(comm_catch, data_type = "comm")
 
-# Factor key of unique combinations to generate predictions
-fac_key <- catch %>%
-  select(catchReg, month) %>%
-  distinct() %>%
-  mutate(facs = paste(catchReg, month, sep = "_"),
-         # facs = fct_relevel(facs, c(as.character(facs))),
-         facs = fct_reorder2(facs, catchReg, 
-                             desc(as.numeric(as.character(month)))),
-         facs_n = as.numeric(as.factor(facs))
-  ) %>%
-  arrange(facs_n)
-# mm_pred <- model.matrix(~ facs - 1, fac_key) %>% 
-#   cbind(eff_z = rep(0, n = nrow(.)),
-#         eff_z2 = rep(0, n = nrow(.)),
-#         .)
-mm_pred <- model.matrix(~ catchReg + month, fac_key) %>% 
-  cbind(.,
-        eff_z = rep(0, n = nrow(.)),
-        eff_z2 = rep(0, n = nrow(.)))
+# for recreational data prep separate inputs 
+rec_list1 <- rec_catch %>% 
+  split(., .$kept_legal) 
+nms <- names(rec_list1)
+rec_list <- rec_list1 %>%
+  map(., prep_catch)
 
-data <- list(y1_i = catch$catch,
-             X1_ij = fix_mm,
-             factor1k_i = yr_vec,
-             nk1 = length(unique(yr_vec)),
-             X1_pred_ij = mm_pred
-)
+fishery_list <- list(comm_list, rec_list[[1]], rec_list[[2]], rec_list[[3]])
+names(fishery_list) <- c("comm", nms)
 
-# Fit simple model to initialize tmb 
-m1 <- lm(log(catch + 0.0001) ~ catchReg + month + eff_z + eff_z2, data = catch)
+map(fishery_list, function (x) head(x$data$y1_i))
 
-m2 <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + (1|year), 
-                       data = catch, 
-                       family = glmmTMB::nbinom2(link = "log")
-)
-m2a <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2 + (1|year), 
-                        data = catch, 
-                       family = glmmTMB::nbinom2(link = "log")
-)
-m2z <- glmmTMB::glmmTMB(catch ~ catchReg + month + eff_z + eff_z2 + (1|year), 
-                        zi = ~ catchReg + month,
-                        data = catch,
-                        family = glmmTMB::nbinom2(link = "log")
-)
-
-summary(m2)
-summary(m2a)
-summary(m2z)
-AIC(m2, m2a, m2z) 
-# some support for including zero inflation but may not be worth trouble
-
-parameters = list(
-  b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
-  log_phi = log(1.5),
-  z1_k = rep(0, length(unique(yr_vec))),
-  log_sigma_zk1 = log(0.25)
-)
-
+for (i in seq_along(rec_list[[1]])) {
+  print(head(rec_list[[1]][[i]]))
+  print(head(comm_list[[i]]))
+}
 
 # FIT --------------------------------------------------------------------------
 # Compile
-compile(here::here("R", "southCoast", "tmb", "negbin_1re.cpp"))
-dyn.load(dynlib(here::here("R", "southCoast", "tmb", "negbin_1re")))
+compile(here::here("src", "negbin_1re.cpp"))
+dyn.load(dynlib(here::here("src", "negbin_1re")))
 
-obj <- MakeADFun(data, parameters, random = c("z1_k"), 
-                 DLL = "negbin_1re")
-
-## Call function minimizer
-opt <- nlminb(obj$par, obj$fn, obj$gr)
-
-## Get parameter uncertainties and convergence diagnostics
-sdr <- sdreport(obj)
-sdr
-ssdr <- summary(sdr)
-ssdr
-
-saveRDS(ssdr, here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
+ssdr_list <- vector(length = length(fishery_list), mode = "list")
+for (i in seq_along(fishery_list)) { 
+  dum <- fishery_list[[i]]
+  obj <- MakeADFun(dum$data, dum$parameters, random = c("z1_k"), 
+                   DLL = "negbin_1re")
+  
+  ## Call function minimizer
+  opt <- nlminb(obj$par, obj$fn, obj$gr)
+  
+  ## Get parameter uncertainties and convergence diagnostics
+  sdr <- sdreport(obj)
+  ssdr <- summary(sdr)
+  
+  f_name <- paste(dum$data_type, "negbin_ssdr.RDS", sep = "_")
+  saveRDS(ssdr, here::here("generatedData", "model_fits", f_name))
+  
+  ssdr_list[[i]] <- ssdr
+}
 
 
 # PREDICTIONS ------------------------------------------------------------------
 
 ssdr <- readRDS(here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
+
+ssdr <- ssdr_list[[1]]
 
 ## Plot predictions
 log_pred_fe <- ssdr[rownames(ssdr) %in% "log_prediction", ]
@@ -136,38 +174,77 @@ pred_ci <- data.frame(log_pred_est = log_pred_fe[ , "Estimate"],
   left_join(., fac_key, by = "facs_n") 
 
 ggplot() +
-  geom_boxplot(data = catch, 
-               aes(x = as.factor(month), y = log(catch + 0.001)), alpha = 0.2) +
   geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = log_pred_est,
                                       ymin = log_pred_low, 
                                       ymax = log_pred_up)) +
   ggsidekick::theme_sleek() +
-  facet_wrap(~catchReg)
+  facet_wrap(~reg_f)
 
-pred_catch <- ggplot() +
-  geom_boxplot(data = catch, aes(x = as.factor(month), y = catch / eff_z), 
-               alpha = 0.2) +
+real_preds <- ggplot() +
   geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = pred_est,
                                       ymin = pred_low, ymax = pred_up)) +
+  labs(x = "month", y = "predicted catch (mean effort)") +
   ggsidekick::theme_sleek() +
   facet_wrap(~catchReg)
 
-ggplot(catch) +
-  geom_point(aes(x = eff_z, y = catch), 
-             alpha = 0.2) +
-  lims(x = c(0, 4)) +
-  # stat_function(fun = function(x) 204 + 412*x)
-  stat_function(fun = function(x) exp(4.13 + 1.873*x - 0.2662*x^2)) +
-  stat_function(fun = function(x) exp(3.99 + 1.275*x), color = "blue") +
-  stat_function(fun = function(x) exp(4.34 + 1.876*x - 0.263*x^2), color = "red")
 
+## plot predictions across different levels of effort
+# pull coeficients
+abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
 
-xx <- rnbinom(10000, mu = pred_ci$pred_est, size = exp(0.154))
+# generate data for each factor level
+pred_catch <- fac_key %>%
+  #add model estimates
+  mutate(
+    int = abund_b[1],
+    reg_b = case_when(
+      reg_f == "NWVI" ~ 0,
+      reg_f == "SWVI" ~ abund_b[2]
+    ),
+    month_b = rep(c(0, abund_b[3:(nrow(abund_b) - 2)]), times = 2),
+    eff_b = abund_b[nrow(abund_b) - 1],
+    eff2_b = abund_b[nrow(abund_b)]) %>%
+  glimpse()
+  split(., .$facs_n) %>% 
+  # sample effort from original dataset
+  map(., function(x) {
+    mm <- catch %>% 
+      filter(month == x$month) 
+    expand_grid(x, z_eff = sample(mm$eff_z, size = 50, replace = T))
+  }) %>% 
+  bind_rows() %>% 
+  glimpse()
+  #add estimates
+  mutate(z_eff2 = z_eff^2,
+         log_catch = int + reg_b + month_b + (eff_b * z_eff) + 
+           (eff2_b * z_eff2),
+         catch = exp(log_catch),
+         dataset = "pred")
+  
+mm_pred %>% 
+  as.data.frame() %>% 
+  mutate(id = seq(1, nrow(mm_pred), by = 1)) %>% 
+  split(., .$id) %>% 
+  map(., function(x) {
+    mm <- catch %>% 
+      filter(month == x$month) 
+    expand_grid(x, z_eff = sample(mm$eff_z, size = 50, replace = T))
+  })
 
+var_effort_preds <- catch %>% 
+  mutate(dataset = "obs") %>% 
+  select(catch, dataset, catchReg, month) %>% 
+  rbind(., 
+        pred_catch %>% 
+          select(catch, dataset, catchReg, month)
+  ) %>% 
+  ggplot(.) +
+  geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
+  facet_wrap(~ catchReg, nrow = 2, scales = "free_y") +
+  ggsidekick::theme_sleek() +
+  labs(fill = "Data")
 
-pdf(here::here("figs", "model_pred", "nb_catch_pred.pdf"),
-    height = 4.5, width = 6)
-pred_catch
-pred_catch +
-  lims(y = c(0, 1000))
+pdf(here::here("figs", "model_pred", "neg_bin_predictions_comm.pdf"))
+real_preds
+var_effort_preds
 dev.off()
