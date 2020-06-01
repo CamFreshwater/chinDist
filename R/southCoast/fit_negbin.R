@@ -41,6 +41,13 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   clean_catch(.) %>% 
   filter(month_n > 4, month_n < 10) %>% 
   mutate(month = droplevels(month))
+
+# rec_catch %>% 
+#   filter(kept_legal == "y_legal") %>% 
+#   group_by(month, reg_f) %>% 
+#   summarize(m_c = mean(cpue)) %>%
+#   arrange(month, desc(m_c)) %>% 
+#   print(n = Inf)
   
 # visualize relative catch/effort
 temp <- comm_catch %>% 

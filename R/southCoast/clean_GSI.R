@@ -214,6 +214,17 @@ rec_long <- rec_full %>%
       month %in% c("6", "7", "8") ~ "su",
       month %in% c("9", "10", "11") ~ "f"
     ),
+    legal_lim = case_when(
+      PFMA < 20 & PFMA > 11 ~ 620,
+      PFMA %in% c("28, 29") ~ 620,
+      TRUE ~ 450
+    ),
+    legal = case_when(
+      LENGTH_MM >= legal_lim ~ "legal",
+      LENGTH_MM < legal_lim ~ "sublegal",
+      KEPTREL == "Kept" ~ "legal",
+      KEPTREL == "Rel" ~ "sublegal"
+    ),
     season = fct_relevel(season_c, "sp", "su", "f", "w"),
     month_n = as.numeric(month),
     month = as.factor(month_n),
@@ -225,17 +236,23 @@ rec_long <- rec_full %>%
   ) %>% 
   select(id = BIOKEY, fish_num = FISH_NO, region, area, subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = SAMPLE_TYPE, 
-         fl = LENGTH_MM, release = KEPTREL, sex = SEX, pres, season, month_n, 
-         area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
+         fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, pres, season, 
+         month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
 
 saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
                             "recIndProbsLong.rds"))
 
 
-ggplot(rec_full) + 
-  geom_histogram(aes(LENGTH_MM)) +
-  facet_wrap(~KEPTREL)
+ggplot(rec_long) + 
+  geom_histogram(aes(fl)) +
+  facet_wrap(~legal)
+
+rec_long %>% 
+  filter(is.na(legal)) %>% 
+  group_by(release) %>% 
+  tally()
+
 
 ### FOLLOWING IS DEPRECATED ###
 
