@@ -268,7 +268,7 @@ rec_catch2 <- rec_catch1 %>%
       ADIPOSE_MARK == "Not Adipose Marked" ~ "n",
       TRUE ~ NA_character_)
     ) %>% 
-  select(strata:region, kept_legal, adipose_clip, mu_catch = ESTIMATE,
+  select(strata:region, legal, kept_legal, adipose_clip, mu_catch = ESTIMATE,
          se_catch = STANDARD_ERROR) %>% 
   distinct() %>% 
   filter(!is.na(mu_catch))

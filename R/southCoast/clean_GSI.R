@@ -240,7 +240,7 @@ rec_long <- rec_full %>%
          month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
 
-saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
+saveRDS(rec_long, here::here("data", "gsiCatchData", "rec",
                             "recIndProbsLong.rds"))
 
 

@@ -1,6 +1,7 @@
 ## Neg bin model fit
-# April 6, 2020
-# Fit neg binomial model to catch data from WCVI troll fishery
+# June 2, 2020
+# Fit neg binomial model to catch data from WCVI troll fishery and southern BC
+# rec fisheries
 
 library(tidyverse)
 library(TMB)
@@ -54,18 +55,18 @@ temp <- comm_catch %>%
   select(month, year, reg_f, eff, catch, cpue) %>% 
   mutate(dat = "comm")
 plot_catch <- rec_catch %>% 
-  mutate(dat = kept_legal) %>% 
+  mutate(dat = legal) %>% 
   select(month, year, reg_f, eff, catch, cpue, dat) %>% 
   rbind(., temp)
 
-# ggplot(plot_catch) +
-#   geom_histogram(aes(x = cpue)) +
-#   facet_wrap(~dat, scales = "free")
-# ggplot(plot_catch, aes(x = eff, y = catch)) +
-#   geom_point(alpha = 0.4) +
-#   geom_smooth(method = "gam") +
-#   facet_wrap(~dat, scales = "free") +
-#   ggsidekick::theme_sleek()
+ggplot(plot_catch) +
+  geom_histogram(aes(x = cpue)) +
+  facet_wrap(~dat, scales = "free")
+ggplot(plot_catch, aes(x = eff, y = catch)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "gam") +
+  facet_wrap(~dat, scales = "free") +
+  ggsidekick::theme_sleek()
 
 
 # Prep data to pass to model
@@ -110,7 +111,7 @@ prep_catch <- function(catch, data_type = NULL) {
   )
   
   if (is.null(data_type)) {
-    data_type <- unique(catch$kept_legal)
+    data_type <- unique(catch$legal)
   }
   
   list("fix_mm" = fix_mm, "fac_key" = fac_key, "mm_pred" = mm_pred, 
@@ -122,12 +123,12 @@ comm_list <- prep_catch(comm_catch, data_type = "comm")
 
 # for recreational data prep separate inputs 
 rec_list1 <- rec_catch %>% 
-  split(., .$kept_legal) 
+  split(., .$legal) 
 nms <- names(rec_list1)
 rec_list <- rec_list1 %>%
   map(., prep_catch)
 
-fishery_list <- list(comm_list, rec_list[[1]], rec_list[[2]], rec_list[[3]])
+fishery_list <- list(comm_list, rec_list[[1]], rec_list[[2]])
 names(fishery_list) <- c("comm", nms)
 
 
