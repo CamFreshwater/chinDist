@@ -130,13 +130,7 @@ temp <- dat_p2 %>%
   select(id:catchReg)
 temp$comp <- DR_data(y_dir)
 
-# fit_dr <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp)
-fit_drB <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp,
-                                  model = "alternative")
-betas_dr2 <- coef(fit_drB) %>%
-  do.call(c, .) %>%
-  as.vector()
-
+fit_dr <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp)
 #DR predictions
 pred_dat2 <- dat_p2 %>% 
   select(id:catchReg) %>% 
@@ -149,10 +143,17 @@ pred_dat2 <- dat_p2 %>%
   ungroup() %>% 
   mutate(model = "dr")
 
-## Fit dirichlet regression from second package
-resp <- temp[, c("month", "catchReg")]
-fit_dr2 <- diri.reg(y_dir, resp)
-fit_dr2$be
+## Fit dirichlet regression from Compositional package annd compare to 
+# DirichletReg
+# resp <- temp[, c("month", "catchReg")]
+# fit_dr2 <- diri.reg(y_dir, resp)
+# fit_drB <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp,
+#                                    model = "alternative")
+# betas_dr2 <- coef(fit_drB) %>%
+#   do.call(c, .) %>%
+#   as.vector()
+# fit_dr2$be
+# betas_dr2
 
 # combine and compare
 rbind(pred_dat1, pred_dat2) %>% 
@@ -222,7 +223,7 @@ mult_preds <- make_pred_df(model = "mult",
              ssdr_in = ssdr_m[rownames(ssdr_m) %in% "logit_probs_out", ])
 
 rbind(dir_preds, mult_preds) %>% 
-  filter(catchReg == "NWVI") %>% 
+  filter(catchReg == "SWVI") %>% 
   ggplot(.) +
   geom_pointrange(aes(x = stock, y = mu, ymin = lo, ymax = up, fill = model), 
                   shape = 21) +
