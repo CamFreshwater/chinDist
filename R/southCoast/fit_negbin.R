@@ -28,7 +28,8 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
   rename(eff = boatDays, region = catchReg) %>% 
   clean_catch(.) %>% 
-  filter(!month == "7") %>% 
+  mutate(temp_strata = paste(month, region, sep = "_"))
+  filter(temp_strata == "7_SWVI") %>% 
   mutate(month = droplevels(month))
 
 
@@ -39,9 +40,10 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   rename(catch = mu_catch, eff = mu_boat_trips) %>% 
   mutate(cpue = catch / eff,
          region = abbreviate(region, minlength = 4)) %>% 
-  clean_catch(.) %>% 
-  filter(month_n > 4, month_n < 10) %>% 
-  mutate(month = droplevels(month))
+  clean_catch(.) 
+# %>% 
+#   filter(month_n > 4, month_n < 10) %>% 
+#   mutate(month = droplevels(month))
 
 # rec_catch %>% 
 #   filter(kept_legal == "y_legal") %>% 
@@ -76,6 +78,13 @@ prep_catch <- function(catch, data_type = NULL) {
   # model matrix for fixed effects
   fix_mm <- model.matrix(~ reg_f + month + eff_z + eff_z2, catch)
   
+  # Average effort for predictions
+  # pred_eff <- catch %>% 
+  #   mutate(facs = as.character(paste(reg_f, month_n, sep = "_"))) %>% 
+  #   group_by(facs) %>% 
+  #   summarize(eff_z = mean(eff_z),
+  #             eff_z2 = mean(eff_z2))
+  
   # Factor key of unique combinations to generate predictions
   fac_key <- catch %>%
     select(reg_f, month_n) %>%
@@ -86,9 +95,12 @@ prep_catch <- function(catch, data_type = NULL) {
                                desc(month_n)),
            facs_n = as.numeric(as.factor(facs)) - 1
     ) %>%
-    arrange(facs_n)
+    arrange(facs_n) %>% 
+    left_join(., pred_eff, by = "facs") %>% 
+    mutate(facs = as.factor(facs))
   
-  mm_pred <- model.matrix(~ reg_f + month, fac_key) %>% 
+  #mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)
+  mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)%>% 
     cbind(.,
           eff_z = rep(0, n = nrow(.)),
           eff_z2 = rep(0, n = nrow(.)))
@@ -227,7 +239,7 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     ggsidekick::theme_sleek() +
     labs(fill = "Data", title = data_type)
   
-   f_name <- paste(data_type, "negbin_prediction.pdf", sep = "_")
+  f_name <- paste(data_type, "negbin_prediction.pdf", sep = "_")
   
   pdf(here::here("figs", "model_pred", "neg_bin_only", f_name))
   print(log_preds)

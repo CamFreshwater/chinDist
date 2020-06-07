@@ -3,81 +3,337 @@
 # Fit combined multionomial/tweedie or multinomial/nb model to 
 # stock composition and abundance data
 # aggregate probability reflects summed probabilities of a given region of 
-# origin (ie reg1 or 3) for a given individual
+# origin for a given individual
 
 library(tidyverse)
 library(TMB)
 library(ggplot2)
 
 
-# Import Catch -----------------------------------------------------------------
-# comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-#                           "reg1RollUpCatchProb_FraserB.RDS"))
-# comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-#                           "reg3RollUpCatchProb.RDS"))
-comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                               "pstAggRollUpCatchProb.RDS")) %>%
-  rename(regName = pstName) %>%
-  filter(!regName == "NBC_SEAK")
+# CLEAN CATCH -----------------------------------------------------------------
 
-# month range dictated by ecological scale
-month_range = seq(1, 10, by = 1)
+# clean function 
+clean_catch <- function(dat) {
+  dat %>% 
+    filter(!is.na(eff),
+           !eff == "0") %>% 
+    mutate(reg_f = factor(region),
+           area = as.factor(area),
+           month = as.factor(month),
+           month_n = as.numeric(month),
+           month = as.factor(month_n),
+           year = as.factor(year),
+           eff_z = as.numeric(scale(eff)),
+           eff_z2 = eff_z^2,
+           eff_z3 = eff_z^3) %>% 
+    arrange(reg_f, month) 
+}
 
-# pull months that are common to both strata and subset
-# comm_months <- comp %>% 
-#   select(catchReg, month) %>% 
-#   distinct() %>% 
-#   split(., .$catchReg) %>% 
-#   map(., function(x) x %>% pull(as.numeric(month))) %>% 
-#   Reduce(intersect, .)
+#commercial catch data
+comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                                 "dailyCatch_WCVI.rds")) %>% 
+  rename(eff = boatDays, region = catchReg) %>% 
+  clean_catch(.) %>% 
+  # drop month where catch data are missing even though gsi samples available
+  mutate(temp_strata = paste(month, region, sep = "_")) %>% 
+  filter(!temp_strata == "7_SWVI") 
 
-#add dummy catch data for one month that's missing logbook data based on observed
-# catch in comp data
-min_catch <- comp %>% 
-  filter(catchReg == "SWVI",
-         month == "7") %>%
-  group_by(year) %>% 
-  summarise(n = length(unique(id)),
-            #scalar (3) represents est effort given average CPUE
-            n_days = length(unique(jDay)) * 3)
-min_catch_dat <- data.frame(catch = min_catch$n,
-                            catchReg = "SWVI",
-                            area = NA,
-                            month = "7",
-                            jDay = NA,
-                            year = min_catch$year,
-                            boatDays = min_catch$n_days) %>% 
-  mutate(cpue = catch / boatDays) %>% 
-  select(catchReg:year, catch, boatDays, cpue)
-
-catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                            "dailyCatch_WCVI.rds")) %>% 
-  rbind(., min_catch_dat) %>% 
-  mutate(reg = factor(catchReg),
-         area = as.factor(area),
-         month_n = as.numeric(month),
-         month = as.factor(month_n),
-         year = as.factor(year)
-  ) %>% 
-  filter(!is.na(cpue),
-         #first constrain by range
-         month_n %in% month_range
-         # ,
-         # #then drop missing months
-         # month_n %in% comm_months
-         ) %>% 
-  droplevels() %>% 
-  mutate(eff_z = as.numeric(scale(boatDays)),
-         eff_z2 = eff_z^2
-  ) %>% 
-  arrange(catchReg, area, month)
+#recreational catch data
+rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
+                                "monthlyCatch_rec.RDS")) %>% 
+  # drop months that lack data from all regions
+  rename(catch = mu_catch, eff = mu_boat_trips) %>% 
+  mutate(cpue = catch / eff,
+         region = abbreviate(region, minlength = 4)) %>% 
+  clean_catch(.) %>%  
+  #focus on legal fish 
+  filter(legal == "legal")
 
 
-# Clean Genetics and Prep Inputs -----------------------------------------------
-source(here::here("R", "functions", "clean_composition_dat.R"))
-comp_wide_l <- clean_comp(comp, month_range = month_range, check_tables = T)
-comp_wide_l$tables
-comp_wide <- comp_wide_l$data
+# CLEAN GENETICS  --------------------------------------------------------------
+
+# recreational data
+rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
+                          "recIndProbsLong.rds")) %>% 
+  #focus only on legal sized fish
+  filter(legal == "legal") %>% 
+  mutate(region = abbreviate(region, minlength = 4))
+# commercial data
+comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
+                           "wcviIndProbsLong.rds")) %>% 
+  # drop month where catch data are missing
+  mutate(temp_strata = paste(month, region, sep = "_")) %>% 
+  filter(!temp_strata == "7_SWVI")
+
+
+# helper function to calculate aggregate probs
+calc_max_prob <- function(grouped_data, full_data, thresh = 0.75) {
+  out <- grouped_data %>% 
+    summarize(agg_prob = sum(adj_prob)) %>% 
+    arrange(id, desc(agg_prob)) %>%
+    ungroup() %>% 
+    group_by(id) %>% 
+    mutate(max_assignment = max(agg_prob)) %>% 
+    # Remove samples where top stock ID is less than threshold probability
+    filter(!agg_prob < max_assignment, 
+           !max_assignment < thresh) %>% 
+    ungroup() %>% 
+    distinct() %>% 
+    left_join(.,
+              full_data %>% 
+                select(id:area_n) %>% 
+                distinct(),
+              by = "id") %>% 
+    select(-max_assignment) %>% 
+    mutate(reg_f = as.factor(region))
+  
+  colnames(out)[2] <- "agg"
+  
+  return(out)
+}
+
+# helper function to pool non-focal stocks
+pool_aggs <- function(full_data) {
+  full_data %>% 
+    mutate(
+      pst_agg = case_when(
+        grepl("CR-", pst_agg) ~ "CR",
+        grepl("CST", pst_agg) ~ "CA/OR/WA",
+        pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
+        pst_agg %in% c("PSD", "SOG") ~ "SalSea",
+        TRUE ~ pst_agg
+      ),
+      reg1 = case_when(
+        Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
+                           "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
+                           "Fraser_Summer_5.2", "WCVI", "SOMN") ~ Region1Name,
+        TRUE ~ "Other"
+      )
+    )
+}
+
+## combine genetics and catch data
+#large scale PST groups 
+rec_pst_comp <- rec %>% 
+  pool_aggs() %>% 
+  group_by(id, pst_agg) %>%
+  calc_max_prob(., rec, thresh = 0.75)
+comm_pst_comp <- comm %>% 
+  pool_aggs() %>% 
+  group_by(id, pst_agg) %>%
+  calc_max_prob(., comm, thresh = 0.75) 
+#aggregate with Canadian CU focus
+rec_can_comp <- rec %>% 
+  pool_aggs() %>% 
+  group_by(id, reg1) %>%
+  calc_max_prob(., rec, thresh = 0.75) 
+comm_can_comp <- comm %>% 
+  pool_aggs() %>% 
+  group_by(id, reg1) %>%
+  calc_max_prob(., comm, thresh = 0.75) 
+
+dat <- tibble(
+  dataset = c("pst_rec", "pst_comm", "can_rec", "can_comm"),
+  catch = list(rec_catch, comm_catch, rec_catch, comm_catch),
+  comp = list(rec_pst_comp, comm_pst_comp, rec_can_comp, comm_can_comp)
+)
+
+dat_list <- list("pst_rec" = rec_pst, "pst_comm" = comm_pst, 
+                 "can_rec" = rec_can, "can_comm" = comm_can) %>% 
+  # remove months where too few GSI samples collected
+  map(., function (x, threshold = 50) {
+    comp_out <- x$comp %>% 
+      mutate(temp_strata = paste(month_n, region, sep = "_")) %>% 
+      group_by(temp_strata) %>% 
+      mutate(nn = length(unique(id))) %>%
+      filter(!nn < threshold) %>% 
+      ungroup() %>% 
+      droplevels() %>% 
+      select(id, reg_f, area, year, month, season, agg, agg_prob, pres, 
+             temp_strata)
+    catch_out <- x$catch %>% 
+      mutate(temp_strata = paste(month, region, sep = "_")) %>% 
+      filter(temp_strata %in% comp_out$temp_strata) %>% 
+      droplevels()
+    
+    #make wide version of gsi data and infill 0 observations
+    #has to occur for each region separately given differences in sample effort
+    comp_out %>% 
+      split(., .$reg_f) %>% 
+      map(., function(x) {
+        expand.grid(month = unique(x$month),
+                    agg = unique(x$agg),
+                    pres = 1)
+      }) %>% 
+    
+    dum <- expand.grid(
+      month = unique(comp_out$month),
+      reg_f = unique(comp_out$reg_f),
+      agg = unique(comp_out$agg),
+      pres = 1)
+    rand_yrs <- sample(unique(comp_out$year), size = nrow(dum), replace = TRUE)
+    dum$year <- rand_yrs
+    
+    gsi_trim_no0 <- comp_out %>%
+      full_join(., dum, by = c("year", "month", "agg", "pres", "reg_f")) %>%
+      mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
+      droplevels() 
+    freq_table <- table(gsi_trim_no0$agg, gsi_trim_no0$month, gsi_trim_no0$reg_f)
+    
+    comp_wide <- gsi_trim_no0 %>% 
+      pivot_wider(., names_from = agg, values_from = pres) %>% 
+      mutate_if(is.numeric, ~replace_na(., 0))
+    
+    list("catch" = catch_out, "comp" = comp_wide "comp_long" =  comp_out)
+  })
+
+
+## GENERATE INPUTS -------------------------------------------------------------
+
+list_in$comp %>% 
+  group_by(reg_f) %>% 
+  tally()
+list_in$catch %>% 
+  group_by(reg_f) %>% 
+  tally()
+
+comp_formula <- paste("~ catchReg + month")
+catch_formula <- paste("~ catchReg + month + eff_z + eff_z2")
+
+prep_data <- function(catch_formula, comp_formula, list_in) {
+  
+}
+
+prep_data <- function(catch, data_type = NULL) {
+  
+  yr_vec <- as.numeric(as.factor(as.character(catch$year))) - 1
+  
+  # model matrix for fixed effects
+  fix_mm <- model.matrix(~ reg_f + month + eff_z + eff_z2, catch)
+  
+  # Average effort for predictions
+  # pred_eff <- catch %>% 
+  #   mutate(facs = as.character(paste(reg_f, month_n, sep = "_"))) %>% 
+  #   group_by(facs) %>% 
+  #   summarize(eff_z = mean(eff_z),
+  #             eff_z2 = mean(eff_z2))
+  
+  # Factor key of unique combinations to generate predictions
+  fac_key <- catch %>%
+    select(reg_f, month_n) %>%
+    distinct() %>%
+    mutate(month = as.factor(month_n),
+           facs = paste(reg_f, month_n, sep = "_"),
+           facs = fct_reorder2(facs, reg_f, 
+                               desc(month_n)),
+           facs_n = as.numeric(as.factor(facs)) - 1
+    ) %>%
+    arrange(facs_n) %>% 
+    left_join(., pred_eff, by = "facs") %>% 
+    mutate(facs = as.factor(facs))
+  
+  #mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)
+  mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)%>% 
+    cbind(.,
+          eff_z = rep(0, n = nrow(.)),
+          eff_z2 = rep(0, n = nrow(.)))
+  
+  data <- list(y1_i = catch$catch,
+               X1_ij = fix_mm,
+               factor1k_i = yr_vec,
+               nk1 = length(unique(yr_vec)),
+               X1_pred_ij = mm_pred
+  )
+  
+  # Fit simple model to initialize tmb 
+  m1 <- lm(log(catch + 0.0001) ~ reg_f + month + eff_z + eff_z2, data = catch)
+  
+  parameters = list(
+    b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
+    log_phi = log(1.5),
+    z1_k = rep(0, length(unique(yr_vec))),
+    log_sigma_zk1 = log(0.25)
+  )
+  
+  if (is.null(data_type)) {
+    data_type <- unique(catch$legal)
+  }
+  
+  list("fix_mm" = fix_mm, "fac_key" = fac_key, "mm_pred" = mm_pred, 
+       "data" = data, "parameters" = parameters, "data_type" = data_type,
+       "input_data" = catch)
+}
+
+prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
+  gsi_trim <- gsi_in %>% 
+    filter(!month_n < month_range[1],
+           !month_n > month_range[2]) %>% 
+    droplevels() %>% 
+    dplyr::select(id, region, area, year, month, season, agg, agg_prob, pres)
+  
+  # dummy dataset to replace missing values 
+  dum <- expand.grid(
+    month = unique(gsi_trim$month),
+    region = unique(gsi_trim$region),
+    agg = unique(gsi_trim$agg),
+    pres = 1)
+  rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
+  dum$year <- rand_yrs
+  
+  gsi_trim_no0 <- gsi_trim %>%
+    full_join(., dum, by = c("year", "month", "agg", "pres", "region")) %>%
+    mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
+    droplevels() 
+  
+  gsi_wide <- gsi_trim_no0 %>% 
+    pivot_wider(., names_from = agg, values_from = pres) %>% 
+    mutate_if(is.numeric, ~replace_na(., 0))
+  
+  raw_freq_table <- table(gsi_trim$agg, gsi_trim$month, gsi_trim$region)
+  freq_table <- table(gsi_trim_no0$agg, gsi_trim_no0$month, gsi_trim_no0$region)
+  
+  y_obs <- gsi_wide %>% 
+    select(-c(id:dummy_id)) %>% 
+    as.matrix()
+  head(y_obs)
+  
+  yr_vec <- as.numeric(gsi_wide$year) - 1
+  fix_mm <- model.matrix(~ region + month, gsi_wide) #fixed covariates only
+  
+  #make combined factor levels (necessary for increasing speed of prob. estimates)
+  fac_dat <- gsi_wide %>% 
+    mutate(facs = as.factor(paste(region, as.numeric(month), sep = "_")),
+           #facs = as.factor(paste(statArea, month, year, sep = "_")),
+           facs_n = (as.numeric(facs) - 1)) %>% #subtract for indexing by 0 
+    select(region, month, facs, facs_n)
+  fac_key <- fac_dat %>% 
+    distinct() %>% 
+    arrange(facs_n)
+  
+  data <- list(y_obs = y_obs, #obs
+               rfac = yr_vec, #random intercepts
+               fx_cov = fix_mm, #fixed cov model matrix
+               n_rfac = length(unique(yr_vec)), #number of random intercepts
+               all_fac = fac_dat$facs_n, # vector of factor combinations
+               fac_key = fac_key$facs_n #ordered unique factor combos in fac_vec
+  ) 
+  parameters <- list(z_rfac = rep(0, times = length(unique(yr_vec))),
+                     z_ints = matrix(0, nrow = ncol(fix_mm), 
+                                     ncol = ncol(y_obs) - 1),
+                     log_sigma_rfac = 0)
+  
+  list("fix_mm" = fix_mm, #"pred_dat" = pred_dat, 
+       "fac_key" = fac_key,
+       "data" = data, "parameters" = parameters, "data_type" = data_type,
+       "long_data" = gsi_trim, "long_data_no0" = gsi_trim_no0, 
+       "wide_data" = gsi_wide, "freq_table" = freq_table, 
+       "raw_freq_table" = raw_freq_table)
+}
+
+
+
+
+
 
 fac_dat <- comp_wide %>% 
   mutate(facs = as.factor(paste(as.character(catchReg), 

@@ -102,10 +102,12 @@ prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
   rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
   dum$year <- rand_yrs
   
-  gsi_trim_no0 <- gsi_trim %>%
-    full_join(., dum, by = c("year", "month", "agg", "pres", "region")) %>%
-    mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
-    droplevels() 
+  suppressWarnings(
+    gsi_trim_no0 <- gsi_trim %>%
+      full_join(., dum, by = c("year", "month", "agg", "pres", "region")) %>%
+      mutate(dummy_id = seq(from = 1, to = nrow(.), by = 1)) %>% 
+      droplevels()
+    ) 
   
   gsi_wide <- gsi_trim_no0 %>% 
     pivot_wider(., names_from = agg, values_from = pres) %>% 
@@ -122,30 +124,26 @@ prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
   yr_vec <- as.numeric(gsi_wide$year) - 1
   fix_mm <- model.matrix(~ region + month, gsi_wide) #fixed covariates only
   
-  #make combined factor levels (necessary for increasing speed of prob. estimates)
-  fac_dat <- gsi_wide %>% 
-    mutate(facs = as.factor(paste(region, as.numeric(month), sep = "_")),
-           #facs = as.factor(paste(statArea, month, year, sep = "_")),
-           facs_n = (as.numeric(facs) - 1)) %>% #subtract for indexing by 0 
-    select(region, month, facs, facs_n)
-  fac_key <- fac_dat %>% 
-    distinct() %>% 
-    arrange(facs_n)
+  # data frame for predictions
+  pred_dat <- gsi_wide %>%
+    select(region, month) %>%
+    distinct() %>%
+    arrange(region, month)
+  pred_mm <- model.matrix(~ region + month, pred_dat)
   
   data <- list(y_obs = y_obs, #obs
                rfac = yr_vec, #random intercepts
                fx_cov = fix_mm, #fixed cov model matrix
                n_rfac = length(unique(yr_vec)), #number of random intercepts
-               all_fac = fac_dat$facs_n, # vector of factor combinations
-               fac_key = fac_key$facs_n #ordered unique factor combos in fac_vec
+               pred_cov = pred_mm
   ) 
   parameters <- list(z_rfac = rep(0, times = length(unique(yr_vec))),
                      z_ints = matrix(0, nrow = ncol(fix_mm), 
                                      ncol = ncol(y_obs) - 1),
                      log_sigma_rfac = 0)
   
-  list("fix_mm" = fix_mm, #"pred_dat" = pred_dat, 
-       "fac_key" = fac_key,
+  list("fix_mm" = fix_mm, "pred_dat" = pred_dat, 
+       # "fac_key" = fac_key,
        "data" = data, "parameters" = parameters, "data_type" = data_type,
        "long_data" = gsi_trim, "long_data_no0" = gsi_trim_no0, 
        "wide_data" = gsi_wide, "freq_table" = freq_table, 
@@ -174,15 +172,15 @@ map(gsi_list, function(x) print(x$raw_freq_table))
 
 ## RUN MODEL -------------------------------------------------------------------
 
-compile(here::here("src", "multinomial_hier.cpp"))
-dyn.load(dynlib(here::here("src", "multinomial_hier")))
+compile(here::here("src", "multinomial_hier2.cpp"))
+dyn.load(dynlib(here::here("src", "multinomial_hier2")))
 
-ssdr_list <- map(gsi_list[3:4], function (x) {
+ssdr_list <- map(gsi_list, function (x) {
   ## Make a function object
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"), 
-                   DLL = "multinomial_hier")
+                   DLL = "multinomial_hier2")
   
   ## Call function minimizer
   opt <- nlminb(obj$par, obj$fn, obj$gr)
@@ -211,27 +209,20 @@ plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
   k <- ncol(y_obs) # number of stocks
   stk_names <- colnames(y_obs)
   N <- nrow(y_obs)
-  fac_key <- x$fac_key
+  pred_dat <- x$pred_dat
   
-  logit_probs_mat <- ssdr[rownames(ssdr) %in% "logit_probs_out", ]
-  stock_n_vec <- as.character(rep(1:k, each = length(unique(fac_key$facs_n))))
-  stock_vec <- as.character(rep(stk_names, each = length(unique(fac_key$facs_n))))
-  pred_ci <- data.frame(stock_n = stock_n_vec, 
-                        stock = stock_vec, 
-                        logit_prob_est = logit_probs_mat[ , "Estimate"],
-                        logit_prob_se =  logit_probs_mat[ , "Std. Error"]) %>%
-    mutate(facs_n = rep(fac_key$facs_n, times = k), 
-           pred_prob = plogis(logit_prob_est),
-           pred_prob_se = plogis(logit_prob_se),
-           pred_prob_low = plogis(logit_prob_est +
-                                    (qnorm(0.025) * logit_prob_se)),
-           pred_prob_up = plogis(logit_prob_est +
-                                   (qnorm(0.975) * logit_prob_se))) %>%
-    left_join(., fac_key, by = "facs_n") %>%
-    select(-logit_prob_est, -logit_prob_se, -facs, -facs_n) 
+  pred_dat2 <- purrr::map_dfr(seq_len(k), ~pred_dat)
+  pred_mat <- ssdr[rownames(ssdr) %in% "pred_probs", ]
+  pred_ci <- data.frame(stock = as.character(rep(stk_names, 
+                                               each = nrow(pred_dat))),
+                        pred_prob_est = pred_mat[ , "Estimate"],
+                        pred_prob_se =  pred_mat[ , "Std. Error"]) %>% 
+    cbind(pred_dat2, .) %>%
+    mutate(pred_prob_low = pred_prob_est + (qnorm(0.025) * pred_prob_se),
+           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se)) 
   
   # calculate raw proportion data for comparison
-  raw_prop <- x$long_data_no0 %>% 
+  raw_prop <- x$long_data %>% 
     group_by(region, month, year, agg) %>%
     summarize(samp_g = length(unique(id))) %>% 
     group_by(region, month, year) %>%
@@ -245,11 +236,12 @@ plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
                aes(x = month, y = samp_g_ppn, fill = region),
                shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
     geom_pointrange(data = pred_ci,
-                    aes(x = as.factor(month), y = pred_prob, ymin = pred_prob_low,
-                        ymax = pred_prob_up, fill = region), 
+                    aes(x = as.factor(month), y = pred_prob_est, 
+                        ymin = pred_prob_low, ymax = pred_prob_up, 
+                        fill = region), 
                     shape = 21, size = 0.4, position = position_dodge(0.6)) +
     labs(y = "Probability", x = "Month") +
-    facet_wrap(~ stock) +
+    facet_wrap(~stock) +
     ggsidekick::theme_sleek()
   
   f_name <- paste(x$data_type, "multinomial_pred.pdf", sep = "_")
@@ -258,3 +250,44 @@ plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
   dev.off()
 })
 
+
+## HISTOGRAMS SHOWING GSI DIST -------------------------------------------------
+
+# as above but without removing values below threshold
+calc_max_prob2 <- function(grouped_data, dataset) {
+  grouped_data %>% 
+    summarize(agg_prob = sum(adj_prob)) %>% 
+    arrange(id, desc(agg_prob)) %>%
+    ungroup() %>% 
+    group_by(id) %>% 
+    mutate(max_assignment = max(agg_prob)) %>% 
+    filter(!agg_prob < max_assignment) %>% 
+    ungroup() %>% 
+    distinct() %>% 
+    mutate(dataset = dataset)
+  }
+
+rec_pst_h <- rec %>% 
+  pool_aggs() %>% 
+  group_by(id, pst_agg) %>%
+  calc_max_prob2(., dataset = "rec_pst")
+comm_pst_h <- comm %>% 
+  pool_aggs() %>% 
+  group_by(id, pst_agg) %>%
+  calc_max_prob2(., dataset = "comm_pst")
+#aggregate with Canadian CU focus
+rec_can_h <- rec %>% 
+  pool_aggs() %>% 
+  group_by(id, reg1) %>%
+  calc_max_prob2(., dataset = "rec_can")
+comm_can_h <- comm %>% 
+  pool_aggs() %>% 
+  group_by(id, reg1) %>%
+  calc_max_prob2(., dataset = "comm_can")
+
+list(rec_pst_h, comm_pst_h, rec_can_h, comm_can_h) %>% 
+  bind_rows() %>% 
+  ggplot(.) +
+  geom_histogram(aes(max_assignment)) +
+  ggsidekick::theme_sleek() +
+  facet_wrap(~ dataset)
