@@ -2,7 +2,7 @@
 # Commercial data provided by Bryan Rusch Aug 19, 2019 as Access database
 # Note: the tables within the access database are not joined, limiting the
 # utility of multitable queries; to ensure repeatability the majority of data
-# cleaning occurs after tables have been imported to R
+# cleaning occurs after tables have been imported to R.
 # Recreational data provided by Wilf Luedke May 27, 2020 as Excel file
 # Note: information on data selection for rec is in .txt file in directory
 
@@ -116,7 +116,8 @@ areaCatch <- sqlQuery(con, catchQry) %>%
              TRUE ~ VESSELS_OP)
          )
 # write.csv(areaCatch, here::here("data", "gsiCatchData", "commTroll",
-#                                 "fosCatch.csv"))
+#                                 "fosCatch.csv"), 
+#           row.names = FALSE)
 
 #summary of how catch/effort data is distributed through time
 # fosSumm <- areaCatch %>%
@@ -125,29 +126,6 @@ areaCatch <- sqlQuery(con, catchQry) %>%
 # 
 # write.csv(fosSumm, here::here("data", "gsiCatchData", "commTroll", 
 #                               "fosSummary.csv"))
-
-#summarize catches by area, month and year to match south coast GSI data
-sumCatch <- areaCatch %>% 
-  group_by(CATCH_REGION, FISHING.MONTH, FISHING.YEAR) %>% 
-  mutate(sumCatch = 
-         #normally only KEPT chinook contribute to GSI samples, but certain
-         #fisheries include live sampling where CHINOOK_RELD = catch
-          case_when(
-            grepl("CN DNA Sampling", OPNG_DESC) ~ sum(CHINOOK_RELD),
-            TRUE ~ sum(CHINOOK_KEPT)),
-         sumEffort = sum(VESSELS_OP)) %>% 
-  select(catchReg = CATCH_REGION, month = FISHING.MONTH, year = FISHING.YEAR, 
-         sumCatch, sumEffort) %>% 
-  ungroup() %>% 
-  mutate(catchReg = as.character(catchReg))
-
-# # catch/effort coverage
-# ggplot(sumCatch, aes(x = month, y = sumCatch, color = catchReg)) +
-#   geom_line() +
-#   facet_wrap(~year)
-# ggplot(sumCatch, aes(x = month, y = sumEffort, color = catchReg)) +
-#   geom_line() +
-#   facet_wrap(~year)
 
 ## Generate aggregate catch by Julian Day to match individual data from genetics
 # lab
@@ -286,7 +264,8 @@ rec_dat_out <- rec_catch2 %>%
   left_join(.,
             rec_eff %>% 
               select(strata, mu_boat_trips),
-            by = "strata")
+            by = "strata") %>% 
+  select(-strata)
 
 saveRDS(rec_list, here::here("data", "gsiCatchData", "rec",
                              "monthlyCatchList_rec.RDS"))

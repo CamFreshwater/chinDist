@@ -201,13 +201,14 @@ rec_long <- rec_full %>%
     region = case_when(
       PFMA > 124 ~ "NWVI",
       PFMA < 28 & PFMA > 24 ~ "NWVI",
+      PFMA %in% c("20", "121", "21") ~ "Juan de Fuca",
+      is.na(PFMA) ~ "Juan de Fuca",
       PFMA < 125 & PFMA > 120 ~ "SWVI",
       PFMA < 25 & PFMA > 20 ~ "SWVI",
       PFMA < 20 & PFMA > 12 ~ "Georgia Strait",
       PFMA %in% c("28", "29") ~ "Georgia Strait",
-      PFMA %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
-      PFMA %in% c("20") ~ "Juan de Fuca",
-      is.na(PFMA) ~ "Juan de Fuca"),
+      PFMA %in% c("10", "11", "12", "111") ~ "Johnstone Strait"
+      ),
     season_c = case_when(
       month %in% c("12", "1", "2") ~ "w",
       month %in% c("3", "4", "5") ~ "sp",
@@ -243,6 +244,10 @@ rec_long <- rec_full %>%
 saveRDS(rec_long, here::here("data", "gsiCatchData", "rec",
                             "recIndProbsLong.rds"))
 
+# rec_long %>% 
+#   filter(region %in% c("Juan de Fuca", "SWVI")) %>% 
+#   group_by(area, region) %>% 
+#   tally()
 
 ggplot(rec_long) + 
   geom_histogram(aes(fl)) +
