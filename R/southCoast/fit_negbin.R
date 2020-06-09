@@ -28,22 +28,22 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
   rename(eff = boatDays, region = catchReg) %>% 
   clean_catch(.) %>% 
-  mutate(temp_strata = paste(month, region, sep = "_"))
-  filter(temp_strata == "7_SWVI") %>% 
+  mutate(temp_strata = paste(month, region, sep = "_")) %>% 
+  filter(!temp_strata == "7_SWVI") %>% 
   mutate(month = droplevels(month))
 
 
 #recreational catch data
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
-                                 "monthlyCatch_rec.RDS")) %>% 
-  # drop months that lack data from all regions
-  rename(catch = mu_catch, eff = mu_boat_trips) %>% 
-  mutate(cpue = catch / eff,
-         region = abbreviate(region, minlength = 4)) %>% 
+                                "monthlyCatch_rec.RDS")) %>%
+  #group to get rid of adipose and released legal categories
+  group_by(month, month_n, year, area, subarea, region, legal) %>% 
+  summarize(catch = sum(mu_catch),
+            eff = mean(mu_boat_trips),
+            cpue = catch / eff) %>% 
+  ungroup() %>% 
+  mutate(region = abbreviate(region, minlength = 4)) %>% 
   clean_catch(.) 
-# %>% 
-#   filter(month_n > 4, month_n < 10) %>% 
-#   mutate(month = droplevels(month))
 
 # rec_catch %>% 
 #   filter(kept_legal == "y_legal") %>% 
@@ -79,9 +79,9 @@ prep_catch <- function(catch, data_type = NULL) {
   fix_mm <- model.matrix(~ reg_f + month + eff_z + eff_z2, catch)
   
   # Average effort for predictions
-  # pred_eff <- catch %>% 
-  #   mutate(facs = as.character(paste(reg_f, month_n, sep = "_"))) %>% 
-  #   group_by(facs) %>% 
+  # pred_eff <- catch %>%
+  #   mutate(facs = as.character(paste(reg_f, month_n, sep = "_"))) %>%
+  #   group_by(facs) %>%
   #   summarize(eff_z = mean(eff_z),
   #             eff_z2 = mean(eff_z2))
   
@@ -96,11 +96,11 @@ prep_catch <- function(catch, data_type = NULL) {
            facs_n = as.numeric(as.factor(facs)) - 1
     ) %>%
     arrange(facs_n) %>% 
-    left_join(., pred_eff, by = "facs") %>% 
+    # left_join(., pred_eff, by = "facs") %>% 
     mutate(facs = as.factor(facs))
   
   #mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)
-  mm_pred <- model.matrix(~ reg_f + month + eff_z + eff_z2, fac_key)%>% 
+  mm_pred <- model.matrix(~ reg_f + month, fac_key) %>% 
     cbind(.,
           eff_z = rep(0, n = nrow(.)),
           eff_z2 = rep(0, n = nrow(.)))

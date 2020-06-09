@@ -206,13 +206,14 @@ rec_catch1 <- rec_catch %>%
     region = case_when(
       pfma_n > 124 ~ "NWVI",
       pfma_n < 28 & pfma_n > 24 ~ "NWVI",
+      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca",
+      is.na(pfma_n) ~ "Juan de Fuca",
       pfma_n < 125 & pfma_n > 120 ~ "SWVI",
       pfma_n < 25 & pfma_n > 20 ~ "SWVI",
       pfma_n < 20 & pfma_n > 12 ~ "Georgia Strait",
       pfma_n %in% c("28", "29") ~ "Georgia Strait",
-      pfma_n %in% c("10", "11", "12", "13", "111") ~ "Johnstone Strait",
-      pfma_n %in% c("20") ~ "Juan de Fuca",
-      is.na(pfma_n) ~ "Juan de Fuca"),
+      pfma_n %in% c("10", "11", "12", "111") ~ "Johnstone Strait"
+    ),
     strata = paste(pfma_n, CREEL_SUB_AREA, YEAR, MONTH, sep = "_"),
     month = fct_relevel(MONTH, "January", "February", "March", "April", 
                         "May", "June", "July", "August", "September", 

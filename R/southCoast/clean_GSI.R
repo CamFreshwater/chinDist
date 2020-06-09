@@ -102,6 +102,8 @@ dat_comm <- cbind(id_vec, dat_raw_comm) %>%
   filter(!area %in% c("Area123-124", "Area125-126", "Area126-127",
                           "Area124_24", "Area_24xgill")) 
 
+    
+
 ## Export list of stocks to be passed to makeFullStockKey script in
 # stockKey repo 
 # stks_out <- dat_comm %>%
