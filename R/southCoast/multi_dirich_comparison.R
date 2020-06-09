@@ -37,46 +37,48 @@ dat_p <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 
 
 # trim to subset of months and widen
-dat_p2 <- dat_p %>% 
+dat_p2a <- dat_p %>% 
   arrange(regName) %>% 
   pivot_wider(., names_from = regName, values_from = prob) %>% 
   mutate_if(is.numeric, ~replace_na(., 1e-5)) %>%
-  droplevels()  %>% 
+  droplevels() %>% 
   arrange(id)
+dat_p2 <- dat_p2a %>% 
+  group_by(statArea, year, month, month_n, catchReg) %>% 
+  summarize(Colmb = sum(Colmb),
+            FrsrR = sum(FrsrR),
+            Other = sum(Other),
+            PgtSn = sum(PgtSn)) %>% 
+  ungroup()
 dat_i2 <- dat_i %>% 
   arrange(regName) %>% 
   pivot_wider(., names_from = regName, values_from = pres) %>% 
   mutate_if(is.numeric, ~replace_na(., 0)) %>%
   droplevels() %>% 
-  arrange(id)
+  arrange(id) 
 
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
 #dirichlet observation matrix and substitute zero values
-y_dir <- dat_p2 %>% 
-  select(-c(id:catchReg)) %>% 
+y_dir <- dat_p2a %>% 
+  # select(-c(statArea:catchReg)) %>%
+  select(-c(id:catchReg)) %>%
   as.matrix()
-y_dir <- y_dir / rowSums(y_dir)
-y_dir_scaled <- y_dir * 100
-
-# multinomial observation matrix
-y_mult <- dat_i2 %>% 
-  select(-c(id:catchReg)) %>% 
-  as.matrix()
+y_dir_prop <- y_dir / rowSums(y_dir)
+y_dir_scaled <- y_dir * 10
 
 # shared fixed covariate matrix
-fix_mm <- model.matrix(~ (month + catchReg), dat_i2)
+fix_mm_d <- model.matrix(~ (month + catchReg), dat_p2a)
 P <- ncol(fix_mm) - 1
 K <- ncol(y_dir)
-
 
 #Dirichlet TMB inputs
 #initial parameter values
 beta_in_d <- matrix(rnorm(n = (P + 1) * K, mean = 0), (P+1), K)
 
 #prediction model matrix
-pred_dat_d <- dat_p2 %>%
+pred_dat_d <- dat_p2a %>%
   select(month, catchReg) %>%
   distinct() %>%
   arrange(month, catchReg)
@@ -87,6 +89,13 @@ dyn.load(dynlib(here::here("src", "dirichlet_fixInt")))
 
 
 # Multinomial TMB inputs
+# multinomial observation matrix
+y_mult <- dat_i2 %>% 
+  select(-c(id:catchReg)) %>% 
+  as.matrix()
+
+fix_mm_m <- model.matrix(~ (month + catchReg), dat_i2)
+
 #initial parameter values
 beta_in_m = matrix(rnorm(n = (P + 1) * (K - 1), mean = 0), nrow = P + 1,
                    ncol = K - 1)
@@ -99,6 +108,14 @@ fac_key <- fac_dat %>%
   distinct() %>% 
   arrange(facs_n)
 
+#prediction model matrix
+pred_dat_m <- dat_i2 %>%
+  select(month, catchReg) %>%
+  distinct() %>%
+  arrange(month, catchReg)
+pred_mm_m <- model.matrix(~ month + catchReg, pred_dat_m)
+
+
 compile("src/multinomial_fixInt.cpp")
 dyn.load(dynlib("src/multinomial_fixInt"))
 
@@ -106,7 +123,7 @@ dyn.load(dynlib("src/multinomial_fixInt"))
 ## FIT MODELS ------------------------------------------------------------------
 
 ## Fit dirichlet from TMB
-obj <- MakeADFun(data=list(fx_cov = fix_mm,
+obj <- MakeADFun(data=list(fx_cov = fix_mm_d,
                            y_obs = y_dir_scaled,
                            pred_cov = pred_mm_d),
                  parameters=list(z_ints = beta_in_d),
@@ -126,14 +143,17 @@ pred_dat1 <- cbind(pred_dat_d,
 
 
 ## Fit dirichlet regression from package
-temp <- dat_p2 %>% 
+temp <- dat_p2a %>% 
   select(id:catchReg)
-temp$comp <- DR_data(y_dir)
+comp_mat <- dat_p2a %>% 
+  select(Colmb:PgtSn) %>% 
+  as.matrix() %>% 
+  DR_data()
+temp$comp <- comp_mat
 
 fit_dr <- DirichletReg::DirichReg(comp ~ month + catchReg, data = temp)
 #DR predictions
-pred_dat2 <- dat_p2 %>% 
-  select(id:catchReg) %>% 
+pred_dat2 <- temp %>% 
   cbind(., predict(fit_dr)) %>% 
   group_by(month, catchReg) %>% 
   summarize(Colmb = mean(Colmb),
@@ -164,7 +184,7 @@ rbind(pred_dat1, pred_dat2) %>%
 
 
 ## Fit multinomial TMB with integer data 
-obj <- MakeADFun(data = list(fx_cov = fix_mm,
+obj <- MakeADFun(data = list(fx_cov = fix_mm_m,
                              y_obs = y_mult,
                              all_fac = fac_dat$facs_n,
                              fac_key = fac_key$facs_n),
@@ -225,6 +245,6 @@ mult_preds <- make_pred_df(model = "mult",
 rbind(dir_preds, mult_preds) %>% 
   filter(catchReg == "SWVI") %>% 
   ggplot(.) +
-  geom_pointrange(aes(x = stock, y = mu, ymin = lo, ymax = up, fill = model), 
-                  shape = 21) +
-  facet_wrap(~month, scales = "free_y")
+  geom_pointrange(aes(x = month, y = mu, ymin = lo, ymax = up, fill = model), 
+                  shape = 21, position = position_dodge(0.6)) +
+  facet_wrap(~stock)

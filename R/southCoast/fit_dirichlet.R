@@ -120,14 +120,11 @@ comm_trim <- prep_gsi(comm_pst %>%
                         filter(!month == "7"), 
                       month_range = c(4, 10), data_type = "comm_pst") 
 legal_trim <- prep_gsi(rec_pst %>% 
-                         filter(legal == "legal",
-                                region %in% c("Georgia Strait", 
-                                              "Johnstone Strait")), 
+                         filter(legal == "legal"), 
                        month_range = c(6, 9), data_type = "legal_pst")
-sub_trim <- prep_gsi(rec_pst %>% filter(legal == "sublegal"),
-                     month_range = c(6, 9), data_type = "sublegal_pst")
-gsi_list <- list("comm" = comm_trim, "legal" = legal_trim, 
-                 "sublegal" = sub_trim)
+# sub_trim <- prep_gsi(rec_pst %>% filter(legal == "sublegal"),
+#                      month_range = c(6, 9), data_type = "sublegal_pst")
+gsi_list <- list("comm" = comm_trim, "legal" = legal_trim)
 
 comm_trim$long_data %>% 
   select(id, region, month) %>% 
