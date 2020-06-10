@@ -34,8 +34,8 @@ n_am <- map_data("worldHires", region = c("usa", "canada")) %>%
 
 #pfma polys 
 pfma_simp_df <- readRDS(here("data", "gsiCatchData", "pfma", "trim_pfma_df.rds"))
-# pfma_shp <- rgdal::readOGR(here("data", "gsiCatchData", "pfma"), 
-#                             layer = "PFMA_Areas_50k") %>% 
+# pfma_shp <- rgdal::readOGR(here("data", "gsiCatchData", "pfma", "shape_files"),
+#                             layer = "PFMA_Areas_50k") %>%
 #   sp::spTransform(., CRS("+proj=longlat +datum=WGS84"))
 # pfma_simp <- ms_simplify(pfma_shp, sys = TRUE)
 # pfma_simp_df <- pfma_simp %>% 
@@ -87,15 +87,15 @@ pfma_simp_df2 %>%
 
 
 #color palette
-# col.reg <- levels(pfma_simp_df2$region)
-# pal <- wesanderson::wes_palette("BottleRocket2", 
-#                                 length(col.reg), 
+col.reg <- levels(pfma_simp_df2$region)
+# pal <- wesanderson::wes_palette("BottleRocket2",
+#                                 length(col.reg),
 #                                 type = "continuous")
 alpha_labs <- levels(pfma_simp_df2$statArea)
-alpha_vals <- rep(seq(0.5, 0.8, length = (length(alpha_labs) / length(col.reg))),
+alpha_vals <- rep(seq(0.3, 0.9, length = (length(alpha_labs) / length(col.reg))),
                   length(col.reg))
 
-ggplot() +
+pfma_map <- ggplot() +
   coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
                  clip = "on") +
   geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
@@ -103,10 +103,15 @@ ggplot() +
                                          alpha = statArea),
                lwd = 1) +
   geom_polygon(data = n_am, aes(x=long, y = lat, group = group)) + 
-  scale_colour_viridis_d(option = "D") +
-  scale_fill_viridis_d(option = "D") +
+  scale_colour_viridis_d(option = "D", name = "") +
+  scale_fill_viridis_d(option = "D", name = "") +
   # scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
   scale_alpha_manual(labels = alpha_labs, values = alpha_vals, guide = FALSE) +
   labs(x = "", y = "") +
-  theme(plot.margin=unit(c(0.1,0,0,0), "mm"))
+  theme(plot.margin=unit(c(0.1,0,0,0), "mm"),
+        legend.position = "top")
+
+pdf(here::here("figs", "ms_figs", "pfma_map.pdf"))
+pfma_map
+dev.off()
 
