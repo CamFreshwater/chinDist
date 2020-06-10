@@ -18,8 +18,7 @@ clean_catch <- function(dat) {
            month = as.factor(month_n),
            year = as.factor(year),
            eff_z = as.numeric(scale(eff)),
-           eff_z2 = eff_z^2,
-           eff_z3 = eff_z^3) %>% 
+           eff_z2 = eff_z^2) %>% 
     arrange(reg_f, month) 
 }
 
