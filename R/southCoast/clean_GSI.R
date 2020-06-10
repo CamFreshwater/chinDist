@@ -137,9 +137,10 @@ comm_long <- dat_comm %>%
       TRUE ~ "NWVI"
     ),
     region = as.factor(region), 
-    area = as.factor(area)
+    area = as.factor(area),
+    temp_strata = paste(month_n, region, sep = "_")
     ) %>% 
-  select(id, fish_num, region, area, year, month, week, jDay, date,
+  select(id, fish_num, temp_strata, region, area, year, month, week, jDay, date,
          gear, pres, season, month_n, area_n, adj_prob, stock, 
          Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
@@ -235,9 +236,11 @@ rec_long <- rec_full %>%
     pres = 1,
     area_n = as.numeric(as.character(PFMA)),
     region = as.factor(region), 
-    area = as.factor(PFMA)
+    area = as.factor(PFMA),
+    temp_strata = paste(month_n, region, sep = "_")
   ) %>% 
-  select(id = BIOKEY, fish_num = FISH_NO, region, area, subarea = SUBAREA, 
+  select(id = BIOKEY, fish_num = FISH_NO, temp_strata, region, area, 
+         subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = SAMPLE_TYPE, 
          fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, pres, season, 
          month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
