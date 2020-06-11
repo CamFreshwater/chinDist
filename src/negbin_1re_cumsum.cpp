@@ -8,6 +8,10 @@ Type objective_function<Type>::operator() ()
 
   DATA_IVECTOR(factor1k_i);
   DATA_INTEGER(nk1);
+  // vector of higher level aggregates used to generate predictions; length
+  // is equal to the number of predictions made
+  DATA_IVECTOR(pred_factor2k_h);
+  DATA_IVECTOR(pred_factor2k_levels);
 
   PARAMETER_VECTOR(b1_j);
   PARAMETER(log_phi);
@@ -18,7 +22,7 @@ Type objective_function<Type>::operator() ()
   DATA_MATRIX(X1_pred_ij);
 
   int n1 = y1_i.size();
-
+  
   Type jnll = 0.0; // initialize joint negative log likelihood
 
   // Linear predictor
@@ -43,6 +47,21 @@ Type objective_function<Type>::operator() ()
 
   // REPORT(pred_abund);
   ADREPORT(pred_abund);
+
+  // Calculate predicted abundance based on higher level groupings
+  int n_preds = pred_factor2k_h.size();
+  int n_pred_levels = pred_factor2k_levels.size();
+  vector<Type> agg_pred_abund(n_pred_levels);
+  
+  for (int h = 0; h < n_preds; h++) {
+    for (int g = 0; g < n_pred_levels; g++) {
+      if (pred_factor2k_h(h) == pred_factor2k_levels(g)) {
+        agg_pred_abund(g) += pred_abund(h);
+      }
+    }
+  }
+
+  ADREPORT(agg_pred_abund);
 
   return jnll;
 }

@@ -8,7 +8,8 @@
 library(tidyverse)
 library(TMB)
 library(ggplot2)
-
+library(grid)
+library(gridExtra)
 
 # CLEAN CATCH -----------------------------------------------------------------
 
@@ -19,7 +20,7 @@ clean_catch <- function(dat) {
            !eff == "0") %>% 
     mutate(region_c = as.character(region),
            region = factor(region_c),
-           area = as.factor(area),
+           # area = as.factor(area),
            month = as.factor(month),
            month_n = as.numeric(month),
            month = as.factor(month_n),
@@ -41,10 +42,14 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #recreational catch data
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
                                 "monthlyCatch_rec.RDS")) %>% 
-  #group to get rid of adipose and released legal categories
+  #group by subarea to get rid of adipose and released legal categories
   group_by(month, month_n, year, area, subarea, region, legal) %>% 
-  summarize(catch = sum(mu_catch),
-            eff = mean(mu_boat_trips),
+  mutate(subarea_catch = sum(mu_catch),
+         subarea_eff = mean(mu_boat_trips)) %>% 
+  #group by area to be consistent with commercial data
+  group_by(month, month_n, year, region, legal) %>% 
+  summarize(catch = sum(subarea_catch),
+            eff = sum(subarea_eff),
             cpue = catch / eff) %>% 
   ungroup() %>% 
   mutate(temp_strata = paste(month_n, region, sep = "_"),
@@ -53,11 +58,29 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   #focus on legal fish 
   filter(legal == "legal")
 
-tt <- rec_catch %>% 
-  filter(legal == "legal") %>% 
-  group_by(subarea, year, month) %>% 
-  summarize(n_eff = length(unique(mu_boat_trips)))
+# confirm one estimate of effort per month-subarea
+# tt <- rec_catch %>%
+#   filter(legal == "legal") %>%
+#   group_by(subarea, year, month) %>%
+#   summarize(n_eff = length(unique(mu_boat_trips)))
+# range(tt$n_eff)
 
+
+catch_list <- list(comm_catch, rec_catch)
+purrr::map(catch_list, function(x) {
+  cpue <- ggplot() +
+    geom_boxplot(data = x, aes(x = month, y = cpue)) +
+    facet_wrap(~region) +
+    ggsidekick::theme_sleek()
+  effort <- x %>%
+    select(region, month, eff) %>%
+    distinct() %>%
+    ggplot(.) +
+    geom_boxplot(aes(x = month, y = eff)) +
+    facet_wrap(~region) +
+    ggsidekick::theme_sleek()
+  cowplot::plot_grid(cpue, effort, nrow = 2)
+})
 
 
 # CLEAN GENETICS  --------------------------------------------------------------
@@ -67,12 +90,12 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
                           "recIndProbsLong.rds")) %>% 
   #focus only on legal sized fish
   filter(legal == "legal") %>% 
-  mutate(region = abbreviate(region, minlength = 4))
+  mutate(region_c = as.character(region),
+         region = abbreviate(region, minlength = 4))
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "wcviIndProbsLong.rds")) %>% 
   # drop month where catch data are missing
-  # mutate(temp_strata = paste(month, region, sep = "_")) %>% 
   filter(!temp_strata == "7_SWVI")
 
 
@@ -95,8 +118,7 @@ calc_max_prob <- function(grouped_data, full_data, thresh = 0.75) {
                 distinct(),
               by = "id") %>% 
     select(-max_assignment) %>% 
-    mutate(region_c = as.character(region),
-           region = as.factor(region))
+    mutate(region = as.factor(region))
   
   colnames(out)[2] <- "agg"
   
@@ -175,7 +197,7 @@ subset_comp <- function(x, threshold = 50) {
   x %>% 
     filter(!month %in% unique(dum$month)) %>%  
     droplevels() %>% 
-    select(id, region, area, year, month, season, agg, agg_prob, pres, 
+    select(id, region, region_c, area, year, month, season, agg, agg_prob, pres, 
            temp_strata) 
 }
 
@@ -320,10 +342,6 @@ dat <- tibble(
     # infill then widen composition data
     infill_comp = map(long_comp, infill_comp_dat),
     comp = map(infill_comp, widen_comp_dat),
-    # predictive dataframes for catch
-    pred_catch_dat = map(catch, make_pred_dat),
-    # predictive dataframes for comp
-    pred_comp_dat = map(comp, make_pred_dat),
     #add tmb data assuming month-area specific effort predictions
     # tmb_data = map2(catch, comp, gen_tmb_dat, effort = "month"),
     #add tmb data assuming average effort predictions
@@ -341,14 +359,14 @@ map(dat$infill_comp, function (x) {
 ## EXAMINE RAW DATA ------------------------------------------------------------
 
 catch_list <- list(dat$catch[[1]], dat$catch[[2]])
-map(catch_list, function(x) {
-    cpue <- ggplot(x) +
-      geom_boxplot(aes(x = month, y = cpue)) +
+purrr::map(catch_list, function(x) {
+    cpue <- ggplot() +
+      geom_boxplot(data = x, aes(x = month, y = cpue)) +
       facet_wrap(~region) +
       ggsidekick::theme_sleek()
-    effort <- x %>% 
-      select(region, month, eff) %>% 
-      distinct() %>% 
+    effort <- x %>%
+      select(region, month, eff) %>%
+      distinct() %>%
       ggplot(.) +
       geom_boxplot(aes(x = month, y = eff)) +
       facet_wrap(~region) +
@@ -383,25 +401,75 @@ saveRDS(dat2, here::here("generated_data", "model_fits", "combined_model.RDS"))
 
 ## GENERATE PREDICTIONS --------------------------------------------------------
 
-## Abundance predictions
-abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund", ] #log pred of abundance
-abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
-catch <- dat$catch[[4]]
-pred_catch <- dat$pred_catch_dat[[4]]
 
-# plot predicted abundance with average effort (i.e. set to 0)
-pred_ci <- data.frame(pred_est = abund_pred[ , "Estimate"],
-                      pred_se =  abund_pred[ , "Std. Error"]) %>%
-  cbind(pred_catch, .) %>% 
-  mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
-         pred_up = pred_est + (qnorm(0.975) * pred_se))
+## Function to generate abundance predictions
+gen_abund_pred <- function(catch, ssdr) {
+  abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund", ] 
+  # abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
+  pred_catch <- make_pred_dat(catch)
   
-real_preds <- ggplot() +
-  geom_pointrange(data = pred_ci, aes(x = as.factor(month), y = pred_est,
-                                      ymin = pred_low, ymax = pred_up)) +
-  labs(x = "month", y = "predicted real catch (mean effort)") +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~region)
+  data.frame(pred_est = abund_pred[ , "Estimate"],
+                        pred_se =  abund_pred[ , "Std. Error"]) %>%
+    cbind(pred_catch, .) %>% 
+    mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
+           pred_up = pred_est + (qnorm(0.975) * pred_se))
+}
+
+## Function to generate composition and stock-specific abundance predictions
+gen_comp_pred <- function(infill_comp, ssdr) {
+  comp_pred <- ssdr[rownames(ssdr) %in% "pred_probs", ]
+  comp_abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ]
+  
+  stk_names <- unique(infill_comp$agg)
+  pred_comp_dat <- make_pred_dat(infill_comp)
+  n_preds <- nrow(pred_comp_dat)
+  
+  dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_comp_dat)
+  
+  data.frame(stock = as.character(rep(stk_names, each = n_preds)),
+                             pred_prob_est = comp_pred[ , "Estimate"],
+                             pred_prob_se =  comp_pred[ , "Std. Error"]) %>% 
+    cbind(dum, .) %>%
+    mutate(pred_prob_low = pred_prob_est + (qnorm(0.025) * pred_prob_se),
+           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se),
+           comp_abund_est = comp_abund_pred[ , "Estimate"],
+           comp_abund_se =  comp_abund_pred[ , "Std. Error"],
+           comp_abund_low = comp_abund_est + (qnorm(0.025) * comp_abund_se),
+           comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
+}
+
+pred_dat <- dat2 %>% 
+  mutate(abund_pred_ci = map2(catch, ssdr, gen_abund_pred),
+         comp_pred_ci = map2(infill_comp, ssdr, gen_comp_pred))
+
+
+## Plot predictions
+plot_abund <- function(dat, ylab) {
+  ggplot() +
+    geom_pointrange(data = dat, aes(x = as.factor(month), y = pred_est,
+                                    ymin = pred_low, ymax = pred_up)) +
+    labs(x = "", y = ylab) +
+    ggsidekick::theme_sleek() +
+    facet_wrap(~region)
+  }
+
+rec_catch <- plot_abund(pred_dat$abund_pred_ci[[1]], 
+                        ylab = "Predicted\nMonthly Catch")
+comm_catch <- plot_abund(pred_dat$abund_pred_ci[[2]], 
+                         ylab = "Predicted\nDaily Catch")
+x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
+#catch_pred_out <- 
+cowplot::plot_grid(rec_catch, comm_catch, nrow = 2) %>% 
+  arrangeGrob(., bottom = x.grob) %>% 
+  grid.arrange
+
+
+grid.arrange(arrangeGrob(plot, left = y.grob, bottom = x.grob))
+
+
+
+
+
 
 # plot predicted vs observed abundance accounting for month-area specific effort
 pred_eff <- catch %>% 
