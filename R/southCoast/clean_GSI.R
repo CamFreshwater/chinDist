@@ -29,12 +29,14 @@ id_vec <- dat_raw_comm$szLineInfo %>%
       case_when(
          statArea %in% c("Area023", "Area23", "Area_23") ~ "23",
          statArea %in% c("Area123", "Area123SWVI", "Area123Comm") ~ "123",
-         statArea %in% c("Area124", "Area124SWVI", "Area124Comm") ~ "124",
+         statArea %in% c("Area124", "Area124SWVI", "Area124Comm", "Area123-124",
+                         "Area124_24") ~ "124",
          statArea %in% c("Area125", "Area125NWVI") ~ "125",
-         statArea %in% c("Area126", "Area126NWVI") ~ "126",
+         statArea %in% c("Area126", "Area126NWVI", "Area125-126", 
+                         "Area126-127") ~ "126",
          statArea %in% c("Area127", "Area127NWVI") ~ "127",
          statArea %in% c("Area026") ~ "26",
-         statArea %in% c("Area24", "Area_24") ~ "24",
+         statArea %in% c("Area24", "Area_24", "Area_24xgill") ~ "24",
          TRUE ~ as.character(statArea)
          ),
     abbYear = sapply(strsplit(as.character(year), '[()]'), 
@@ -96,13 +98,8 @@ dat_comm <- cbind(id_vec, dat_raw_comm) %>%
   select(-iRun, -iSample, -iYearMix, id = szLineInfo, stock,  -szStock,
          prob = dProb, adj_prob, -totalProb, -szExclude, -iRegionId, -unadjWeek,
          Region1Name = szRegion, -weekDay) %>% 
-  rename(area = statArea, fish_num = fishNum) %>% 
-  # for now remove ~150 fish that can't be assigned to an individual stat area;
-  # eventually could assign based on where majority of effort occurred
-  filter(!area %in% c("Area123-124", "Area125-126", "Area126-127",
-                          "Area124_24", "Area_24xgill")) 
+  rename(area = statArea, fish_num = fishNum) 
 
-    
 
 ## Export list of stocks to be passed to makeFullStockKey script in
 # stockKey repo 
