@@ -9,3 +9,5 @@ year: catch year
 catch: number of Chinook captured and potentially sampled
 boatDays: number of vessels operating on day catch was reported
 cpue: catch divided by boatDays
+
+Data are collected at the stat area and julian day level.
