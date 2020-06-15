@@ -20,7 +20,7 @@ clean_catch <- function(dat) {
            !eff == "0") %>% 
     mutate(region_c = as.character(region),
            region = factor(region_c),
-           # area = as.factor(area),
+           area = as.factor(area),
            month = as.factor(month),
            month_n = as.numeric(month),
            month = as.factor(month_n),
@@ -47,7 +47,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   mutate(subarea_catch = sum(mu_catch),
          subarea_eff = mean(mu_boat_trips)) %>% 
   #group by area to be consistent with commercial data
-  group_by(month, month_n, year, region, legal) %>% 
+  group_by(month, month_n, year, area, region, legal) %>% 
   summarize(catch = sum(subarea_catch),
             eff = sum(subarea_eff),
             cpue = catch / eff) %>% 
@@ -66,23 +66,6 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 # range(tt$n_eff)
 
 
-catch_list <- list(comm_catch, rec_catch)
-purrr::map(catch_list, function(x) {
-  cpue <- ggplot() +
-    geom_boxplot(data = x, aes(x = month, y = cpue)) +
-    facet_wrap(~region) +
-    ggsidekick::theme_sleek()
-  effort <- x %>%
-    select(region, month, eff) %>%
-    distinct() %>%
-    ggplot(.) +
-    geom_boxplot(aes(x = month, y = eff)) +
-    facet_wrap(~region) +
-    ggsidekick::theme_sleek()
-  cowplot::plot_grid(cpue, effort, nrow = 2)
-})
-
-
 # CLEAN GENETICS  --------------------------------------------------------------
 
 # recreational data
@@ -91,12 +74,15 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
   #focus only on legal sized fish
   filter(legal == "legal") %>% 
   mutate(region_c = as.character(region),
-         region = abbreviate(region, minlength = 4))
+         region = abbreviate(region, minlength = 4)) %>% 
+  select(id:region, region_c, area, area_n, subarea:month_n, adj_prob:pst_agg)
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "wcviIndProbsLong.rds")) %>% 
   # drop month where catch data are missing
-  filter(!temp_strata == "7_SWVI")
+  filter(!temp_strata == "7_SWVI") %>% 
+  mutate(region_c = as.character(region)) %>% 
+  select(id:region, region_c, area, area_n, year:month_n, adj_prob:pst_agg)
 
 
 # helper function to calculate aggregate probs
@@ -114,7 +100,7 @@ calc_max_prob <- function(grouped_data, full_data, thresh = 0.75) {
     distinct() %>% 
     left_join(.,
               full_data %>% 
-                select(id:area_n) %>% 
+                select(id:month_n) %>% 
                 distinct(),
               by = "id") %>% 
     select(-max_assignment) %>% 
@@ -165,6 +151,37 @@ comm_can_comp <- comm %>%
   group_by(id, reg1) %>%
   calc_max_prob(., comm, thresh = 0.75) 
 
+
+## EXAMINE RAW DATA ------------------------------------------------------------
+
+#catch and effort
+catch_list <- list(comm_catch, rec_catch)
+purrr::map(catch_list, function(x) {
+  cpue <- ggplot() +
+    geom_boxplot(data = x, aes(x = month, y = cpue)) +
+    facet_wrap(~region) +
+    ggsidekick::theme_sleek()
+  effort <- x %>%
+    select(region, month, eff) %>%
+    distinct() %>%
+    ggplot(.) +
+    geom_boxplot(aes(x = month, y = eff)) +
+    facet_wrap(~region) +
+    ggsidekick::theme_sleek()
+  cowplot::plot_grid(cpue, effort, nrow = 2)
+})
+
+#genetics samples collected
+comp_list <- list(rec_pst_comp, comm_pst_comp)
+purrr::map(comp_list, function(x) {
+  x %>% 
+    group_by(region, month, year) %>% 
+    tally() %>% 
+    ggplot(.) +
+    geom_tile(aes(x = month, y = region, fill = n)) +
+    facet_wrap(~year) +
+    ggsidekick::theme_sleek()
+})
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -234,11 +251,18 @@ widen_comp_dat <- function(long_comp) {
 }
 
 # function to make predictive dataframes 
-make_pred_dat <- function(dat) {
-  dat %>%
-    select(region, month) %>%
-    distinct() %>%
-    arrange(region, month)
+make_pred_dat <- function(dat, catch = TRUE) {
+  if (catch == TRUE) {
+    dat %>%
+      select(area, month, region) %>%
+      distinct() %>%
+      arrange(area, month, region)
+  } else {
+    dat %>%
+      select(region, month) %>%
+      distinct() %>%
+      arrange(region, month)
+  }
 }
 
 # function to generate TMB data inputs from wide dataframes
@@ -252,22 +276,28 @@ gen_tmb_dat <- function(catch_dat, comp_dat, effort) {
   # use average effort by month and area for predictions
   if (effort == "month") {
     mean_eff <- catch_dat %>% 
-      group_by(region, month) %>%
+      group_by(area, month) %>%
       summarize(eff_z = mean(eff_z),
                 eff_z2 = mean(eff_z2)) %>% 
       ungroup()
     pred_dat_catch <- make_pred_dat(catch_dat) %>% 
-      left_join(., mean_eff, by = c("region", "month"))
+      left_join(., mean_eff, by = c("area", "month")) %>% 
+      mutate(reg_month = paste(region, month, sep = "_"))
     pred_mm_catch <- model.matrix(catch_formula, pred_dat_catch) 
   }  
   # set effort to zero for all predictions
   if (effort == "overall") {
-    pred_dat_catch <- make_pred_dat(catch_dat)
-    pred_mm_catch <- model.matrix(comp_formula, pred_dat_catch) %>%
+    pred_dat_catch <- make_pred_dat(catch_dat) %>% 
+      mutate(reg_month = paste(region, month, sep = "_"))
+    pred_mm_catch <- model.matrix(~ area + month, pred_dat_catch) %>%
       cbind(.,
             eff_z = rep(0, n = nrow(.)),
             eff_z2 = rep(0, n = nrow(.)))
   }
+  
+  # construct factor key for regional aggregates associated with areas
+  grouping_vec <- as.numeric(as.factor(as.character(pred_dat_catch$reg_month))) - 1
+  grouping_key <- unique(grouping_vec)
   
   
   ## composition data
@@ -277,8 +307,8 @@ gen_tmb_dat <- function(catch_dat, comp_dat, effort) {
   yr_vec_comp <- as.numeric(comp_dat$year) - 1
   fix_mm_comp <- model.matrix(comp_formula, comp_dat)
   
-  pred_dat_comp <- make_pred_dat(comp_dat)
-  pred_mm_comp <- model.matrix(~ region + month, pred_dat_comp)
+  pred_dat_comp <- make_pred_dat(comp_dat, catch = FALSE)
+  pred_mm_comp <- model.matrix(comp_formula, pred_dat_comp)
   
   list(
     #abundance input data
@@ -287,6 +317,8 @@ gen_tmb_dat <- function(catch_dat, comp_dat, effort) {
     factor1k_i = yr_vec_catch,
     nk1 = length(unique(yr_vec_catch)),
     X1_pred_ij = pred_mm_catch,
+    pred_factor2k_h = grouping_vec,
+    pred_factor2k_levels = grouping_key,
     #composition input data
     y2_ig = obs_comp,
     X2_ij = fix_mm_comp,
@@ -321,7 +353,7 @@ gen_tmb_par <- function(catch_dat, tmb_data) {
 
 # relevant formulas
 comp_formula <- as.formula("~ region + month")
-catch_formula <- as.formula("~ region + month + eff_z + eff_z2")
+catch_formula <- as.formula("~ area + month + eff_z + eff_z2")
 
 # join all data into a tibble then generate model inputs
 dat <- tibble(
@@ -354,25 +386,6 @@ dat <- tibble(
 map(dat$infill_comp, function (x) {
   table(x$agg, x$month, x$region)
 })
-
-
-## EXAMINE RAW DATA ------------------------------------------------------------
-
-catch_list <- list(dat$catch[[1]], dat$catch[[2]])
-purrr::map(catch_list, function(x) {
-    cpue <- ggplot() +
-      geom_boxplot(data = x, aes(x = month, y = cpue)) +
-      facet_wrap(~region) +
-      ggsidekick::theme_sleek()
-    effort <- x %>%
-      select(region, month, eff) %>%
-      distinct() %>%
-      ggplot(.) +
-      geom_boxplot(aes(x = month, y = eff)) +
-      facet_wrap(~region) +
-      ggsidekick::theme_sleek()
-    cowplot::plot_grid(cpue, effort, nrow = 2)
-  })
 
 
 ## FIT MODELS ------------------------------------------------------------------

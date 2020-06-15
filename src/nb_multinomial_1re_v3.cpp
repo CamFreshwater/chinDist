@@ -10,14 +10,16 @@ Type objective_function<Type>::operator() ()
   DATA_IVECTOR(factor1k_i);
   DATA_INTEGER(nk1);
   DATA_MATRIX(X1_pred_ij);
+  // vector of higher level aggregates used to generate predictions; length
+  // is equal to the number of predictions made
+  DATA_IVECTOR(pred_factor2k_h);
+  DATA_IVECTOR(pred_factor2k_levels);
   // Composition 
   DATA_MATRIX(y2_ig);		// matrix of observed distribuons for g (groups - 1)
   DATA_MATRIX(X2_ij);      	// model matrix for fixed effects
   DATA_IVECTOR(factor2k_i); // vector of random factor levels
   DATA_INTEGER(nk2); 		// number of factor levels
   DATA_MATRIX(X2_pred_ij);    // prediction matrix for compositon
-  // DATA_IVECTOR(m2_all_fac); // combined factor levels (fix only)
-  // DATA_IVECTOR(m2_fac_key); // unique combined factor levels (fix only)
 
 
   // PARAMETERS 
@@ -36,10 +38,11 @@ Type objective_function<Type>::operator() ()
   // Abundance 
   int n1 = y1_i.size();
   vector<Type> linear_predictor1_i(n1);
+  int n_preds1 = X1_pred_ij.rows();   // number of abund predictions (finer)
   // Composition 
-  int n2 = y2_ig.rows(); 		// number of observations
-  int n_cat = y2_ig.cols(); 		// number of categories
-  int n_preds = X2_pred_ij.rows();         // number of predictions
+  int n2 = y2_ig.rows(); 		          // number of observations
+  int n_cat = y2_ig.cols(); 		      // number of categories
+  int n_preds2 = X2_pred_ij.rows();   // number of comp predictions (coarser)
   matrix<Type> log_odds(n2, (n_cat - 1));
   matrix<Type> exp_log_odds(n2, (n_cat - 1));
   vector<Type> denom(n2);
@@ -123,32 +126,45 @@ Type objective_function<Type>::operator() ()
   // REPORT(pred_abund);
   ADREPORT(pred_abund);
 
+  // Calculate predicted abundance based on higher level groupings
+  // int n_pred_levels = pred_factor2k_levels.size();
+  // vector<Type> agg_pred_abund(n_pred_levels);
+  vector<Type> agg_pred_abund(n_preds2);
+  
+  for (int h = 0; h < n_preds1; h++) {
+    for (int m = 0; m < n_preds2; m++) {
+      if (pred_factor2k_h(h) == pred_factor2k_levels(m)) {
+        agg_pred_abund(m) += pred_abund(h);
+      }
+    }
+  }
+
   // Composition 
   matrix<Type> pred_log_odds = X2_pred_ij * b2_jg;
   matrix<Type> pred_exp_log_odds = exp(pred_log_odds.array());
   
-  vector<Type> pred_denom(n_preds);
-  for (int ii = 0; ii < n_preds; ++ii) {
+  vector<Type> pred_denom(n_preds2);
+  for (int m = 0; m < n_preds2; ++m) {
     Type sum_exp_log_odds = 0.;
     for (int k = 0; k < (n_cat - 1); ++k) {
-      sum_exp_log_odds += pred_exp_log_odds(ii, k);
+      sum_exp_log_odds += pred_exp_log_odds(m, k);
     }
-    pred_denom(ii) = 1. + sum_exp_log_odds;
+    pred_denom(m) = 1. + sum_exp_log_odds;
   }
 
-  matrix<Type> pred_probs(n_preds, n_cat);
+  matrix<Type> pred_probs(n_preds2, n_cat);
   for (int g = 0; g < n_cat; ++g) {
     if (g < (n_cat - 1)) {
-      for (int ii = 0; ii < n_preds; ++ii) {
-        pred_probs(ii, g) = pred_exp_log_odds(ii, g) / pred_denom(ii);
+      for (int m = 0; m < n_preds2; ++m) {
+        pred_probs(m, g) = pred_exp_log_odds(m, g) / pred_denom(m);
       }
     } else if (g == (n_cat - 1)) {
-      for (int ii = 0; ii < n_preds; ++ii) {
+      for (int m = 0; m < n_preds2; ++m) {
         Type summed_probs = 0;
         for (int k = 0; k < (n_cat - 1); ++k) {
-          summed_probs += pred_probs(ii, k);
+          summed_probs += pred_probs(m, k);
         }
-        pred_probs(ii, g) = 1. - summed_probs;
+        pred_probs(m, g) = 1. - summed_probs;
       }
     }
   }
@@ -156,11 +172,11 @@ Type objective_function<Type>::operator() ()
   ADREPORT(pred_probs);
 
   // Combined predictions
-  matrix<Type> pred_abund_mg(n_preds, n_cat);
+  matrix<Type> pred_abund_mg(n_preds2, n_cat);
 
-  for (int m = 0; m < n_preds; ++m) {
+  for (int m = 0; m < n_preds2; ++m) {
   	for (int g = 0; g < n_cat; ++g) {
-  		pred_abund_mg(m, g) = exp(log_pred_abund(m)) * pred_probs(m, g);
+  		pred_abund_mg(m, g) = agg_pred_abund(m) * pred_probs(m, g);
   	}
   }
 
