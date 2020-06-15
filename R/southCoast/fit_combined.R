@@ -250,6 +250,34 @@ widen_comp_dat <- function(long_comp) {
     mutate_if(is.numeric, ~replace_na(., 0))
 }
 
+# function to calculate raw proportions based on observed composition data
+make_raw_prop_dat <- function(comp_long) {
+  comp_long %>% 
+    group_by(region, month, year, agg) %>%
+    summarize(samp_g = length(unique(id))) %>% 
+    group_by(region, month, year) %>%
+    mutate(samp_total = sum(samp_g)) %>% 
+    ungroup() %>% 
+    mutate(samp_g_ppn = samp_g / samp_total,
+           stock = fct_reorder(agg, desc(samp_g_ppn))) 
+}
+
+# function to calculate raw stock-specific abundance observations
+make_raw_abund_dat <- function(catch, raw_prop) {
+  catch %>% 
+    group_by(region, month, year) %>%
+    summarize(sum_catch = sum(catch),
+              sum_effort = sum(eff),
+              agg_cpue = sum_catch / sum_effort) %>% 
+    ungroup() %>% 
+    mutate(month = as.character(month)) %>% 
+    left_join(., raw_prop, by = c("region", "month", "year")) %>% 
+    mutate(catch_g = samp_g_ppn * sum_catch,
+           cpue_g = samp_g_ppn * agg_cpue,
+           region = as.factor(region)) %>% 
+    filter(!is.na(stock))
+}
+
 # function to make predictive dataframes 
 make_pred_dat <- function(dat, catch = TRUE) {
   if (catch == TRUE) {
@@ -364,23 +392,30 @@ dat <- tibble(
   transmute(
     dataset,
     #subset composition data based on number of samples collected
-    long_comp = map(comp, subset_comp, threshold = 50),
+    long_comp = map(comp, subset_comp, threshold = 75),
+    raw_prop = map(long_comp, gen_raw_prop),
     # subset catch based on composition data
     catch = map2(catch, long_comp, function (x, y) {
       x %>% 
         filter(temp_strata %in% y$temp_strata) %>% 
         droplevels()
     }),
+    # raw estimates of composition and stock-specific abundance for plotting
+    raw_prop = map(long_comp, make_raw_prop_dat),
+    raw_abund = map2(catch, raw_prop, make_raw_abund_dat),
     # infill then widen composition data
     infill_comp = map(long_comp, infill_comp_dat),
     comp = map(infill_comp, widen_comp_dat),
-    #add tmb data assuming month-area specific effort predictions
-    # tmb_data = map2(catch, comp, gen_tmb_dat, effort = "month"),
     #add tmb data assuming average effort predictions
     tmb_data = map2(catch, comp, gen_tmb_dat, effort = "overall"),
     #add tmb parameters
-    tmb_pars = map2(catch, tmb_data, gen_tmb_par)
-  ) 
+    tmb_pars = map2(catch, tmb_data, gen_tmb_par),
+    #add tmb data assuming month-area specific effort predictions
+    #pars different due to different effort inputs
+    tmb_data2 = map2(catch, comp, gen_tmb_dat, effort = "month"),
+    tmb_pars2 = map2(catch, tmb_data2, gen_tmb_par)
+    )
+
 
 # check frequency tables of composition data
 map(dat$infill_comp, function (x) {
@@ -390,40 +425,51 @@ map(dat$infill_comp, function (x) {
 
 ## FIT MODELS ------------------------------------------------------------------
 
-compile(here::here("src", "nb_multinomial_1re_v2.cpp"))
-dyn.load(dynlib(here::here("src", "nb_multinomial_1re_v2")))
+compile(here::here("src", "nb_multinomial_1re_v3.cpp"))
+dyn.load(dynlib(here::here("src", "nb_multinomial_1re_v3")))
 
 fit_mod <- function(tmb_data, tmb_pars) {
   # tmb_map <- list(b2_jg = factor(tmb_pars$b2_jg))
   obj <- MakeADFun(tmb_data, tmb_pars, random = c("z1_k", "z2_k"), 
-                   DLL = "nb_multinomial_1re_v2"
+                   DLL = "nb_multinomial_1re_v3"
                    #, map = tmb_map
                    )
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
-  
   sdreport(obj)
   # ssdr <- summary(sdr)
 }
 
+# fit_mod(dat$tmb_data2[[4]], dat$tmb_pars2[[4]])
+
 dat2 <- dat %>% 
   mutate(sdr = map2(tmb_data, tmb_pars, fit_mod),
-         ssdr = map(sdr, summary))
-saveRDS(dat2, here::here("generated_data", "model_fits", "combined_model.RDS"))
+         ssdr = map(sdr, summary),
+         #also fit model to monthly effort data 
+         sdr2 = map2(tmb_data2, tmb_pars2, fit_mod),
+         ssdr2 = map(sdr2, summary))
+saveRDS(dat2, here::here("generated_data", "model_fits", 
+                         "combined_model_v3.RDS"))
+
+map(dat2$sdr, print)
+print(dat2$sdr[[4]])
 
 
 ## GENERATE PREDICTIONS --------------------------------------------------------
 
-
 ## Function to generate abundance predictions
 gen_abund_pred <- function(catch, ssdr) {
-  abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund", ] 
+  abund_pred <- ssdr[rownames(ssdr) %in% "agg_pred_abund", ] 
   # abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
-  pred_catch <- make_pred_dat(catch)
+  # catch = FALSE because predictions are at region, not area scale
+  pred_catch <- make_pred_dat(catch) %>% 
+    mutate(reg_month = paste(region, month, sep = "_"))
   
   data.frame(pred_est = abund_pred[ , "Estimate"],
                         pred_se =  abund_pred[ , "Std. Error"]) %>%
-    cbind(pred_catch, .) %>% 
+    cbind(pred_catch %>% 
+            select(region, month, reg_month) %>% 
+            distinct(), .) %>% 
     mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
            pred_up = pred_est + (qnorm(0.975) * pred_se))
 }
@@ -434,7 +480,7 @@ gen_comp_pred <- function(infill_comp, ssdr) {
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ]
   
   stk_names <- unique(infill_comp$agg)
-  pred_comp_dat <- make_pred_dat(infill_comp)
+  pred_comp_dat <- make_pred_dat(infill_comp, catch = FALSE)
   n_preds <- nrow(pred_comp_dat)
   
   dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_comp_dat)
@@ -451,12 +497,23 @@ gen_comp_pred <- function(infill_comp, ssdr) {
            comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
 }
 
+
+
+#predictions assuming mean effort
 pred_dat <- dat2 %>% 
   mutate(abund_pred_ci = map2(catch, ssdr, gen_abund_pred),
          comp_pred_ci = map2(infill_comp, ssdr, gen_comp_pred))
+# predictions assuming area-month specific effort (i.e. variable effort)
+pred_dat2 <- dat2 %>% 
+  mutate(abund_pred_ci = map2(catch, ssdr2, gen_abund_pred),
+         comp_pred_ci = map2(infill_comp, ssdr2, gen_comp_pred))
 
 
-## Plot predictions
+## PLOT PREDICTIONS --------------------------------------------------------
+
+file_path <- here::here("figs", "model_pred", "combined")
+
+## Plot abundance
 plot_abund <- function(dat, ylab) {
   ggplot() +
     geom_pointrange(data = dat, aes(x = as.factor(month), y = pred_est,
@@ -470,194 +527,85 @@ rec_catch <- plot_abund(pred_dat$abund_pred_ci[[1]],
                         ylab = "Predicted\nMonthly Catch")
 comm_catch <- plot_abund(pred_dat$abund_pred_ci[[2]], 
                          ylab = "Predicted\nDaily Catch")
+rec_catch2 <- plot_abund(pred_dat2$abund_pred_ci[[1]], 
+                        ylab = "Predicted\nMonthly Catch")
+comm_catch2 <- plot_abund(pred_dat2$abund_pred_ci[[2]], 
+                         ylab = "Predicted\nDaily Catch")
 x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
-#catch_pred_out <- 
+
+pdf(paste(file_path, "pred_abundance.pdf", sep = "/"))
 cowplot::plot_grid(rec_catch, comm_catch, nrow = 2) %>% 
-  arrangeGrob(., bottom = x.grob) %>% 
+  arrangeGrob(., bottom = x.grob, 
+              top = textGrob("Mean Effort", gp = gpar(fontsize=11))) %>% 
   grid.arrange
+cowplot::plot_grid(rec_catch2, comm_catch2, nrow = 2) %>% 
+  arrangeGrob(., bottom = x.grob, 
+              top = textGrob("Variable Effort", gp = gpar(fontsize=11))) %>% 
+  grid.arrange
+dev.off()
 
 
-grid.arrange(arrangeGrob(plot, left = y.grob, bottom = x.grob))
-
-
-
-
-
-
-# plot predicted vs observed abundance accounting for month-area specific effort
-pred_eff <- catch %>% 
-  select(region, month, eff_z, eff_z2) %>% 
-  group_by(region, month) %>% 
-  sample_n(., size = 50, replace = TRUE) %>% 
-  ungroup()
-pred_mm2 <- model.matrix(catch_formula, pred_eff)
-pred_catch2 <- pred_mm2 %*% abund_b 
-pred_plot <- pred_eff %>% 
-  mutate(log_catch = pred_catch2[ , 'Estimate'],
-         catch = exp(log_catch),
-         dataset = "pred")
-
-var_effort_preds <- catch %>% 
-  mutate(dataset = "obs") %>% 
-  select(catch, dataset, region, month) %>% 
-  rbind(., 
-        pred_plot %>% 
-          select(catch, dataset, region, month)
-  ) %>% 
-  ggplot(.) +
-  geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
-  facet_wrap(~ region, nrow = 2, scales = "free_y") +
-  ggsidekick::theme_sleek() +
-  labs(fill = "Data")
-
-
-## Composition predictions
-comp_pred <- ssdr[rownames(ssdr) %in% "pred_probs", ]
-comp_abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ]
-comp <- dat$comp[[4]]
-comp_long <- dat$long_comp[[4]]
-y_obs <- dat$tmb_data[[4]]$y2_ig
-stk_names <- colnames(y_obs)
-N <- nrow(y_obs)
-k <- ncol(y_obs)
-
-pred_comp_dat <- purrr::map_dfr(seq_len(k), ~ dat$pred_comp_dat[[4]])
-pred_comp_ci <- data.frame(stock = as.character(rep(stk_names, 
-                                               each = nrow(dat$pred_comp_dat[[4]]))),
-                      pred_prob_est = comp_pred[ , "Estimate"],
-                      pred_prob_se =  comp_pred[ , "Std. Error"]) %>% 
-  cbind(pred_comp_dat, .) %>%
-  mutate(pred_prob_low = pred_prob_est + (qnorm(0.025) * pred_prob_se),
-         pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se),
-         comp_abund_est = comp_abund_pred[ , "Estimate"],
-         comp_abund_se =  comp_abund_pred[ , "Std. Error"],
-         comp_abund_low = comp_abund_est + (qnorm(0.025) * comp_abund_se),
-         comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
-
-# calculate raw proportion data for comparison
-raw_prop <- comp_long %>% 
-  group_by(region, month, year, agg) %>%
-  summarize(samp_g = length(unique(id))) %>% 
-  group_by(region, month, year) %>%
-  mutate(samp_total = sum(samp_g)) %>% 
-  ungroup() %>% 
-  mutate(samp_g_ppn = samp_g / samp_total,
-         stock = fct_reorder(agg, desc(samp_g_ppn))) 
-
-comp_preds <- ggplot() +
-  geom_point(data = raw_prop,
-             aes(x = month, y = samp_g_ppn, fill = region),
-             shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
-  geom_pointrange(data = pred_comp_ci,
-                  aes(x = month, y = pred_prob_est,
-                      ymin = pred_prob_low, ymax = pred_prob_up,
-                      fill = region),
-                  shape = 21, size = 0.4, position = position_dodge(0.6)) +
-  labs(y = "Probability", x = "Month") +
-  facet_wrap(~ stock) +
-  ggsidekick::theme_sleek()
-
-
-## Stock-specific abundance predictions
-raw_abund <- catch %>% 
-  group_by(region, month, year) %>%
-  summarize(sum_catch = sum(catch),
-            sum_effort = sum(eff),
-            agg_cpue = sum_catch / sum_effort) %>% 
-  ungroup() %>% 
-  mutate(month = as.character(month)) %>% 
-  left_join(., raw_prop, by = c("region", "month", "year")) %>% 
-  mutate(catch_g = samp_g_ppn * sum_catch,
-         cpue_g = samp_g_ppn * agg_cpue,
-         region = as.factor(region),
-         month = fct_relevel(as.factor(month), "10", after = Inf)
-         ) %>% 
-  filter(!is.na(stock))
-
-
-# combined estimates of stock-specific CPUE
-# note that effort is standardized differently between raw data and predictions,
-# not apples to apples comparison
-ggplot() +
-  geom_point(data = raw_abund, aes(x = month, y = cpue_g, fill = region),
-             shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
-  geom_pointrange(data = pred_comp_ci,
-                  aes(x = month, y = comp_abund_est, ymin = comp_abund_low,
-                      ymax = comp_abund_up, fill = region),
-                  shape = 21, position = position_dodge(0.6)) +
-  facet_wrap(~stock, ncol = 2, scales = "free_y") +
-  scale_fill_viridis_d(option = "C", name = "Catch Region") +
-  labs(x = "Month", y = "Predicted Catch") +
-  ggsidekick::theme_sleek() +
-  theme(legend.position="top")
-
-ggplot() +
-  geom_point(data = raw_abund, aes(x = month, y = cpue_g, fill = region),
-             shape = 21, alpha = 0.7, position = position_dodge(0.6)) +
-  facet_wrap(~stock, ncol = 2, scales = "free_y") +
-  scale_fill_viridis_d(option = "C", name = "Catch Region") +
-  labs(x = "Month", y = "Predicted Catch") +
-  ggsidekick::theme_sleek() +
-  theme(legend.position="top")
-
-
-
-
-## export plotting data for Rmd 
-list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund,
-     pred_catch = pred_catch) %>%
-  saveRDS(., here::here("generatedData", "model_fits", "pst_plot_list.RDS"))
-
-
-## estimates of effort effects on catch
-n_betas <- length(coef(m1))
-eff_b <- abund_b[c(1, n_betas - 1, n_betas) , 1]
-
-ggplot(catch) +
-  geom_point(aes(x = eff_z, y = catch), 
-             alpha = 0.2) +
-  # lims(x = c(0, 4)) +
-  stat_function(fun = function(x) exp(eff_b[1] + eff_b[2]*x + eff_b[3]*x^2)) 
-
-
-
-# look at predicted cumulative abundance
-plot_cum_dens <- function(dat, station = "JDF") {
-  dat %>% 
-    filter(project_name == station) %>% 
-    ggplot(., aes(yday, colour = CU)) +
-    stat_ecdf()
+## Composition predictions (effort doesn't impact predictions)
+plot_comp <- function(comp_pred, raw_prop) {
+  ggplot() +
+    geom_point(data = raw_prop,
+               aes(x = month, y = samp_g_ppn, fill = region),
+               shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
+    geom_pointrange(data = comp_pred,
+                    aes(x = month, y = pred_prob_est,
+                        ymin = pred_prob_low, ymax = pred_prob_up,
+                        fill = region),
+                    shape = 21, size = 0.4, position = position_dodge(0.6)) +
+    labs(y = "Probability", x = "Month") +
+    facet_wrap(~ stock) +
+    ggsidekick::theme_sleek()
 }
 
-pred_ci %>% 
-  arrange(month) %>% 
-  group_by(stock, catchReg) %>% 
-  mutate(total_abund = sum(abund_est),
-         cum_abund = cumsum(abund_est) / total_abund) %>%
-  ungroup() %>% 
-  ggplot(., aes(x = month, y = cum_abund, colour = stock)) +
-  geom_line() +
-  geom_point() +
-  facet_wrap(~catchReg)
-
-# temp subset of stocks for comparison with cwt
-
-stk_subset <- c("FR-early", "FR-late", "PSD", "CR-tule", "CR-bright", "WCVI")
-plot_list <- map(list(pred_ci, raw_prop, raw_abund), function(x) 
-  x %>% filter(stock %in% stk_subset)
-)
-
-prop_plot <- ggplot() +
-  geom_pointrange(data = plot_list[[1]], aes(x = month, y = pred_prob, 
-                                      ymin = pred_prob_low,
-                                      ymax = pred_prob_up),
-                  col = "red") +
-  geom_point(data = plot_list[[2]],
-             aes(x = month, y = samp_g_ppn),
-             alpha = 0.4) +
-  facet_wrap(stock ~ catchReg, nrow = n_groups, scales = "free_y") +
-  ggsidekick::theme_sleek()
-
-pdf(here::here("figs", "model_pred", "gsi_nb_prop_pred.pdf"))
-prop_plot
+pdf(paste(file_path, "composition.pdf", sep = "/"))
+map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp)
 dev.off()
+
+# combined estimates of stock-specific CPUE
+# note that effort is standardized differently between raw data and predictions
+# so can't be easily compared
+plot_ss_abund <- function(comp_pred) {
+  ggplot() +
+    # geom_point(data = pred_dat2$raw_abund[[1]], aes(x = month, y = cpue_g, fill = region),
+    #            shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
+    geom_pointrange(data = comp_pred,
+                    aes(x = month, y = comp_abund_est, ymin = comp_abund_low,
+                        ymax = comp_abund_up, fill = region),
+                    shape = 21, position = position_dodge(0.6)) +
+    facet_wrap(~stock, ncol = 2, scales = "free_y") +
+    scale_fill_viridis_d(option = "C", name = "Catch Region") +
+    labs(x = "Month", y = "Predicted Catch") +
+    ggsidekick::theme_sleek() +
+    theme(legend.position="top")
+}
+
+pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
+map(pred_dat$comp_pred_ci, plot_ss_abund)
+dev.off()
+pdf(paste(file_path, "stock-specific_abund_varyE.pdf", sep = "/"))
+map(pred_dat2$comp_pred_ci, plot_ss_abund)
+dev.off()
+
+
+## DEFUNCT ##
+
+## export plotting data for Rmd 
+# list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund,
+#      pred_catch = pred_catch) %>%
+#   saveRDS(., here::here("generatedData", "model_fits", "pst_plot_list.RDS"))
+# 
+# 
+# ## estimates of effort effects on catch
+# n_betas <- length(coef(m1))
+# eff_b <- abund_b[c(1, n_betas - 1, n_betas) , 1]
+# 
+# ggplot(catch) +
+#   geom_point(aes(x = eff_z, y = catch), 
+#              alpha = 0.2) +
+#   # lims(x = c(0, 4)) +
+#   stat_function(fun = function(x) exp(eff_b[1] + eff_b[2]*x + eff_b[3]*x^2)) 
+

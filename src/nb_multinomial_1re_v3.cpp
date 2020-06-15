@@ -138,6 +138,8 @@ Type objective_function<Type>::operator() ()
       }
     }
   }
+  ADREPORT(agg_pred_abund);
+
 
   // Composition 
   matrix<Type> pred_log_odds = X2_pred_ij * b2_jg;
