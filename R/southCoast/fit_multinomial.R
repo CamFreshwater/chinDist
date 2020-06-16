@@ -86,19 +86,41 @@ comm_can <- comm %>%
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
+prep_gsi <- function(gsi_in, 
+                     # month_range = c(1, 12), 
+                     data_type) {
+  # gsi_trim <- gsi_in %>% 
+  #   filter(!month_n < month_range[1],
+  #          !month_n > month_range[2]) %>% 
+  #   droplevels() %>% 
+  #   dplyr::select(id, region, area, year, month, season, agg, agg_prob, pres)
+  
   gsi_trim <- gsi_in %>% 
-    filter(!month_n < month_range[1],
-           !month_n > month_range[2]) %>% 
-    droplevels() %>% 
-    dplyr::select(id, region, area, year, month, season, agg, agg_prob, pres)
+    group_by(region, month) %>%
+    mutate(nn = length(unique(id))) %>%
+    filter(!nn < 100) %>%
+    ungroup() %>%
+    droplevels() %>%
+    select(id, region, area, year, month, season, agg, agg_prob, pres)
   
   # dummy dataset to replace missing values 
-  dum <- expand.grid(
-    month = unique(gsi_trim$month),
-    region = unique(gsi_trim$region),
-    agg = unique(gsi_trim$agg),
-    pres = 1)
+  dum <- gsi_trim %>% 
+    group_by(region) %>% 
+    nest() %>%
+    droplevels() %>% 
+    transmute(dum_data = map(data, function(x) {
+      expand.grid(month = unique(x$month),
+                  agg = unique(x$agg),
+                  pres = 1)
+    })
+    ) %>% 
+    unnest(cols = c(dum_data))
+  
+  # dum <- expand.grid(
+  #   month = unique(gsi_trim$month),
+  #   region = unique(gsi_trim$region),
+  #   agg = unique(gsi_trim$agg),
+  #   pres = 1)
   rand_yrs <- sample(unique(gsi_trim$year), size = nrow(dum), replace = TRUE)
   dum$year <- rand_yrs
   
@@ -109,12 +131,12 @@ prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
       droplevels()
     ) 
   
+  raw_freq_table <- table(gsi_trim$agg, gsi_trim$month, gsi_trim$region)
+  freq_table <- table(gsi_trim_no0$agg, gsi_trim_no0$month, gsi_trim_no0$region)
+  
   gsi_wide <- gsi_trim_no0 %>% 
     pivot_wider(., names_from = agg, values_from = pres) %>% 
     mutate_if(is.numeric, ~replace_na(., 0))
-  
-  raw_freq_table <- table(gsi_trim$agg, gsi_trim$month, gsi_trim$region)
-  freq_table <- table(gsi_trim_no0$agg, gsi_trim_no0$month, gsi_trim_no0$region)
   
   y_obs <- gsi_wide %>% 
     select(-c(id:dummy_id)) %>% 
@@ -152,23 +174,19 @@ prep_gsi <- function(gsi_in, month_range = c(1, 12), data_type) {
 
 # prep different datasets then check catch breakdown
 # NOTE: insufficient samples to include sublegal 
-pst_comm_trim <- prep_gsi(comm_pst %>% 
-                        filter(!month == "7"), 
-                      month_range = c(4, 10), data_type = "comm_pst") 
+pst_comm_trim <- prep_gsi(comm_pst, data_type = "comm_pst") 
 pst_legal_trim <- prep_gsi(rec_pst %>% 
                          filter(legal == "legal"), 
-                       month_range = c(6, 9), data_type = "legal_pst")
-can_comm_trim <- prep_gsi(comm_can %>% 
-                            filter(!month == "7"), 
-                          month_range = c(4, 10), data_type = "comm_can") 
+                         data_type = "legal_pst")
+can_comm_trim <- prep_gsi(comm_can, data_type = "comm_can") 
 can_legal_trim <- prep_gsi(rec_can %>% 
                              filter(legal == "legal"), 
-                           month_range = c(6, 9), data_type = "legal_can")
+                           data_type = "legal_can")
 gsi_list <- list("pst_comm" = pst_comm_trim, "pst_rec" = pst_legal_trim, 
                  "can_comm" = can_comm_trim, "can_rec" = can_legal_trim)
 
 map(gsi_list, function(x) print(x$raw_freq_table))
-
+can_legal_trim$raw_freq_table
 
 ## RUN MODEL -------------------------------------------------------------------
 
@@ -177,6 +195,7 @@ dyn.load(dynlib(here::here("src", "multinomial_hier2")))
 
 ssdr_list <- map(gsi_list, function (x) {
   ## Make a function object
+  x <- can_legal_trim
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"), 
@@ -190,7 +209,7 @@ ssdr_list <- map(gsi_list, function (x) {
   ssdr <- summary(sdr)
 
   f_name <- paste(x$data_type, "multinomial_ssdr.RDS", sep = "_")
-  saveRDS(ssdr, here::here("generatedData", "model_fits", f_name))
+  saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
   
   return(ssdr)
 })
