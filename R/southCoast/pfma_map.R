@@ -91,6 +91,8 @@ col.reg <- levels(pfma_simp_df2$region)
 # pal <- wesanderson::wes_palette("BottleRocket2",
 #                                 length(col.reg),
 #                                 type = "continuous")
+pal <- viridis::viridis(n = length(col.reg), alpha = 1, begin = 0, end = 1, 
+                        option = "D")
 alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.3, 0.9, length = (length(alpha_labs) / length(col.reg))),
                   length(col.reg))
@@ -103,9 +105,9 @@ pfma_map <- ggplot() +
                                          alpha = statArea),
                lwd = 1) +
   geom_polygon(data = n_am, aes(x=long, y = lat, group = group)) + 
-  scale_colour_viridis_d(option = "D", name = "") +
-  scale_fill_viridis_d(option = "D", name = "") +
-  # scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
+  scale_colour_viridis_d(option = "D", name = "", guide = FALSE) +
+  # scale_fill_viridis_d(option = "D", name = "") +
+  scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
   scale_alpha_manual(labels = alpha_labs, values = alpha_vals, guide = FALSE) +
   labs(x = "", y = "") +
   theme(plot.margin=unit(c(0.1,0,0,0), "mm"),
