@@ -18,8 +18,7 @@ clean_catch <- function(dat) {
   dat %>% 
     filter(!is.na(eff),
            !eff == "0") %>% 
-    mutate(region_c = as.character(region),
-           region = factor(region_c),
+    mutate(region = factor(region),
            area = as.factor(area),
            month = as.factor(month),
            month_n = as.numeric(month),
@@ -37,7 +36,9 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   clean_catch(.) %>% 
   # drop month where catch data are missing even though gsi samples available
   mutate(temp_strata = paste(month_n, region, sep = "_"),
-         data_type = "comm") %>% 
+         data_type = "comm",
+         region_c = as.character(region)
+  ) %>% 
   filter(!temp_strata == "7_SWVI") 
 
 #recreational catch data
@@ -54,6 +55,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
             cpue = catch / eff) %>% 
   ungroup() %>% 
   mutate(temp_strata = paste(month_n, region, sep = "_"),
+         region_c = as.character(region),
          region = abbreviate(region, minlength = 4),
          data_type = "rec") %>% 
   clean_catch(.) %>%  
@@ -486,13 +488,8 @@ dat2 <- dat %>%
          ssdr2 = map(sdr2, summary))
 saveRDS(dat2, here::here("generated_data", "model_fits",
                          "combined_model_v3.RDS"))
-# dd <- readRDS(here::here("generated_data", "model_fits", 
-#                          "combined_model_v3.RDS"))
-# dat2 <- dat %>% 
-#   cbind(., 
-#         dd %>% 
-#           select(sdr:ssdr2))
 
+dat2 <- readRDS(here::here("generated_data", "model_fits", "combined_model_v3.RDS"))
 
 ## GENERATE PREDICTIONS --------------------------------------------------------
 
@@ -532,23 +529,38 @@ gen_comp_pred <- function(infill_comp, ssdr) {
            pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se),
            comp_abund_est = comp_abund_pred[ , "Estimate"],
            comp_abund_se =  comp_abund_pred[ , "Std. Error"],
-           comp_abund_low = comp_abund_est + (qnorm(0.025) * comp_abund_se),
+           comp_abund_low = pmax(comp_abund_est + (qnorm(0.025) * comp_abund_se),
+                                 0),
            comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
 }
 
-#predictions assuming mean effort
 pred_dat <- dat2 %>% 
-  mutate(abund_pred_ci = map2(catch, ssdr, gen_abund_pred),
-         comp_pred_ci = map2(infill_comp, ssdr, gen_comp_pred))
-# predictions assuming area-month specific effort (i.e. variable effort)
-pred_dat2 <- dat2 %>% 
-  mutate(abund_pred_ci = map2(catch, ssdr2, gen_abund_pred),
-         comp_pred_ci = map2(infill_comp, ssdr2, gen_comp_pred))
+  mutate(
+    #predictions assuming mean effort
+    abund_pred_ci = map2(catch, ssdr, gen_abund_pred),
+    comp_pred_ci = map2(infill_comp, ssdr, gen_comp_pred),
+    # predictions assuming area-month specific effort (i.e. variable effort)
+    abund_pred_ci2 = map2(catch, ssdr2, gen_abund_pred),
+    comp_pred_ci2 = map2(infill_comp, ssdr2, gen_comp_pred)
+    ) %>% 
+  select(dataset:raw_abund, comp, abund_pred_ci:comp_pred_ci2)
+saveRDS(pred_dat, here::here("generated_data", 
+                             "combined_model_predictions.RDS"))
+
+pred_dat <- readRDS(here::here("generated_data", 
+                               "combined_model_predictions.RDS"))
 
 
 ## PLOT PREDICTIONS --------------------------------------------------------
 
+# generic settings
 file_path <- here::here("figs", "model_pred", "combined")
+reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region)[c(2,3,1)])
+pal <- viridis::viridis(n = length(reg_vals), alpha = 1, 
+                        begin = 0, end = 1, 
+                        option = "D")
+names(pal) <- reg_vals
+
 
 ## Plot abundance
 plot_abund <- function(dat, ylab) {
@@ -564,9 +576,9 @@ rec_abund <- plot_abund(pred_dat$abund_pred_ci[[1]],
                         ylab = "Predicted\nMonthly Catch")
 comm_abund <- plot_abund(pred_dat$abund_pred_ci[[2]], 
                          ylab = "Predicted\nDaily Catch")
-rec_abund2 <- plot_abund(pred_dat2$abund_pred_ci[[1]], 
+rec_abund2 <- plot_abund(pred_dat$abund_pred_ci2[[1]], 
                         ylab = "Predicted\nMonthly Catch")
-comm_abund2 <- plot_abund(pred_dat2$abund_pred_ci[[2]], 
+comm_abund2 <- plot_abund(pred_dat$abund_pred_ci2[[2]], 
                          ylab = "Predicted\nDaily Catch")
 x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
 
@@ -586,13 +598,17 @@ dev.off()
 plot_comp <- function(comp_pred, raw_prop) {
   ggplot() +
     geom_point(data = raw_prop,
-               aes(x = month, y = samp_g_ppn, fill = region),
+               #adjust to num-char to add spaces on x labels
+               aes(x = as.numeric(as.character(month)), y = samp_g_ppn, 
+                   fill = region),
                shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
     geom_pointrange(data = comp_pred,
-                    aes(x = month, y = pred_prob_est,
+                    aes(x = as.numeric(as.character(month)), y = pred_prob_est,
                         ymin = pred_prob_low, ymax = pred_prob_up,
                         fill = region),
                     shape = 21, size = 0.4, position = position_dodge(0.6)) +
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_x_continuous(breaks = seq(1, 12, by = 1)) +
     labs(y = "Probability", x = "Month") +
     facet_wrap(~ stock) +
     ggsidekick::theme_sleek()
@@ -606,14 +622,16 @@ dev.off()
 plot_ss_abund <- function(comp_pred, raw_abund) {
   ggplot() +
     geom_point(data = raw_abund, 
-               aes(x = month, y = catch_g, fill = region),
+               aes(x = as.numeric(as.character(month)), y = catch_g, 
+                   fill = region),
                shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
     geom_pointrange(data = comp_pred,
-                    aes(x = month, y = comp_abund_est, ymin = comp_abund_low,
-                        ymax = comp_abund_up, fill = region),
+                    aes(x = as.numeric(as.character(month)), y = comp_abund_est,
+                        ymin = comp_abund_low, ymax = comp_abund_up, 
+                        fill = region),
                     shape = 21, position = position_dodge(0.6)) +
     facet_wrap(~stock, ncol = 2, scales = "free_y") +
-    scale_fill_viridis_d(option = "C", name = "Catch Region") +
+    scale_fill_manual(name = "Region", values = pal) +
     labs(x = "Month", y = "Predicted Catch") +
     ggsidekick::theme_sleek() +
     theme(legend.position="top")
@@ -623,25 +641,6 @@ pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund)
 dev.off()
 pdf(paste(file_path, "stock-specific_abund_varyE.pdf", sep = "/"))
-map2(pred_dat2$comp_pred_ci, pred_dat2$raw_abund, plot_ss_abund)
+map2(pred_dat$comp_pred_ci2, pred_dat$raw_abund, plot_ss_abund)
 dev.off()
-
-
-## DEFUNCT ##
-
-## export plotting data for Rmd 
-# list(catch = catch, pred_ci = pred_ci, raw_prop = raw_prop, raw_abund = raw_abund,
-#      pred_catch = pred_catch) %>%
-#   saveRDS(., here::here("generatedData", "model_fits", "pst_plot_list.RDS"))
-# 
-# 
-# ## estimates of effort effects on catch
-# n_betas <- length(coef(m1))
-# eff_b <- abund_b[c(1, n_betas - 1, n_betas) , 1]
-# 
-# ggplot(catch) +
-#   geom_point(aes(x = eff_z, y = catch), 
-#              alpha = 0.2) +
-#   # lims(x = c(0, 4)) +
-#   stat_function(fun = function(x) exp(eff_b[1] + eff_b[2]*x + eff_b[3]*x^2)) 
 

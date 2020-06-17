@@ -110,6 +110,7 @@ pfma_map <- ggplot() +
   scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
   scale_alpha_manual(labels = alpha_labs, values = alpha_vals, guide = FALSE) +
   labs(x = "", y = "") +
+  ggsidekick::theme_sleek() +
   theme(plot.margin=unit(c(0.1,0,0,0), "mm"),
         legend.position = "top")
 
@@ -117,3 +118,4 @@ pdf(here::here("figs", "ms_figs", "pfma_map.pdf"))
 pfma_map
 dev.off()
 
+saveRDS(pfma_map, here::here("generated_data", "pfma_map.rds"))
