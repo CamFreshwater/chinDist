@@ -551,27 +551,25 @@ pred_dat <- readRDS(here::here("generated_data",
                                "combined_model_predictions.RDS"))
 
 
-## PLOT PREDICTIONS --------------------------------------------------------
+## PLOT PREDICTIONS ------------------------------------------------------------
+
+# source file for plotting functions
+source(here::here("R", "functions", "plot_predictions.R"))
+
+#color palette
+reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region)[c(2,3,1)])
+# pal <- viridis::viridis(n = length(reg_vals), alpha = 1, 
+#                         begin = 0, end = 1, 
+#                         option = "D")
+pal <- RColorBrewer::brewer.pal(n = length(reg_vals), "Set1")
+names(pal) <- reg_vals
+saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
 
 # generic settings
 file_path <- here::here("figs", "model_pred", "combined")
-reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region)[c(2,3,1)])
-pal <- viridis::viridis(n = length(reg_vals), alpha = 1, 
-                        begin = 0, end = 1, 
-                        option = "D")
-names(pal) <- reg_vals
 
 
 ## Plot abundance
-plot_abund <- function(dat, ylab) {
-  ggplot() +
-    geom_pointrange(data = dat, aes(x = as.factor(month), y = pred_est,
-                                    ymin = pred_low, ymax = pred_up)) +
-    labs(x = "", y = ylab) +
-    ggsidekick::theme_sleek() +
-    facet_wrap(~region)
-  }
-
 rec_abund <- plot_abund(pred_dat$abund_pred_ci[[1]], 
                         ylab = "Predicted\nMonthly Catch")
 comm_abund <- plot_abund(pred_dat$abund_pred_ci[[2]], 
@@ -595,48 +593,13 @@ dev.off()
 
 
 ## Composition predictions (effort doesn't impact predictions)
-plot_comp <- function(comp_pred, raw_prop) {
-  ggplot() +
-    geom_point(data = raw_prop,
-               #adjust to num-char to add spaces on x labels
-               aes(x = as.numeric(as.character(month)), y = samp_g_ppn, 
-                   fill = region),
-               shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
-    geom_pointrange(data = comp_pred,
-                    aes(x = as.numeric(as.character(month)), y = pred_prob_est,
-                        ymin = pred_prob_low, ymax = pred_prob_up,
-                        fill = region),
-                    shape = 21, size = 0.4, position = position_dodge(0.6)) +
-    scale_fill_manual(name = "Region", values = pal) +
-    scale_x_continuous(breaks = seq(1, 12, by = 1)) +
-    labs(y = "Probability", x = "Month") +
-    facet_wrap(~ stock) +
-    ggsidekick::theme_sleek()
-}
-
 pdf(paste(file_path, "composition.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp)
 dev.off()
 
-# combined estimates of stock-specific CPUE
-plot_ss_abund <- function(comp_pred, raw_abund) {
-  ggplot() +
-    geom_point(data = raw_abund, 
-               aes(x = as.numeric(as.character(month)), y = catch_g, 
-                   fill = region),
-               shape = 21, alpha = 0.3, position = position_dodge(0.6)) +
-    geom_pointrange(data = comp_pred,
-                    aes(x = as.numeric(as.character(month)), y = comp_abund_est,
-                        ymin = comp_abund_low, ymax = comp_abund_up, 
-                        fill = region),
-                    shape = 21, position = position_dodge(0.6)) +
-    facet_wrap(~stock, ncol = 2, scales = "free_y") +
-    scale_fill_manual(name = "Region", values = pal) +
-    labs(x = "Month", y = "Predicted Catch") +
-    ggsidekick::theme_sleek() +
-    theme(legend.position="top")
-}
+plot_comp(pred_dat$comp_pred_ci[[1]], pred_dat$raw_prop[[1]], raw = F)
 
+# combined estimates of stock-specific CPUE
 pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund)
 dev.off()
