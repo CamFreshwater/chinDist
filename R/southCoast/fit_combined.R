@@ -74,7 +74,11 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
   #focus only on legal sized fish
-  filter(legal == "legal") %>% 
+  filter(legal == "legal",
+         # remove Johnstone Strait (insufficient data to estimate abundance and 
+         # composition simultaneously)
+         !region == "Johnstone Strait"
+         ) %>% 
   mutate(region_c = as.character(region),
          region = abbreviate(region, minlength = 4)) %>% 
   select(id:region, region_c, area, area_n, subarea:month_n, adj_prob:pst_agg)
@@ -167,33 +171,33 @@ comm_can_comp <- comm %>%
 ## EXAMINE RAW DATA ------------------------------------------------------------
 
 #catch and effort
-catch_list <- list(comm_catch, rec_catch)
-purrr::map(catch_list, function(x) {
-  cpue <- ggplot() +
-    geom_boxplot(data = x, aes(x = month, y = cpue)) +
-    facet_wrap(~region) +
-    ggsidekick::theme_sleek()
-  effort <- x %>%
-    select(region, month, eff) %>%
-    distinct() %>%
-    ggplot(.) +
-    geom_boxplot(aes(x = month, y = eff)) +
-    facet_wrap(~region) +
-    ggsidekick::theme_sleek()
-  cowplot::plot_grid(cpue, effort, nrow = 2)
-})
-
-#genetics samples collected
-comp_list <- list(rec_pst_comp, comm_pst_comp)
-purrr::map(comp_list, function(x) {
-  x %>% 
-    group_by(region, month, year) %>% 
-    tally() %>% 
-    ggplot(.) +
-    geom_tile(aes(x = month, y = region, fill = n)) +
-    facet_wrap(~year) +
-    ggsidekick::theme_sleek()
-})
+# catch_list <- list(comm_catch, rec_catch)
+# purrr::map(catch_list, function(x) {
+#   cpue <- ggplot() +
+#     geom_boxplot(data = x, aes(x = month, y = cpue)) +
+#     facet_wrap(~region) +
+#     ggsidekick::theme_sleek()
+#   effort <- x %>%
+#     select(region, month, eff) %>%
+#     distinct() %>%
+#     ggplot(.) +
+#     geom_boxplot(aes(x = month, y = eff)) +
+#     facet_wrap(~region) +
+#     ggsidekick::theme_sleek()
+#   cowplot::plot_grid(cpue, effort, nrow = 2)
+# })
+# 
+# #genetics samples collected
+# comp_list <- list(rec_pst_comp, comm_pst_comp)
+# purrr::map(comp_list, function(x) {
+#   x %>% 
+#     group_by(region, month, year) %>% 
+#     tally() %>% 
+#     ggplot(.) +
+#     geom_tile(aes(x = month, y = region, fill = n)) +
+#     facet_wrap(~year) +
+#     ggsidekick::theme_sleek()
+# })
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -405,13 +409,13 @@ gen_tmb_par <- function(catch_dat, tmb_data) {
     b1_j = coef(m1) + rnorm(length(coef(m1)), 0, 0.01),
     log_phi = log(1.5),
     z1_k = rep(0, tmb_data$nk1),
-    log_sigma_zk1 = log(0.25),
+    log_sigma_zk1 = log(0.5),
     #composition parameters
     b2_jg = matrix(0, 
                    nrow = ncol(tmb_data$X2_pred_ij), 
                    ncol = ncol(tmb_data$y2_ig) - 1),
     z2_k = rep(0, times = tmb_data$nk2),
-    log_sigma_zk2 = log(0.25)
+    log_sigma_zk2 = log(0.75)
   )
 }
 
@@ -428,7 +432,7 @@ dat <- tibble(
   transmute(
     dataset,
     #subset composition data based on number of samples collected
-    long_comp = map(comp, subset_comp, threshold = 200),
+    long_comp = map(comp, subset_comp, threshold = 75),
     # subset catch based on composition data
     catch = map2(catch, long_comp, function (x, y) {
       x %>% 
@@ -457,10 +461,8 @@ map(dat$infill_comp, function (x) {
   table(x$agg, x$month, x$region)
 })
 
-table(dat$infill_comp[[3]]$agg, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
-table(dat$infill_comp[[3]]$year, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
-table(dat$infill_comp[[1]]$year, dat$infill_comp[[1]]$month, dat$infill_comp[[1]]$region)
-
+# table(dat$infill_comp[[3]]$agg, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
+# table(dat$infill_comp[[3]]$year, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
 
 ## FIT MODELS ------------------------------------------------------------------
 
@@ -468,19 +470,13 @@ compile(here::here("src", "nb_multinomial_1re_v3.cpp"))
 dyn.load(dynlib(here::here("src", "nb_multinomial_1re_v3")))
 
 fit_mod <- function(tmb_data, tmb_pars) {
-  # tmb_map <- list(b2_jg = factor(tmb_pars$b2_jg))
   obj <- MakeADFun(tmb_data, tmb_pars, random = c("z1_k", "z2_k"), 
-                   DLL = "nb_multinomial_1re_v3"
-                   #, map = tmb_map
-                   )
+                   DLL = "nb_multinomial_1re_v3")
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
   sdreport(obj)
   # ssdr <- summary(sdr)
 }
-
-tt <- fit_mod(dat$tmb_data[[3]], dat$tmb_pars[[3]])
-tt2 <- fit_mod(dat$tmb_data[[1]], dat$tmb_pars[[1]])
 
 dat2 <- dat %>%
   mutate(sdr = map2(tmb_data, tmb_pars, fit_mod),
@@ -496,14 +492,6 @@ saveRDS(dat2, here::here("generated_data", "model_fits",
 #   cbind(., 
 #         dd %>% 
 #           select(sdr:ssdr2))
-
-unique(dat$infill_comp[[3]]$year)
-unique(dat$infill_comp[[1]]$year)
-head(dat$tmb_data[[1]]$X2_pred_ij)
-head(dat$tmb_data[[3]]$X2_pred_ij)
-
-dat[c(1, 3), ] %>% 
-  map(infill_comp, function(x) unique(x$year))
 
 
 ## GENERATE PREDICTIONS --------------------------------------------------------
@@ -547,8 +535,6 @@ gen_comp_pred <- function(infill_comp, ssdr) {
            comp_abund_low = comp_abund_est + (qnorm(0.025) * comp_abund_se),
            comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
 }
-
-
 
 #predictions assuming mean effort
 pred_dat <- dat2 %>% 
