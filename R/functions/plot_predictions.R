@@ -5,11 +5,13 @@
 # Plot aggregate abundance data
 plot_abund <- function(dat, ylab) {
   ggplot() +
-    geom_pointrange(data = dat, aes(x = as.factor(month), y = pred_est,
+    geom_pointrange(data = dat, aes(x = as.numeric(as.character(month)), 
+                                    y = pred_est,
                                     ymin = pred_low, ymax = pred_up)) +
     labs(x = "", y = ylab) +
     ggsidekick::theme_sleek() +
-    facet_wrap(~region)
+    facet_wrap(~region) +
+    scale_x_continuous(breaks = seq(1, 12, by = 1))
 }
 
 # Plot composition data 
