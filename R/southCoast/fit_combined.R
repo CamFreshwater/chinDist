@@ -32,7 +32,13 @@ clean_catch <- function(dat) {
 #commercial catch data
 comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
-  rename(eff = boatDays, region = catchReg) %>% 
+  # calculate monthly catch and effort 
+  group_by(catchReg, area, month, year) %>% 
+  summarize(catch = sum(catch), 
+            eff = sum(boatDays),
+            cpue = catch / eff) %>% 
+  ungroup() %>% 
+  rename(region = catchReg) %>% 
   clean_catch(.) %>% 
   # drop month where catch data are missing even though gsi samples available
   mutate(temp_strata = paste(month_n, region, sep = "_"),
@@ -76,10 +82,10 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
   #focus only on legal sized fish
-  filter(legal == "legal",
+  filter(legal == "legal"#,
          # remove Johnstone Strait (insufficient data to estimate abundance and 
          # composition simultaneously)
-         !region == "Johnstone Strait"
+         # !region == "Johnstone Strait"
          ) %>% 
   mutate(region_c = as.character(region),
          region = abbreviate(region, minlength = 4)) %>% 
@@ -141,9 +147,10 @@ pool_aggs <- function(full_data) {
         TRUE ~ pst_agg
       ),
       reg1 = case_when(
-        Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
+        Region1Name %in% c("SOMN", "ECVI") ~ "ECVI/SOMN",
+        Region1Name %in% c("Fraser_Fall", "Fraser_Summer_4.1", 
                            "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
-                           "Fraser_Summer_5.2", "WCVI", "SOMN") ~ Region1Name,
+                           "Fraser_Summer_5.2", "WCVI") ~ Region1Name,
         TRUE ~ "Other"
       )
     )
@@ -173,22 +180,30 @@ comm_can_comp <- comm %>%
 ## EXAMINE RAW DATA ------------------------------------------------------------
 
 #catch and effort
-# catch_list <- list(comm_catch, rec_catch)
-# purrr::map(catch_list, function(x) {
-#   cpue <- ggplot() +
-#     geom_boxplot(data = x, aes(x = month, y = cpue)) +
-#     facet_wrap(~region) +
-#     ggsidekick::theme_sleek()
-#   effort <- x %>%
-#     select(region, month, eff) %>%
-#     distinct() %>%
-#     ggplot(.) +
-#     geom_boxplot(aes(x = month, y = eff)) +
-#     facet_wrap(~region) +
-#     ggsidekick::theme_sleek()
-#   cowplot::plot_grid(cpue, effort, nrow = 2)
-# })
-# 
+catch_list <- list(comm_catch, rec_catch)  %>% 
+  purrr::map(., function(x) {
+  cpue <- ggplot() +
+    geom_boxplot(data = x, aes(x = month, y = cpue, fill = region)) +
+    facet_wrap(~fct_reorder(area, as.numeric(region))) +
+    labs(title = x$data_type[1]) +
+    ggsidekick::theme_sleek()
+  effort <- x %>%
+    select(region, month, eff, area) %>%
+    distinct() %>%
+    ggplot(.) +
+    geom_boxplot(aes(x = month, y = eff, fill = region)) +
+    facet_wrap(~fct_reorder(area, as.numeric(region))) +
+    labs(title = x$data_type[1]) +
+    ggsidekick::theme_sleek()
+  list(cpue, effort)
+  # cowplot::plot_grid(cpue, effort, nrow = 2)
+})
+
+pdf(here::here("figs", "raw", "catch_eff.pdf"))
+catch_list
+dev.off()
+
+
 # #genetics samples collected
 # comp_list <- list(rec_pst_comp, comm_pst_comp)
 # purrr::map(comp_list, function(x) {
@@ -463,8 +478,10 @@ map(dat$infill_comp, function (x) {
   table(x$agg, x$month, x$region)
 })
 
-# table(dat$infill_comp[[3]]$agg, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
-# table(dat$infill_comp[[3]]$year, dat$infill_comp[[3]]$month, dat$infill_comp[[3]]$region)
+table(dat$infill_comp[[1]]$agg, dat$infill_comp[[1]]$month, 
+      dat$infill_comp[[1]]$region)
+table(dat$catch[[4]]$month, dat$catch[[4]]$region)
+
 
 ## FIT MODELS ------------------------------------------------------------------
 
@@ -481,15 +498,19 @@ fit_mod <- function(tmb_data, tmb_pars) {
 }
 
 dat2 <- dat %>%
+  # filter(!dataset %in% c("can_rec", "can_comm")) %>%
   mutate(sdr = map2(tmb_data, tmb_pars, fit_mod),
          ssdr = map(sdr, summary),
          #also fit model to monthly effort data
          sdr2 = map2(tmb_data2, tmb_pars2, fit_mod),
-         ssdr2 = map(sdr2, summary))
+         ssdr2 = map(sdr2, summary)
+         ) 
 saveRDS(dat2, here::here("generated_data", "model_fits",
                          "combined_model_v3.RDS"))
 
-dat2 <- readRDS(here::here("generated_data", "model_fits", "combined_model_v3.RDS"))
+dat2 <- readRDS(here::here("generated_data", "model_fits", 
+                           "combined_model_v3.RDS"))
+
 
 ## GENERATE PREDICTIONS --------------------------------------------------------
 
@@ -497,7 +518,6 @@ dat2 <- readRDS(here::here("generated_data", "model_fits", "combined_model_v3.RD
 gen_abund_pred <- function(catch, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "agg_pred_abund", ] 
   # abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
-  # catch = FALSE because predictions are at region, not area scale
   pred_catch <- make_pred_dat(catch) %>% 
     mutate(reg_month = paste(region, month, sep = "_"))
   
@@ -525,7 +545,8 @@ gen_comp_pred <- function(infill_comp, ssdr) {
                              pred_prob_est = comp_pred[ , "Estimate"],
                              pred_prob_se =  comp_pred[ , "Std. Error"]) %>% 
     cbind(dum, .) %>%
-    mutate(pred_prob_low = pred_prob_est + (qnorm(0.025) * pred_prob_se),
+    mutate(pred_prob_low = pmax(pred_prob_est + (qnorm(0.025) * pred_prob_se),
+                                0),
            pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se),
            comp_abund_est = comp_abund_pred[ , "Estimate"],
            comp_abund_se =  comp_abund_pred[ , "Std. Error"],
@@ -596,8 +617,6 @@ dev.off()
 pdf(paste(file_path, "composition.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp)
 dev.off()
-
-plot_comp(pred_dat$comp_pred_ci[[1]], pred_dat$raw_prop[[1]], raw = F)
 
 # combined estimates of stock-specific CPUE
 pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
