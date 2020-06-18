@@ -620,7 +620,7 @@ dev.off()
 
 # combined estimates of stock-specific CPUE
 pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
-map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund)
+map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund, raw = FALSE)
 dev.off()
 pdf(paste(file_path, "stock-specific_abund_varyE.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci2, pred_dat$raw_abund, plot_ss_abund)

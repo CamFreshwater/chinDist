@@ -14,18 +14,30 @@ library(tidyverse)
 
 ## ADD STOCKS TO RECOVERY DATA -------------------------------------------------
 
-datRaw <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                              "cwt_recov.txt"), 
+# commercial data
+dat_comm <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                              "cwt_recov_commercial.txt"), 
                    stringsAsFactors = FALSE) %>% 
   filter(!grepl("50105", tag_code),
          !grepl("50104", tag_code),
          !grepl("60102", tag_code)) %>% 
   mutate(recovery_loc_code = str_squish(recovery_location_code))
 
+dat_rec <- read.csv(here::here("data", "gsiCatchData", "rec", 
+                                "cwt_recov_sport.txt"), 
+                     stringsAsFactors = FALSE) %>%
+  filter(!grepl("1901010101", tag_code),
+         !grepl("1901010103", tag_code)) %>%
+  mutate(recovery_loc_code = str_squish(recovery_location_code))
+
 # # export tag codes to query rmis
-# tag_codes <- unique(stringr::str_pad(datRaw$tag_code, 6, pad = "0"))
-# write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll", 
-#                                         "cwt_tag_code.txt"), 
+# comm_tag_codes <- unique(stringr::str_pad(dat_comm$tag_code, 6, pad = "0"))
+# write.table(comm_tag_codes, here::here("data", "gsiCatchData", "commTroll",
+#                                   "cwt_tag_code_comm.txt"),
+#             row.names = FALSE, col.names = FALSE)
+# rec_tag_codes <- unique(stringr::str_pad(dat_rec$tag_code, 6, pad = "0"))
+# write.table(rec_tag_codes, here::here("data", "gsiCatchData", "rec",
+#                                   "cwt_tag_code_sport.txt"),
 #             row.names = FALSE, col.names = FALSE)
 
 # import generated tag_code key (from rmis)
@@ -72,7 +84,7 @@ recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   mutate(recovery_loc_code = Code)
 
 #merge stock ID and recovery location keys to cwt recoveries
-rec_raw <- datRaw %>% 
+rec_raw <- dat_comm %>% 
   left_join(., key_final, by = "tag_code") %>% 
   left_join(., recov_key, by = "recovery_loc_code") %>% 
   mutate(

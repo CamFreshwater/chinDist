@@ -49,6 +49,7 @@ plot_ss_abund <- function(comp_pred, raw_abund, raw = TRUE) {
                         fill = region),
                     shape = 21, position = position_dodge(0.6)) +
     facet_wrap(~stock, ncol = 2, scales = "free_y") +
+    scale_x_continuous(breaks = seq(1, 12, by = 1)) +
     scale_fill_manual(name = "Region", values = pal) +
     labs(x = "Month", y = "Predicted Catch") +
     ggsidekick::theme_sleek() +
