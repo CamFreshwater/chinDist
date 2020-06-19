@@ -40,48 +40,69 @@ dat_rec <- read.csv(here::here("data", "gsiCatchData", "rec",
 #                                   "cwt_tag_code_sport.txt"),
 #             row.names = FALSE, col.names = FALSE)
 
-# import generated tag_code key (from rmis)
-key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                           "cwt_tag_key.txt"),
-                stringsAsFactors = FALSE) %>%
-  mutate(
-    stock_location_name = case_when(
-      is.na(stock_location_name) ~ hatchery_location_name,
-      TRUE ~ stock_location_name
-    )
-  )
+# import generated tag_code key (from rmis standard reporting)
+comm_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                           "cwt_tag_key_comm.txt"),
+                stringsAsFactors = FALSE)
+rec_key_raw <-read.csv(here::here("data", "gsiCatchData", "rec",
+                              "cwt_tag_key_sport.txt"),
+                   stringsAsFactors = FALSE)
+key <- rbind(comm_key_raw, rec_key_raw)
 
-# #pull unique stock, region, basin combinations to combine with gsi in stockkey
-# #repo
-# key_out <- key %>%
-#   select(release = release_location_name,
-#          stock = stock_location_name,
-#          rmis_region = release_location_rmis_region,
-#          basin = release_location_rmis_basin,
-#          state = release_location_state) %>%
-#   distinct()
-# saveRDS(key_out, here::here("generatedData", "cwt_stock_key.RDS"))
+clean_key <- function(key) {
+  key %>%
+    mutate(
+      #when stock name missing replace with hatchery name
+      stock_location_name = case_when(
+        is.na(stock_location_name) ~ hatchery_location_name,
+        TRUE ~ stock_location_name
+      )
+    ) %>%
+    select(release = release_location_name,
+           stock = stock_location_name,
+           rmis_region = release_location_rmis_region,
+           basin = release_location_rmis_basin,
+           state = release_location_state) %>%
+    distinct()
+}
+
+key_out <- key %>%
+  clean_key() %>%
+  distinct()
+saveRDS(key_out, here::here("generated_data", "cwt_stock_key.RDS"))
 
 # import completed stock_list
 key_in <- readRDS(here::here("data", "stockKeys",
-                             "finalStockList_Apr2020.rds")) %>%
-  filter(id_type == "cwt")
+                             "finalStockList_June2020.rds")) 
 
 # add regional aggregates to key
 key_final <- key %>%
   select(tag_code = tag_code_or_release_id,
-         stock = stock_location_name) %>%
-  mutate(stock = toupper(stock)) %>%
+         stock = stock_location_name, 
+         basin = release_location_rmis_basin) %>%
+  mutate(stock = toupper(stock),
+         stock = case_when(
+           basin == "CLEA" ~ "SNAKE R FALL",
+           TRUE ~ stock
+         )) %>% 
+  select(-basin) %>% 
   left_join(., key_in,
             by = c("stock"
                    ))
   
-# import recovery location key
+# import recovery location key (CANT FIGURE OUT HOW TO DUPLICATE WITH UPDATED 
+# DATA)
 recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                                 "cwt_recovery_location_key.csv"), 
-                      stringsAsFactors = F) %>% 
-  select(-Recoveries, -X, -X.1) %>% 
+                                 "cwt_recovery_location_key.csv"),
+                      stringsAsFactors = F) %>%
+  select(-Recoveries, -X, -X.1) %>%
   mutate(recovery_loc_code = Code)
+
+# tt <-read.csv(here::here("data", "gsiCatchData", "rec",
+#                          "temp.txt"),
+#               stringsAsFactors = FALSE) %>% 
+#   mutate()
+# unique(tt$rmis_basin)
 
 #merge stock ID and recovery location keys to cwt recoveries
 rec_raw <- dat_comm %>% 
@@ -100,6 +121,7 @@ rec_raw <- dat_comm %>%
     ) %>% 
   #remove remaining ambiguous IDs
   filter(!Basin == "WCVIG")
+
 
 ## FORMAT CWT DATA TO MATCH GSI ------------------------------------------------
 
