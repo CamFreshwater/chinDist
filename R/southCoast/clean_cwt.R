@@ -30,6 +30,24 @@ dat_rec <- read.csv(here::here("data", "gsiCatchData", "rec",
          !grepl("1901010103", tag_code)) %>%
   mutate(recovery_loc_code = str_squish(recovery_location_code))
 
+stringr::str_sub(dat_rec$recovery_location_code[1:3], start = 7) %>%
+  unique()
+
+#all fisheries recoveries from mrp extractor 
+#technically this dataset could be used for the analysis, but would require
+#additional cleaning for now, use to generate key for meaningful PFMA names 
+# and the RMIS recoveries (above)
+tag_recov <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                                 "mrp_recoveries.csv"), 
+                      stringsAsFactors = FALSE) %>% 
+  #remove samples without tags
+  filter(!Tagcode == "No Tag") %>% 
+  mutate(nchar_tag = nchar(Tagcode)) %>% 
+  #remove samples with non-standard tags 
+  filter(!nchar_tag > 6)
+  
+
+
 # # export tag codes to query rmis
 # comm_tag_codes <- unique(stringr::str_pad(dat_comm$tag_code, 6, pad = "0"))
 # write.table(comm_tag_codes, here::here("data", "gsiCatchData", "commTroll",
@@ -40,14 +58,23 @@ dat_rec <- read.csv(here::here("data", "gsiCatchData", "rec",
 #                                   "cwt_tag_code_sport.txt"),
 #             row.names = FALSE, col.names = FALSE)
 
-# import generated tag_code key (from rmis standard reporting)
-comm_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                           "cwt_tag_key_comm.txt"),
-                stringsAsFactors = FALSE)
-rec_key_raw <-read.csv(here::here("data", "gsiCatchData", "rec",
-                              "cwt_tag_key_sport.txt"),
-                   stringsAsFactors = FALSE)
-key <- rbind(comm_key_raw, rec_key_raw)
+tag_codes <- unique(stringr::str_pad(tag_recov$Tagcode, 6, pad = "0"))
+write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll",
+                                      "cwt_tag_code_mrp.txt"),
+            row.names = FALSE, col.names = FALSE)
+
+
+# import generated tag_code key (from rmis standard reporting query)
+mrp_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+                                    "cwt_tag_key_mrp.txt"),
+                         stringsAsFactors = FALSE)
+# comm_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+#                            "cwt_tag_key_comm.txt"),
+#                 stringsAsFactors = FALSE)
+# rec_key_raw <-read.csv(here::here("data", "gsiCatchData", "rec",
+#                               "cwt_tag_key_sport.txt"),
+#                    stringsAsFactors = FALSE)
+# key <- rbind(comm_key_raw, rec_key_raw)
 
 clean_key <- function(key) {
   key %>%
@@ -66,13 +93,14 @@ clean_key <- function(key) {
     distinct()
 }
 
-key_out <- key %>%
+# generate trimmed clean tag key to pass to stockKey repo for merging
+tag_key <- mrp_key_raw %>% #key %>%
   clean_key() %>%
   distinct()
-saveRDS(key_out, here::here("generated_data", "cwt_stock_key.RDS"))
+saveRDS(tag_key, here::here("data", "stockKeys", "cwt_stock_key_out.RDS"))
 
 # import completed stock_list
-key_in <- readRDS(here::here("data", "stockKeys",
+stock_key <- readRDS(here::here("data", "stockKeys",
                              "finalStockList_June2020.rds")) 
 
 # add regional aggregates to key
@@ -80,51 +108,52 @@ key_final <- key %>%
   select(tag_code = tag_code_or_release_id,
          stock = stock_location_name, 
          basin = release_location_rmis_basin) %>%
-  mutate(stock = toupper(stock),
+  mutate(tag_code = as.character(tag_code),
+         stock = toupper(stock),
          stock = case_when(
            basin == "CLEA" ~ "SNAKE R FALL",
            TRUE ~ stock
          )) %>% 
   select(-basin) %>% 
-  left_join(., key_in,
+  left_join(., stock_key,
             by = c("stock"
                    ))
   
 
 # import recovery location key (unsure how the commercial one was generated,
 # rec generated using rmis)
-recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-                                 "cwt_recovery_location_key.csv"),
-                      stringsAsFactors = F) %>%
-  select(-Recoveries, -X, -X.1) %>%
-  rename(recovery_loc_code = Code)
-
-sprt_recov_key <-read.csv(here::here("data", "gsiCatchData", "rec",
-                         "sport_locations_query.txt"),
-              stringsAsFactors = FALSE) %>%
-  select(recovery_loc_code = location_code, name, latitude, longitude, 
-         rmis_basin)
-
-temp <- dat_rec %>% 
-  filter(reporting_agency == "CDFO") %>% 
-  left_join(., key_final, by = "tag_code") %>% 
-  left_join(., sprt_recov_key, by = "recovery_loc_code") %>% 
-  # pull pfma based on character strings
-  mutate(trim_name = stringr::str_sub(recovery_location_name, start = -7),
-         pfma = case_when)
-
-stringr::str_sub(temp$recovery_location_name, start = -7) %>% 
-  unique()
-temp %>% 
-  select(name) %>% 
-  separate(name) %>% 
-  head()
-
-sprt_recov_key %>% 
-  filter(grepl("M034", name))
+# recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
+#                                  "cwt_recovery_location_key.csv"),
+#                       stringsAsFactors = F) %>%
+#   select(-Recoveries, -X, -X.1) %>%
+#   rename(recovery_loc_code = Code)
+# 
+# sprt_recov_key <-read.csv(here::here("data", "gsiCatchData", "rec",
+#                          "sport_locations_query.txt"),
+#               stringsAsFactors = FALSE) %>%
+#   select(recovery_loc_code = location_code, name, latitude, longitude, 
+#          rmis_basin)
+# 
+# temp <- dat_rec %>% 
+#   filter(reporting_agency == "CDFO") %>% 
+#   left_join(., key_final, by = "tag_code") %>% 
+#   left_join(., sprt_recov_key, by = "recovery_loc_code") %>% 
+#   # pull pfma based on character strings
+#   mutate(trim_name = stringr::str_sub(recovery_location_name, start = -7),
+#          pfma = case_when)
+# 
+# stringr::str_sub(temp$recovery_location_name, start = -7) %>% 
+#   unique()
+# temp %>% 
+#   select(name) %>% 
+#   separate(name) %>% 
+#   head()
+# 
+# sprt_recov_key %>% 
+#   filter(grepl("M034", name))
 
 #merge stock ID and recovery location keys to cwt recoveries
-rec_raw <- dat_comm %>% 
+rec_raw <- tag_recov %>% 
   left_join(., key_final, by = "tag_code") %>% 
   left_join(., recov_key, by = "recovery_loc_code") %>% 
   mutate(
