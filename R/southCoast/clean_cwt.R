@@ -90,19 +90,38 @@ key_final <- key %>%
             by = c("stock"
                    ))
   
-# import recovery location key (CANT FIGURE OUT HOW TO DUPLICATE WITH UPDATED 
-# DATA)
+
+# import recovery location key (unsure how the commercial one was generated,
+# rec generated using rmis)
 recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                  "cwt_recovery_location_key.csv"),
                       stringsAsFactors = F) %>%
   select(-Recoveries, -X, -X.1) %>%
-  mutate(recovery_loc_code = Code)
+  rename(recovery_loc_code = Code)
 
-# tt <-read.csv(here::here("data", "gsiCatchData", "rec",
-#                          "temp.txt"),
-#               stringsAsFactors = FALSE) %>% 
-#   mutate()
-# unique(tt$rmis_basin)
+sprt_recov_key <-read.csv(here::here("data", "gsiCatchData", "rec",
+                         "sport_locations_query.txt"),
+              stringsAsFactors = FALSE) %>%
+  select(recovery_loc_code = location_code, name, latitude, longitude, 
+         rmis_basin)
+
+temp <- dat_rec %>% 
+  filter(reporting_agency == "CDFO") %>% 
+  left_join(., key_final, by = "tag_code") %>% 
+  left_join(., sprt_recov_key, by = "recovery_loc_code") %>% 
+  # pull pfma based on character strings
+  mutate(trim_name = stringr::str_sub(recovery_location_name, start = -7),
+         pfma = case_when)
+
+stringr::str_sub(temp$recovery_location_name, start = -7) %>% 
+  unique()
+temp %>% 
+  select(name) %>% 
+  separate(name) %>% 
+  head()
+
+sprt_recov_key %>% 
+  filter(grepl("M034", name))
 
 #merge stock ID and recovery location keys to cwt recoveries
 rec_raw <- dat_comm %>% 
