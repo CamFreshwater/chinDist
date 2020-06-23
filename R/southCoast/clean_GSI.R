@@ -165,11 +165,12 @@ rec_full <- read.csv(here::here("data", "gsiCatchData", "rec",
 #   distinct()
 # saveRDS(stk_out, here::here("data", "stockKeys", "rec_gsi_stocks.rds"))
 
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_May2020.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_June2020.rds"))
 
 # data frame of probabilities
 temp_prob <- rec_full %>% 
-  filter(!DNA_RESULTS_STOCK_1 == "") %>% 
+  filter(!DNA_RESULTS_STOCK_1 == "",
+         RESOLVED_STOCK_SOURCE == "DNA") %>% 
   rename(p1 = PROB_1, p2 = PROB_2, p3 = PROB_3, p4 = PROB_4, p5 = PROB_5) %>% 
   pivot_longer(., cols = c(p1, p2, p3, p4, p5),
                names_to = "rank_prob", values_to = "prob") %>%  
@@ -177,7 +178,8 @@ temp_prob <- rec_full %>%
 
 # data frame of stock IDs
 rec_long <- rec_full %>% 
-  filter(!DNA_RESULTS_STOCK_1 == "") %>% 
+  filter(!DNA_RESULTS_STOCK_1 == "",
+         RESOLVED_STOCK_SOURCE == "DNA") %>% 
   rename(s1 = DNA_RESULTS_STOCK_1, s2 = DNA_STOCK_2, s3 = DNA_STOCK_3, 
          s4 = DNA_STOCK_4, s5 = DNA_STOCK_5,
          p1 = PROB_1, p2 = PROB_2, p3 = PROB_3, p4 = PROB_4, p5 = PROB_5) %>% 
@@ -234,11 +236,12 @@ rec_long <- rec_full %>%
     area_n = as.numeric(as.character(PFMA)),
     region = as.factor(region), 
     area = as.factor(PFMA),
-    temp_strata = paste(month_n, region, sep = "_")
+    temp_strata = paste(month_n, region, sep = "_"),
+    gear = "sport"
   ) %>% 
   select(id = BIOKEY, fish_num = FISH_NO, temp_strata, region, area, 
          subarea = SUBAREA, 
-         year, month, week, jDay = DAYOFYEAR, date, gear = SAMPLE_TYPE, 
+         year, month, week, jDay = DAYOFYEAR, date, gear = gear, 
          fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, pres, season, 
          month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))

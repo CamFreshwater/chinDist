@@ -1,37 +1,16 @@
 ## Clean CWT data
-# Import and clean CWT data from RMIS and generate equivalent data to GSI ind
-# probs clean
-# Raw RMIS data query (should be equivalent to GSI) as follows:
-# WHERE tag_status = '1'
-# AND   species = '1'
-# AND   recovery_date_year IN (2007,2008,2009,2010,2011,2012,2013,2014,2015)
-# AND   fishery IN ('10','11','12','13','14','15','16','60')
-# AND   recovery_location_rmis_region = 'WCVI'
-# April 15, 2020
-
+# Import and clean CWT data from MRP extractor:
+# http://dfbcv8lwvast012.ent.dfo-mpo.ca/DataExtractor/#/Query
+# then generate equivalent data to GSI input data to pass to multinomial or 
+# combined tmb models.
+# Note that previous version used RMIS data, but could not be easily assigned
+# to PFMAs, which is necessary for assigning to current catch regions.
+# MRP data is equivalent, but will lack non-DFO recoveryies.#
+# Change made June 22, 2020
 
 library(tidyverse)
 
 ## ADD STOCKS TO RECOVERY DATA -------------------------------------------------
-
-# commercial data
-dat_comm <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
-                              "cwt_recov_commercial.txt"), 
-                   stringsAsFactors = FALSE) %>% 
-  filter(!grepl("50105", tag_code),
-         !grepl("50104", tag_code),
-         !grepl("60102", tag_code)) %>% 
-  mutate(recovery_loc_code = str_squish(recovery_location_code))
-
-dat_rec <- read.csv(here::here("data", "gsiCatchData", "rec", 
-                                "cwt_recov_sport.txt"), 
-                     stringsAsFactors = FALSE) %>%
-  filter(!grepl("1901010101", tag_code),
-         !grepl("1901010103", tag_code)) %>%
-  mutate(recovery_loc_code = str_squish(recovery_location_code))
-
-stringr::str_sub(dat_rec$recovery_location_code[1:3], start = 7) %>%
-  unique()
 
 #all fisheries recoveries from mrp extractor 
 #technically this dataset could be used for the analysis, but would require
@@ -44,67 +23,43 @@ tag_recov <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   filter(!Tagcode == "No Tag") %>% 
   mutate(nchar_tag = nchar(Tagcode)) %>% 
   #remove samples with non-standard tags 
-  filter(!nchar_tag > 6)
+  filter(!nchar_tag > 6,
+         !Tagcode %in% c("53397", "54380", "181986"))
   
-
-
-# # export tag codes to query rmis
-# comm_tag_codes <- unique(stringr::str_pad(dat_comm$tag_code, 6, pad = "0"))
-# write.table(comm_tag_codes, here::here("data", "gsiCatchData", "commTroll",
-#                                   "cwt_tag_code_comm.txt"),
-#             row.names = FALSE, col.names = FALSE)
-# rec_tag_codes <- unique(stringr::str_pad(dat_rec$tag_code, 6, pad = "0"))
-# write.table(rec_tag_codes, here::here("data", "gsiCatchData", "rec",
-#                                   "cwt_tag_code_sport.txt"),
-#             row.names = FALSE, col.names = FALSE)
-
+# export tag codes to query rmis
 tag_codes <- unique(stringr::str_pad(tag_recov$Tagcode, 6, pad = "0"))
 write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll",
-                                      "cwt_tag_code_mrp.txt"),
+                                  "cwt_tag_code_mrp.txt"),
             row.names = FALSE, col.names = FALSE)
-
 
 # import generated tag_code key (from rmis standard reporting query)
 mrp_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                                     "cwt_tag_key_mrp.txt"),
                          stringsAsFactors = FALSE)
-# comm_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-#                            "cwt_tag_key_comm.txt"),
-#                 stringsAsFactors = FALSE)
-# rec_key_raw <-read.csv(here::here("data", "gsiCatchData", "rec",
-#                               "cwt_tag_key_sport.txt"),
-#                    stringsAsFactors = FALSE)
-# key <- rbind(comm_key_raw, rec_key_raw)
-
-clean_key <- function(key) {
-  key %>%
-    mutate(
-      #when stock name missing replace with hatchery name
-      stock_location_name = case_when(
-        is.na(stock_location_name) ~ hatchery_location_name,
-        TRUE ~ stock_location_name
-      )
-    ) %>%
-    select(release = release_location_name,
-           stock = stock_location_name,
-           rmis_region = release_location_rmis_region,
-           basin = release_location_rmis_basin,
-           state = release_location_state) %>%
-    distinct()
-}
 
 # generate trimmed clean tag key to pass to stockKey repo for merging
-tag_key <- mrp_key_raw %>% #key %>%
-  clean_key() %>%
+clean_key <- mrp_key_raw %>%
+  mutate(
+    #when stock name missing replace with hatchery name
+    stock_location_name = case_when(
+      is.na(stock_location_name) ~ hatchery_location_name,
+      TRUE ~ stock_location_name
+    )
+  ) %>%
+  select(release = release_location_name,
+         stock = stock_location_name,
+         rmis_region = release_location_rmis_region,
+         basin = release_location_rmis_basin,
+         state = release_location_state) %>%
   distinct()
-saveRDS(tag_key, here::here("data", "stockKeys", "cwt_stock_key_out.RDS"))
+saveRDS(clean_key, here::here("data", "stockKeys", "cwt_stock_key_out.RDS"))
 
 # import completed stock_list
 stock_key <- readRDS(here::here("data", "stockKeys",
                              "finalStockList_June2020.rds")) 
 
 # add regional aggregates to key
-key_final <- key %>%
+key_final <- mrp_key_raw %>%
   select(tag_code = tag_code_or_release_id,
          stock = stock_location_name, 
          basin = release_location_rmis_basin) %>%
@@ -117,95 +72,98 @@ key_final <- key %>%
   select(-basin) %>% 
   left_join(., stock_key,
             by = c("stock"
-                   ))
-  
-
-# import recovery location key (unsure how the commercial one was generated,
-# rec generated using rmis)
-# recov_key <- read.csv(here::here("data", "gsiCatchData", "commTroll",
-#                                  "cwt_recovery_location_key.csv"),
-#                       stringsAsFactors = F) %>%
-#   select(-Recoveries, -X, -X.1) %>%
-#   rename(recovery_loc_code = Code)
-# 
-# sprt_recov_key <-read.csv(here::here("data", "gsiCatchData", "rec",
-#                          "sport_locations_query.txt"),
-#               stringsAsFactors = FALSE) %>%
-#   select(recovery_loc_code = location_code, name, latitude, longitude, 
-#          rmis_basin)
-# 
-# temp <- dat_rec %>% 
-#   filter(reporting_agency == "CDFO") %>% 
-#   left_join(., key_final, by = "tag_code") %>% 
-#   left_join(., sprt_recov_key, by = "recovery_loc_code") %>% 
-#   # pull pfma based on character strings
-#   mutate(trim_name = stringr::str_sub(recovery_location_name, start = -7),
-#          pfma = case_when)
-# 
-# stringr::str_sub(temp$recovery_location_name, start = -7) %>% 
-#   unique()
-# temp %>% 
-#   select(name) %>% 
-#   separate(name) %>% 
-#   head()
-# 
-# sprt_recov_key %>% 
-#   filter(grepl("M034", name))
+                   )) %>% 
+  filter(!is.na(Region1Name))
 
 #merge stock ID and recovery location keys to cwt recoveries
-rec_raw <- tag_recov %>% 
+tag_recov1 <- tag_recov %>% 
+  select(tag_code = Tagcode, recovery_agency = Recovery.Agency.Code,
+         year = Recovery.Year, month = Recovery.Month, 
+         Catch.Region.Name:MRP.Area.Name, observed = Observed.Number, 
+         est = Estimated.Number, date = Recovery.Date) %>% 
   left_join(., key_final, by = "tag_code") %>% 
-  left_join(., recov_key, by = "recovery_loc_code") %>% 
+  # convoluted extraction process to identify PFMAs then roll up to catch regions
   mutate(
-    #replace single duplicated recovery id
-    recovery_id = case_when(
-      recovery_id == "C746098" & run_year > 2010 ~ "C746098_b",
-      TRUE ~ recovery_id),
-    #replace ambiguous basin ideas where possible
-    Basin = case_when(
-      grepl("NWTR H", Short.Name) | grepl("NWTR P", Short.Name) ~ "NWVI",
-      TRUE ~ Basin
-    )
+    area_code_trim = case_when(
+      grepl("A", MRP.Area.Code) | grepl("B", MRP.Area.Code) | 
+        grepl("M", MRP.Area.Code) ~ 
+        stringr::str_sub(MRP.Area.Code, start = 2, end = 3),
+      TRUE ~
+        stringr::str_sub(MRP.Area.Code, start = 2, end = 4)),
+    pfma = case_when(
+      area_code_trim == "SPS" ~ "sSoG_composite",
+      area_code_trim == "40" ~ "SWVI_composite",
+      area_code_trim == "05" ~ "NWVI_composite",
+      area_code_trim == "03" ~ "nSoG_composite",
+      TRUE ~ stringr::str_remove(area_code_trim, "^0+")
+    ),
+    pfma_n = as.numeric(pfma),
+    region = case_when(
+      pfma_n > 124 ~ "NWVI",
+      pfma_n < 28 & pfma_n > 24 ~ "NWVI",
+      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca",
+      # is.na(pfma_n) ~ "Juan de Fuca",
+      pfma_n < 125 & pfma_n > 120 ~ "SWVI",
+      pfma_n < 25 & pfma_n > 20 ~ "SWVI",
+      pfma_n < 20 & pfma_n > 13 ~ "Georgia Strait",
+      pfma_n %in% c("28", "29") ~ "Georgia Strait",
+      pfma_n %in% c("10", "11", "12", "13", "111") ~ "Johnstone Strait",
+      grepl("SoG", pfma) ~ "Georgia Strait",
+      grepl("SWVI", pfma) ~ "SWVI",
+      grepl("NWVI", pfma) ~ "NWVI",
+      TRUE ~ NA_character_
+    ),
+    gear = case_when(
+      grepl("Sport", Catch.Region.Name) ~ "Sport",
+      grepl("Troll", Catch.Region.Name) ~ "troll",
+      grepl("Taaq", Catch.Region.Name) ~ "troll"
     ) %>% 
-  #remove remaining ambiguous IDs
-  filter(!Basin == "WCVIG")
+      as.factor()
+    )  
 
 
 ## FORMAT CWT DATA TO MATCH GSI ------------------------------------------------
 
-rec_long <- rec_raw %>%
-  mutate(
-    statArea = NA,
-    gear = "troll",
-    date = as.POSIXct(as.character(rec_raw$recovery_date), 
-                     format="%Y%m%d"),
-    month = lubridate::month(date),
-    unadj_week = lubridate::week(date), 
-    weekDay = weekdays(date),
-    #adjust week for sampling date occuring after harvest date
-    week = case_when(
-      weekDay %in% c("Sunday", "Monday") ~ unadj_week - 1,
-      TRUE ~ unadj_week
-    ),
-    jDay = lubridate::yday(date),
-    season_c = case_when(
-     month %in% c("12", "1", "2") ~ "w",
-     month %in% c("3", "4", "5") ~ "sp",
-     month %in% c("6", "7", "8") ~ "su",
-     month %in% c("9", "10", "11") ~ "f"
-    ),
-    season = fct_relevel(season_c, "sp", "su", "f", "w"),
-    month_n = as.numeric(month),
-    month = as.factor(month_n),
-    year =  as.factor(run_year),
-    pres = 1
-    ) %>% 
-  select(id = recovery_id, year, statArea, month, week, jDay, gear, date, 
-         season_c, season, month_n,
-         pres, catchReg = Basin, pst_agg)
+rec_gsi <- readRDS(here::here("data", "gsiCatchData", "rec", 
+                          "recIndProbsLong.rds"))
+comm_gsi <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
+                           "wcviIndProbsLong.rds"))
 
-saveRDS(rec_long, here::here("data", "gsiCatchData", "commTroll",
+tag_recov_out <- tag_recov1 %>%
+  # drop years and regions from cwt data that are missing in gsi
+  mutate(
+    include = case_when(
+      gear == "troll" & region %in% comm_gsi$region & 
+        year %in% comm_gsi$year ~ T,
+      gear == "sport" & region %in% rec_gsi$region & 
+        year %in% rec_gsi$year ~ T,
+      TRUE ~ FALSE
+    )
+  ) %>% 
+  filter(include == T) %>% 
+  # add in relevant helper variables and rename
+  mutate(temp_strata = paste(month, region, sep = "_"),
+         season_c = case_when(
+           month %in% c("12", "1", "2") ~ "w",
+           month %in% c("3", "4", "5") ~ "sp",
+           month %in% c("6", "7", "8") ~ "su",
+           month %in% c("9", "10", "11") ~ "f"
+         ),
+         season = fct_relevel(season_c, "sp", "su", "f", "w"),
+         month_n = as.numeric(month),
+         month = as.factor(month_n),
+         pres = 1) %>%
+  group_by(gear) %>% 
+  nest() %>% 
+  mutate(subset_data = map2(data, gear, function (x, y) {
+    x %>% 
+      mutate(year = as.factor(year),
+             gear = y) %>% 
+      select(id = tag_code, temp_strata, region, area = pfma, year, month,
+             date, gear, pres, season, month_n, area_n = pfma_n, 
+             stock:pst_agg)
+  }))
+
+saveRDS(tag_recov_out, here::here("data", "gsiCatchData", "commTroll",
                              "cwt_recovery_clean.rds"))
 
-# n_occur <- data.frame(table(rec_long$fishNum))
-# n_occur[n_occur$Freq > 1, ]
