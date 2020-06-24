@@ -24,13 +24,14 @@ tag_recov <- read.csv(here::here("data", "gsiCatchData", "commTroll",
   mutate(nchar_tag = nchar(Tagcode)) %>% 
   #remove samples with non-standard tags 
   filter(!nchar_tag > 6,
-         !Tagcode %in% c("53397", "54380", "181986"))
+         !Tagcode %in% c("53397", "54380", "181986")) %>% 
+  mutate(Tagcode = stringr::str_pad(Tagcode, 6, pad = "0"))
   
-# export tag codes to query rmis
-tag_codes <- unique(stringr::str_pad(tag_recov$Tagcode, 6, pad = "0"))
-write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll",
-                                  "cwt_tag_code_mrp.txt"),
-            row.names = FALSE, col.names = FALSE)
+# export tag codes to query MRP extractor (or rmis)
+tag_codes <- unique(tag_recov$Tagcode)
+# write.table(tag_codes, here::here("data", "gsiCatchData", "commTroll",
+#                                   "cwt_tag_code_mrp.txt"),
+#             row.names = FALSE, col.names = FALSE)
 
 # import generated tag_code key (from rmis standard reporting query)
 mrp_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
@@ -38,21 +39,21 @@ mrp_key_raw <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                          stringsAsFactors = FALSE)
 
 # generate trimmed clean tag key to pass to stockKey repo for merging
-clean_key <- mrp_key_raw %>%
-  mutate(
-    #when stock name missing replace with hatchery name
-    stock_location_name = case_when(
-      is.na(stock_location_name) ~ hatchery_location_name,
-      TRUE ~ stock_location_name
-    )
-  ) %>%
-  select(release = release_location_name,
-         stock = stock_location_name,
-         rmis_region = release_location_rmis_region,
-         basin = release_location_rmis_basin,
-         state = release_location_state) %>%
-  distinct()
-saveRDS(clean_key, here::here("data", "stockKeys", "cwt_stock_key_out.RDS"))
+# clean_key <- mrp_key_raw %>%
+#   mutate(
+#     #when stock name missing replace with hatchery name
+#     stock_location_name = case_when(
+#       is.na(stock_location_name) ~ hatchery_location_name,
+#       TRUE ~ stock_location_name
+#     )
+#   ) %>%
+#   select(release = release_location_name,
+#          stock = stock_location_name,
+#          rmis_region = release_location_rmis_region,
+#          basin = release_location_rmis_basin,
+#          state = release_location_state) %>%
+#   distinct()
+# saveRDS(clean_key, here::here("data", "stockKeys", "cwt_stock_key_out.RDS"))
 
 # import completed stock_list
 stock_key <- readRDS(here::here("data", "stockKeys",
@@ -63,7 +64,7 @@ key_final <- mrp_key_raw %>%
   select(tag_code = tag_code_or_release_id,
          stock = stock_location_name, 
          basin = release_location_rmis_basin) %>%
-  mutate(tag_code = as.character(tag_code),
+  mutate(tag_code = stringr::str_pad(tag_code, 6, pad = "0"),
          stock = toupper(stock),
          stock = case_when(
            basin == "CLEA" ~ "SNAKE R FALL",
@@ -114,7 +115,7 @@ tag_recov1 <- tag_recov %>%
       TRUE ~ NA_character_
     ),
     gear = case_when(
-      grepl("Sport", Catch.Region.Name) ~ "Sport",
+      grepl("Sport", Catch.Region.Name) ~ "sport",
       grepl("Troll", Catch.Region.Name) ~ "troll",
       grepl("Taaq", Catch.Region.Name) ~ "troll"
     ) %>% 
@@ -140,7 +141,9 @@ tag_recov_out <- tag_recov1 %>%
       TRUE ~ FALSE
     )
   ) %>% 
-  filter(include == T) %>% 
+  filter(include == T,
+         #remove small number of tag codes that didn't show up in RMIS
+         !tag_code %in% c("0BLANK", "054380", "053397", "184376")) %>%
   # add in relevant helper variables and rename
   mutate(temp_strata = paste(month, region, sep = "_"),
          season_c = case_when(
@@ -155,14 +158,19 @@ tag_recov_out <- tag_recov1 %>%
          pres = 1) %>%
   group_by(gear) %>% 
   nest() %>% 
-  mutate(subset_data = map2(data, gear, function (x, y) {
+  mutate(subset_data = map(data, function (x) {
     x %>% 
-      mutate(year = as.factor(year),
-             gear = y) %>% 
+      mutate(year = as.factor(year)) %>% 
       select(id = tag_code, temp_strata, region, area = pfma, year, month,
              date, gear, pres, season, month_n, area_n = pfma_n, 
              stock:pst_agg)
-  }))
+  })) 
+
+# tt <- tag_recov_out %>% 
+#   unnest(., cols = c(subset_data)) %>% 
+#   filter(is.na(pst_agg)) %>% 
+#   pull(id) %>% 
+#   unique()
 
 saveRDS(tag_recov_out, here::here("data", "gsiCatchData", "commTroll",
                              "cwt_recovery_clean.rds"))
