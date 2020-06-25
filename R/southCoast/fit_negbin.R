@@ -197,7 +197,12 @@ for (i in seq_along(fishery_list)) {
 
 # PREDICTIONS ------------------------------------------------------------------
 
-ssdr <- readRDS(here::here("generatedData", "model_fits", "negbin_ssdr.RDS"))
+ssdr_list <- map(fishery_list, function(x) {
+  f_name <- paste(x$data_type, "negbin_ssdr.RDS", sep = "_")
+  readRDS(here::here("generated_data", "model_fits", f_name))
+})
+
+pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   catch <- in_list$input_data
@@ -218,6 +223,7 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     geom_pointrange(data = pred_ci, 
                     aes(x = as.factor(month), y = pred_est, ymin = pred_low, 
                         ymax = pred_up, fill = region), shape = 21) +
+    scale_fill_manual(name = "Region", values = pal) +
     labs(x = "Month", y = "Predicted Real Catch (mean effort)",
          title = data_type) +
     ggsidekick::theme_sleek() +
@@ -238,6 +244,7 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
                     aes(x = as.factor(month), y = pred_est,
                         ymin = pred_low, ymax = pred_up, fill = region), 
                     shape = 21) +
+    scale_fill_manual(name = "Region", values = pal) +
     labs(x = "month", y = "predicted real catch (mean effort)",
          title = data_type) +
     ggsidekick::theme_sleek() +
@@ -284,11 +291,15 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     labs(fill = "Data", title = data_type)
   
   f_name <- paste(data_type, "negbin_prediction.pdf", sep = "_")
-  
   pdf(here::here("figs", "model_pred", "neg_bin_only", f_name))
   print(real_preds)
   print(agg_preds)
   print(var_effort_preds)
   dev.off()
+  
+  f_name2 <- paste(data_type, "negbin_predictions.RDS", sep = "_")
+  plot_list_out <- list(real_preds, agg_preds)
+  saveRDS(plot_list_out, 
+          here::here("figs", "model_pred", "neg_bin_only", f_name2))
 })
 
