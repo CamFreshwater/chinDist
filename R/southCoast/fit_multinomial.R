@@ -10,13 +10,20 @@ library(tidyverse)
 library(TMB)
 library(ggplot2)
 
-
+# cwt data 
+cwt <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                                  "cwt_recovery_clean.rds")) %>% 
+  select(gear, subset_data) %>% 
+  unnest(., cols = c(subset_data)) %>% 
+  select(id:date, gear, pres:pst_agg) %>% 
+  ungroup()
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds"))
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                           "wcviIndProbsLong.rds"))
+
 
 
 # helper function to calculate aggregate probs
@@ -39,7 +46,7 @@ calc_max_prob <- function(grouped_data, full_data, thresh = 0.75) {
               by = "id") %>% 
     select(-max_assignment)
   
-  colnames(out)[2] <- "agg"
+  # colnames(out)[2] <- "agg"
   
   return(out)
 }
@@ -64,29 +71,66 @@ pool_aggs <- function(full_data) {
     )
 }
 
-#large scale PST groups
-rec_pst <- rec %>% 
-  pool_aggs() %>% 
-  group_by(id, pst_agg) %>%
-  calc_max_prob(., rec, thresh = 0.75)
-comm_pst <- comm %>% 
-  pool_aggs() %>% 
-  group_by(id, pst_agg) %>%
-  calc_max_prob(., comm, thresh = 0.75)
-#aggregate with Canadian CU focus
-rec_can <- rec %>% 
-  pool_aggs() %>% 
-  group_by(id, reg1) %>%
-  calc_max_prob(., rec, thresh = 0.75)
-comm_can <- comm %>% 
-  pool_aggs() %>% 
-  group_by(id, reg1) %>%
-  calc_max_prob(., comm, thresh = 0.75)
+# helper function to use above for gsi and cwt samples
+clean_comp <- function(sample, grouping_col, raw_data, ...) {
+  if (sample == "gsi") {
+    out <- raw_data %>% 
+      pool_aggs() %>% 
+      rename(agg = grouping_col) %>%
+      group_by(id, agg) %>%
+      calc_max_prob(., raw_data, thresh = 0.75)
+  } 
+  if (sample == "cwt") {
+    out <- raw_data %>%
+      pool_aggs() %>% 
+      rename(agg = grouping_col) %>% 
+      select(id, agg, temp_strata:area_n)
+  }
+  return(out)
+}
 
+#large scale PST groups
+# rec_pst <- rec %>% 
+#   pool_aggs() %>% 
+#   group_by(id, pst_agg) %>%
+#   calc_max_prob(., rec, thresh = 0.75)
+# comm_pst <- comm %>% 
+#   pool_aggs() %>% 
+#   group_by(id, pst_agg) %>%
+#   calc_max_prob(., comm, thresh = 0.75)
+# #aggregate with Canadian CU focus
+# rec_can <- rec %>% 
+#   pool_aggs() %>% 
+#   group_by(id, reg1) %>%
+#   calc_max_prob(., rec, thresh = 0.75)
+# comm_can <- comm %>% 
+#   pool_aggs() %>% 
+#   group_by(id, reg1) %>%
+#   calc_max_prob(., comm, thresh = 0.75)
+# 
+comm_cwt <- cwt %>% filter(gear == "troll")
+rec_cwt <- cwt %>% filter(gear == "sport")
+
+# combined tibble 
+comp <- tibble(
+  sample = c(rep("gsi", 4), rep("cwt", 4)),
+  fishery = rep(c("troll", "sport"), times = 4),
+  grouping = rep(c(rep("pst", 2), rep("can", 2)), 2),
+  dataset = paste(sample, fishery, grouping, sep = "_"),
+  # incorporate raw_comp data
+  raw_data = list(comm, rec, comm, rec, comm_cwt, rec_cwt, comm_cwt, rec_cwt)
+) %>% 
+  mutate(
+    grouping_col = case_when(
+      grouping == "pst" ~ "pst_agg",
+      grouping == "can" ~ "reg1"
+    ),
+    data = pmap(list(sample, grouping_col, raw_data), .f = clean_comp)
+  )
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-prep_gsi <- function(gsi_in, 
+prep_multinomial_inputs <- function(comp_in, 
                      # month_range = c(1, 12), 
                      data_type) {
   # gsi_trim <- gsi_in %>% 
@@ -95,13 +139,14 @@ prep_gsi <- function(gsi_in,
   #   droplevels() %>% 
   #   dplyr::select(id, region, area, year, month, season, agg, agg_prob, pres)
   
-  gsi_trim <- gsi_in %>% 
+  gsi_trim <- comp_in %>% 
     group_by(region, month) %>%
     mutate(nn = length(unique(id))) %>%
     filter(!nn < 100) %>%
     ungroup() %>%
     droplevels() %>%
-    select(id, region, area, year, month, season, agg, agg_prob, pres)
+    select(id, region, area, year, month, season, agg, #agg_prob, 
+           pres)
   
   # dummy dataset to replace missing values 
   dum <- gsi_trim %>% 
@@ -174,19 +219,26 @@ prep_gsi <- function(gsi_in,
 
 # prep different datasets then check catch breakdown
 # NOTE: insufficient samples to include sublegal 
-pst_comm_trim <- prep_gsi(comm_pst, data_type = "comm_pst") 
-pst_legal_trim <- prep_gsi(rec_pst %>% 
-                         filter(legal == "legal"), 
-                         data_type = "legal_pst")
-can_comm_trim <- prep_gsi(comm_can, data_type = "comm_can") 
-can_legal_trim <- prep_gsi(rec_can %>% 
-                             filter(legal == "legal"), 
-                           data_type = "legal_can")
-gsi_list <- list("pst_comm" = pst_comm_trim, "pst_rec" = pst_legal_trim, 
-                 "can_comm" = can_comm_trim, "can_rec" = can_legal_trim)
+# pst_comm_trim <- prep_gsi(comm_pst, data_type = "comm_pst") 
+# pst_legal_trim <- prep_gsi(rec_pst %>% 
+#                          filter(legal == "legal"), 
+#                          data_type = "legal_pst")
+# can_comm_trim <- prep_gsi(comm_can, data_type = "comm_can") 
+# can_legal_trim <- prep_gsi(rec_can %>% 
+#                              filter(legal == "legal"), 
+#                            data_type = "legal_can")
+# gsi_list <- list("pst_comm" = pst_comm_trim, "pst_rec" = pst_legal_trim, 
+#                  "can_comm" = can_comm_trim, "can_rec" = can_legal_trim)
+
+
+# add model parameters 
+comp2 <- comp %>%
+  mutate(model_inputs = map2(data, dataset,
+                             .f = prep_multinomial_inputs))
 
 map(gsi_list, function(x) print(x$raw_freq_table))
 can_legal_trim$raw_freq_table
+
 
 ## RUN MODEL -------------------------------------------------------------------
 
@@ -195,7 +247,7 @@ dyn.load(dynlib(here::here("src", "multinomial_hier2")))
 
 ssdr_list <- map(gsi_list, function (x) {
   ## Make a function object
-  x <- can_legal_trim
+  x <- cwt_in
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"), 
