@@ -11,14 +11,14 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                           "wcviIndProbsLong.rds"))
 ```
 
-The goal of this analysis is to provide predictions of seasonal changes in stock-specific Chinook salmon abundance in various southern BC management area (Fig. 1). The model is uses catch/effort data from commercial and recreational fisheries to estimate aggregate Chinook salmon abundance, and composition data from subsets of the catch sampled for genetics. Spatial and temporal data are available at various scales and years depending on the fishery and data type (catch or composition; Table 1). Currently predictions are made at catch region and monthly scales. *Issue 1* Should commercial catch data be rolled up to generate predictions at same scale as recreational (results in substantial data loss)?
+The goal of this analysis is to provide predictions of seasonal changes in stock-specific Chinook salmon abundance in various southern BC management area (Fig. 1). The model is uses catch/effort data from commercial and recreational fisheries to estimate aggregate Chinook salmon abundance, and composition data from subsets of the catch sampled for genetics. Spatial and temporal data are available at various scales and years depending on the fishery and data type (catch or composition; Table 1). Currently predictions are made at catch region and monthly scales. 
 
-```{r map, echo=FALSE, fig.cap="Map of catch regions (colours) and PFMAs (shading)."}
+```{r map, echo=FALSE, fig.cap="Figure 1. Map of catch regions (colours) and PFMAs (shading). White areas represent American fishing grounds, PFMAs with no composition data, and shitty bugs in my mediocre shape file."}
 pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
 pfma_map
 ```
 
-```{r pmTable, include=FALSE, results="asis"}
+```{r dataTable, echo=FALSE, warning=FALSE, results="asis"}
 tab <- read.csv(here::here("data", "table_data.csv"), stringsAsFactors = F)
 
 k <- knitr::kable(tab, format = "html", booktabs = TRUE, linesep = "",
@@ -28,7 +28,7 @@ k <- kableExtra::kable_styling(k, font_size = 12)
 k
 ```
 
-Due to many strata being observed in only a subset of years (typically due to changes in management, Fig. 2), I have treated year as a random intercept. Predictions are currently made only using fixed effects and therefore do not account for interannual variability in relative abundance. While not ideal, I don't think it is surmountable given the available data and may not be relevant given the focus of the paper is on seasonal patterns in abundance, not accurate estimates of run sizes. *Issue 2* Should predictions account for interannual variability, e.g. by adding random noise from hyperdistribution for year effects? MOVE
+Due to many strata being observed in only a subset of years (typically due to changes in management, Fig. 2), I have treated year as a random intercept. Predictions are currently made only using fixed effects and therefore do not account for interannual variability in relative abundance. While not ideal, I don't think it is surmountable given the available data and may not be relevant given the focus of the paper is on seasonal patterns in abundance, not accurate estimates of run sizes. 
 
 ```{r dataPatchiness, echo=FALSE, warning=FALSE, fig.cap="Figure 2. Availability of composition data within strata among years."}
 f <- function(dat) {
@@ -57,7 +57,7 @@ ggplot() +
   facet_wrap(~gear, scales = "free_x")
 ```
 
-Catch data are available at a smaller spatial scale than composition data, but we know there are within region differences in catch rates. Therefore, I fit the abundance portion of the model at the scale of PFMAs, then generated summed predictions at the catch region level (Fig. 3). *Issue 3* However certain PFMAs are never fished in certain months, so the summed regional predictions are messy and will underestimate true abundance. One option is to crop the input data to only months where we have full coverage. Another is to generate predictions for an "average" stat area within a region by treating area as a random effect (not sure how to code this since levels aren't shared among regions). Similarly the commercial data are available at a finer scale (daily) than the rec data (monthly). If we fit the model to aggregated data, the predictions are more comparable, but the uncertaintly increases because there may be only 1 or 2 samples per strata (depending on the coverage among years).
+Catch data are available at a smaller spatial scale than composition data, but we know there are within region differences in catch rates. Therefore, I fit the abundance portion of the model at the scale of PFMAs, then generated summed predictions at the catch region level (Fig. 3). However certain PFMAs are never fished in certain months, so the summed regional predictions are messy and will underestimate true abundance (see issues below). Here we generate predictions assuming overall mean effort (i.e. does not account for seasonal changes in effort which is substantial).
 
 ```{r negBinPreds, echo=FALSE, fig.cap="Figure 3. Predicted aggregate abundance using commercial data."}
 comm_abund <- readRDS(here::here("figs", "model_pred", "neg_bin_only",
@@ -76,3 +76,19 @@ ggpubr::annotate_figure(p,
 ```
 
 Since the uncertainty associated with parameter estimates for the multinomial fixed effects explode when there are zero observations of a stock in a given strata, pre-processing involves aggregating stock into higher level groups or strata, as well as infilling the dataset by adding small values. Here are predictions for higher-level regional aggregates (approximately equivalent to PST regional groupings). I've also generated predictions (not shown) for a "Canadian-centric" audience, where the focal units are management units and everything else is binned as "Other".
+
+```{r multiPreds, echo=FALSE, fig.cap="Figure 4. Predicted stock composition using commercial data."}
+comm_comp <- readRDS(here::here("figs", "model_pred", "multinomial_only",
+                      "gsi_troll_pst_multinomial_pred.rds"))
+comm_comp
+```
+
+In the interest of brevity (and because they're just the two model components multiplied), stock-specific abundance estimates aren't shown.
+
+### Issues
+1. Should commercial catch data be rolled up to generate predictions at same scale as recreational? Results in data loss because often only one or two datapoints per strata, but less likely to confuse readers (otherwise jumping between mean daily catches by month for commercial and mean monthly catchs for rec).
+2. Should generated predictions include interannual variability, e.g. by adding random noise from hyperdistribution for year effects? If so, what's the easiest way to incorporate this into the template?
+3. How do we generate meaningful, but unbiased estimates of aggregate abundance?  
+  + a. Gappy PFMA catches can be addressed by cropping the input data to only months where we have full coverage. Another option is to generate predictions for an "average" PFMA within a region by treating area as a random effect (not sure how to code this since levels aren't shared among regions). 
+  + b. Effort can be set at monthly or overall mean values. Former provides a more accurate estimate of harvest, but latter provides a more accurate estimate of abundance. 
+4. Is it worth running the model again with CWT data in place of genetics data for the composition component? This is straightforward to do, but I'm worried it will be very cumbersome to impress and we would have to account for interannual variability in marking rates. 

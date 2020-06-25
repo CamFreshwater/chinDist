@@ -128,7 +128,7 @@ comp <- tibble(
     data = pmap(list(sample, grouping_col, raw_data), .f = clean_comp)
   )
 
-## PREP MODEL INPUTS -----------------------------------------------------------
+## PREP INPUTS ----------------------------------------------------------------
 
 prep_multinomial_inputs <- function(comp_in, 
                      # month_range = c(1, 12), 
@@ -231,23 +231,14 @@ prep_multinomial_inputs <- function(comp_in,
 #                  "can_comm" = can_comm_trim, "can_rec" = can_legal_trim)
 
 
-# add model parameters 
-comp2 <- comp %>%
-  mutate(model_inputs = map2(data, dataset,
-                             .f = prep_multinomial_inputs))
-
-map(gsi_list, function(x) print(x$raw_freq_table))
-can_legal_trim$raw_freq_table
-
-
-## RUN MODEL -------------------------------------------------------------------
+# FIT --------------------------------------------------------------------------
 
 compile(here::here("src", "multinomial_hier2.cpp"))
 dyn.load(dynlib(here::here("src", "multinomial_hier2")))
 
-ssdr_list <- map(gsi_list, function (x) {
+fit_model <- function(x) {
   ## Make a function object
-  x <- cwt_in
+  # x <- comp2$model_inputs[[1]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"), 
@@ -259,23 +250,33 @@ ssdr_list <- map(gsi_list, function (x) {
   ## Get parameter uncertainties and convergence diagnostics
   sdr <- sdreport(obj)
   ssdr <- summary(sdr)
-
+  
   f_name <- paste(x$data_type, "multinomial_ssdr.RDS", sep = "_")
   saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
   
   return(ssdr)
-})
+}
 
+
+# add model parameters and fit (exclude CWT for now)
+comp2 <- comp %>%
+  filter(sample == "gsi") %>% 
+  mutate(model_inputs = map2(data, dataset,
+                             .f = prep_multinomial_inputs),
+         ssdr = map(model_inputs, .f = fit_model))
+
+tt <- fit_model(comp2$model_inputs[[4]])
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
-ssdr_list <- map(gsi_list, function (x) {
+ssdr_list <- map(comp2$model_inputs, function (x) {
   f_name <- paste(x$data_type, "multinomial_ssdr.RDS", sep = "_")
-  readRDS(here::here("generatedData", "model_fits", f_name))
+  readRDS(here::here("generated_data", "model_fits", f_name))
 })
 
+pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
-plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
+plot_list <- map2(comp2$model_inputs, ssdr_list, function(x, ssdr) {
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks
   stk_names <- colnames(y_obs)
@@ -290,7 +291,8 @@ plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
                         pred_prob_se =  pred_mat[ , "Std. Error"]) %>% 
     cbind(pred_dat2, .) %>%
     mutate(pred_prob_low = pred_prob_est + (qnorm(0.025) * pred_prob_se),
-           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se)) 
+           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se), 
+           region = abbreviate(region, minlength = 4)) 
   
   # calculate raw proportion data for comparison
   raw_prop <- x$long_data %>% 
@@ -300,25 +302,34 @@ plot_list <- map2(gsi_list, ssdr_list, function(x, ssdr) {
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
     mutate(samp_g_ppn = samp_g / samp_total,
-           stock = fct_reorder(agg, desc(samp_g_ppn))) 
+           stock = fct_reorder(agg, desc(samp_g_ppn)), 
+           region = abbreviate(region, minlength = 4)) 
   
   pred_plot <- ggplot() +
-    geom_point(data = raw_prop, 
-               aes(x = month, y = samp_g_ppn, fill = region),
-               shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
     geom_pointrange(data = pred_ci,
-                    aes(x = as.factor(month), y = pred_prob_est, 
+                    aes(x = as.numeric(as.character(month)), y = pred_prob_est, 
                         ymin = pred_prob_low, ymax = pred_prob_up, 
                         fill = region), 
                     shape = 21, size = 0.4, position = position_dodge(0.6)) +
     labs(y = "Probability", x = "Month") +
+    scale_x_continuous(breaks = seq(1, 12, by = 1)) +
+    scale_fill_manual(name = "Region", values = pal) +
     facet_wrap(~stock) +
     ggsidekick::theme_sleek()
+  pred_plot_raw <- pred_plot +
+    geom_point(data = raw_prop, 
+               aes(x = as.numeric(as.character(month)), 
+                   y = samp_g_ppn, fill = region),
+               shape = 21, alpha = 0.4, position = position_dodge(0.6)) 
   
   f_name <- paste(x$data_type, "multinomial_pred.pdf", sep = "_")
   pdf(here::here("figs", "model_pred", "multinomial_only", f_name))
-  print(pred_plot)
+  print(pred_plot_raw)
   dev.off()
+  
+  f_name2 <- paste(x$data_type, "multinomial_pred.rds", sep = "_")
+  saveRDS(pred_plot,
+          here::here("figs", "model_pred", "multinomial_only", f_name2))
 })
 
 
