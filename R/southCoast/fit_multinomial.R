@@ -24,8 +24,6 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                           "wcviIndProbsLong.rds"))
 
-
-
 # helper function to calculate aggregate probs
 calc_max_prob <- function(grouped_data, full_data, thresh = 0.75) {
   out <- grouped_data %>% 
@@ -146,7 +144,7 @@ prep_multinomial_inputs <- function(comp_in,
     ungroup() %>%
     droplevels() %>%
     select(id, region, area, year, month, season, agg, #agg_prob, 
-           pres)
+           pres) 
   
   # dummy dataset to replace missing values 
   dum <- gsi_trim %>% 

@@ -235,7 +235,11 @@ rec_long <- rec_full %>%
     pres = 1,
     area_n = as.numeric(as.character(PFMA)),
     region = as.factor(region), 
-    area = as.factor(PFMA),
+    area = case_when(
+      is.na(PFMA) ~ "20_121_21",
+      TRUE ~ as.character(PFMA) 
+    ),
+    area =  as.factor(area),
     temp_strata = paste(month_n, region, sep = "_"),
     gear = "sport"
   ) %>% 

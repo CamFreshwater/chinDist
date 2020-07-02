@@ -92,3 +92,4 @@ In the interest of brevity (and because they're just the two model components mu
   + a. Gappy PFMA catches can be addressed by cropping the input data to only months where we have full coverage. Another option is to generate predictions for an "average" PFMA within a region by treating area as a random effect (not sure how to code this since levels aren't shared among regions). 
   + b. Effort can be set at monthly or overall mean values. Former provides a more accurate estimate of harvest, but latter provides a more accurate estimate of abundance. 
 4. Is it worth running the model again with CWT data in place of genetics data for the composition component? This is straightforward to do, but I'm worried it will be very cumbersome to impress and we would have to account for interannual variability in marking rates. 
+5. How can we incorporate uncertainty in recreational catch? Provided as mean + SE for each PFMA subarea.
