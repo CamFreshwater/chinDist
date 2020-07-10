@@ -11,13 +11,11 @@ library(ggplot2)
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal", 
-         month %in% c("5", "6", "7", "8", "9")) %>% 
+  filter(legal == "legal") %>% 
   mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "wcviIndProbsLong.rds")) %>%
-  filter(month %in% c("5", "6", "7", "8", "9")) %>%
   mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
   
 
@@ -66,9 +64,10 @@ clean_comp <- function(grouping_col, raw_data, ...) {
 
 # combined tibble 
 comp <- tibble(
+  sample = rep("gsi", 4),
   fishery = rep(c("troll", "sport"), times = 2),
   grouping = rep(c(rep("pst", 2), rep("can", 2)), 1),
-  dataset = paste(fishery, grouping, sep = "_"),
+  dataset = paste(sample, fishery, grouping, sep = "_"),
   # incorporate raw_comp data
   raw_data = list(comm, rec, comm, rec)
 ) %>% 
@@ -82,27 +81,27 @@ comp <- tibble(
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-comp_in <- comp$data[[1]]
+comp_in <- comp$data[[3]]
 
 prep_dir_inputs <- function(comp_in, data_type) {
   gsi_trim <- comp_in %>% 
     group_by(region, month, year) %>%
     mutate(nn = sum(agg_prob)) %>%
-    #remove strata with less than 50 individuals total
-    filter(!nn < 50) %>%
+    #remove strata with less than 100 individuals total (necessary for 
+    #convergence for Canadian specific predictions)
+    filter(!nn < 100) %>%
     ungroup() %>%
     droplevels() %>%
     select(sample_id, region, year, month, season, agg, agg_prob) %>%
     distinct()
   
   gsi_wide <- gsi_trim %>% 
-    pivot_wider(., names_from = agg, values_from = agg_prob) %>% 
+    pivot_wider(., names_from = agg, values_from = agg_prob) %>%
     mutate_if(is.numeric, ~replace_na(., 0.000001))
   
   y_obs <- gsi_wide %>% 
     select(-c(sample_id:season)) %>% 
     as.matrix() 
-  # y_obs <- round(y_obs, 0)
 
   yr_vec <- as.numeric(gsi_wide$year) - 1
   fix_mm <- model.matrix(~ region + month, gsi_wide) #fixed covariates only
@@ -131,23 +130,22 @@ prep_dir_inputs <- function(comp_in, data_type) {
        "long_data" = gsi_trim, "wide_data" = gsi_wide)
 }
 
-
+# add model parameters
+comp2 <- comp %>%
+  mutate(model_inputs = map2(data, dataset, .f = prep_dir_inputs))
+         
 # FIT --------------------------------------------------------------------------
 
 compile(here::here("src", "dirichlet_randInt.cpp"))
 dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
-# compile(here::here("src", "dirichlet_fixInt.cpp"))
-# dyn.load(dynlib(here::here("src", "dirichlet_fixInt")))
-
 fit_model <- function(x) {
   ## Make a function object
-  # x <- comp2$model_inputs[[1]]
+  # x <- comp2$model_inputs[[3]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
                    DLL = "dirichlet_randInt"
-                   # DLL = "dirichlet_fixInt"
   )
   
   ## Call function minimizer
@@ -157,24 +155,20 @@ fit_model <- function(x) {
   sdr <- sdreport(obj)
   ssdr <- summary(sdr)
   
-  f_name <- paste(x$data_type, "multinomial_ssdr.RDS", sep = "_")
+  f_name <- paste(x$data_type, "dirichlet_ssdr.RDS", sep = "_")
   saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
   
   return(ssdr)
 }
 
-
-# add model parameters and fit (exclude CWT for now)
-comp2 <- comp %>%
-  mutate(model_inputs = map2(data, dataset,
-                             .f = prep_dir_inputs),
-         ssdr = map(model_inputs, .f = fit_model))
+# fit
+map(comp2$model_inputs, .f = fit_model)
 
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
 ssdr_list <- map(comp2$model_inputs, function (x) {
-  f_name <- paste(x$data_type, "multinomial_ssdr.RDS", sep = "_")
+  f_name <- paste(x$data_type, "dirichlet_ssdr.RDS", sep = "_")
   readRDS(here::here("generated_data", "model_fits", f_name))
 })
 
@@ -188,7 +182,7 @@ plot_list <- map2(comp2$model_inputs, ssdr_list, function(x, ssdr) {
   pred_dat <- x$pred_dat
   
   pred_dat2 <- purrr::map_dfr(seq_len(k), ~pred_dat)
-  pred_mat <- ssdr[rownames(ssdr) %in% "pred_probs", ]
+  pred_mat <- ssdr[rownames(ssdr) %in% "pred_pi_prop", ]
   pred_ci <- data.frame(stock = as.character(rep(stk_names, 
                                                  each = nrow(pred_dat))),
                         pred_prob_est = pred_mat[ , "Estimate"],
@@ -201,7 +195,7 @@ plot_list <- map2(comp2$model_inputs, ssdr_list, function(x, ssdr) {
   # calculate raw proportion data for comparison
   raw_prop <- x$long_data %>% 
     group_by(region, month, year, agg) %>%
-    summarize(samp_g = length(unique(id))) %>% 
+    summarize(samp_g = sum(agg_prob)) %>% 
     group_by(region, month, year) %>%
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
@@ -226,54 +220,12 @@ plot_list <- map2(comp2$model_inputs, ssdr_list, function(x, ssdr) {
                    y = samp_g_ppn, fill = region),
                shape = 21, alpha = 0.4, position = position_dodge(0.6)) 
   
-  f_name <- paste(x$data_type, "multinomial_pred.pdf", sep = "_")
-  pdf(here::here("figs", "model_pred", "multinomial_only", f_name))
+  f_name <- paste(x$data_type, "dirichlet_pred.pdf", sep = "_")
+  pdf(here::here("figs", "model_pred", "dirichlet_only", f_name))
   print(pred_plot_raw)
   dev.off()
   
-  f_name2 <- paste(x$data_type, "multinomial_pred.rds", sep = "_")
+  f_name2 <- paste(x$data_type, "dirichlet_pred.rds", sep = "_")
   saveRDS(pred_plot,
-          here::here("figs", "model_pred", "multinomial_only", f_name2))
+          here::here("figs", "model_pred", "dirichlet_only", f_name2))
 })
-
-
-## HISTOGRAMS SHOWING GSI DIST -------------------------------------------------
-
-# as above but without removing values below threshold
-calc_max_prob2 <- function(grouped_data, dataset) {
-  grouped_data %>% 
-    summarize(agg_prob = sum(adj_prob)) %>% 
-    arrange(id, desc(agg_prob)) %>%
-    ungroup() %>% 
-    group_by(id) %>% 
-    mutate(max_assignment = max(agg_prob)) %>% 
-    filter(!agg_prob < max_assignment) %>% 
-    ungroup() %>% 
-    distinct() %>% 
-    mutate(dataset = dataset)
-}
-
-rec_pst_h <- rec %>% 
-  pool_aggs() %>% 
-  group_by(id, pst_agg) %>%
-  calc_max_prob2(., dataset = "rec_pst")
-comm_pst_h <- comm %>% 
-  pool_aggs() %>% 
-  group_by(id, pst_agg) %>%
-  calc_max_prob2(., dataset = "comm_pst")
-#aggregate with Canadian CU focus
-rec_can_h <- rec %>% 
-  pool_aggs() %>% 
-  group_by(id, reg1) %>%
-  calc_max_prob2(., dataset = "rec_can")
-comm_can_h <- comm %>% 
-  pool_aggs() %>% 
-  group_by(id, reg1) %>%
-  calc_max_prob2(., dataset = "comm_can")
-
-list(rec_pst_h, comm_pst_h, rec_can_h, comm_can_h) %>% 
-  bind_rows() %>% 
-  ggplot(.) +
-  geom_histogram(aes(max_assignment)) +
-  ggsidekick::theme_sleek() +
-  facet_wrap(~ dataset)
