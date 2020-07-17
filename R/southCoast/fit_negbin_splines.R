@@ -37,7 +37,10 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #recreational catch data
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
                                 "monthlyCatch_rec.RDS")) %>% 
-  #group by subarea to get rid of adipose and released legal categories
+  #drop sublegal fish and regions without genetics
+  filter(legal == "legal",
+         !region %in% c("NWVI", "SWVI")) %>% 
+  #group by subarea to get rid of adipose and released legal duplicates
   group_by(month, month_n, year, area, subarea, region, legal) %>% 
   mutate(subarea_catch = sum(mu_catch),
          subarea_eff = mean(mu_boat_trips)) %>% 
@@ -54,17 +57,16 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   # drop months with minimal catch estimates
   filter(!month_n < 5,
          !month_n > 9) %>% 
+  # drop areas with fewer than 10 datapoints
+  group_by(area_n) %>% 
+  add_tally() %>% 
+  ungroup() %>% 
+  filter(!n < 10) %>% 
   droplevels()
 
-table(rec_catch$month_n, rec_catch$area)
+table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
 # PREP DATA --------------------------------------------------------------------
-
-catch_dat <- comm_catch %>% 
-  filter(region == "NWVI"#,
-         # !month_n < 5,
-         # !month_n > 9
-         )
 
 prep_catch <- function (catch_dat, data_type = NULL, kk = 4) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
@@ -128,24 +130,20 @@ prep_catch <- function (catch_dat, data_type = NULL, kk = 4) {
        "input_data" = catch_dat, "m1" = m1)
 }
 
-comm_list <- prep_catch(catch_dat, data_type = "comm")
-
+comm_list <- prep_catch(comm_catch, data_type = "comm")
+rec_list <- prep_catch(rec_catch, data_type = "rec")
+fishery_list <- list(comm_list, rec_list)
 
 # FIT --------------------------------------------------------------------------
 
 # Compile
-compile(here::here("src", "negbin_1re.cpp"))
-dyn.load(dynlib(here::here("src", "negbin_1re")))
-
 compile(here::here("src", "negbin_1re_cumsum.cpp"))
 dyn.load(dynlib(here::here("src", "negbin_1re_cumsum")))
 
-
-# ssdr_list <- vector(length = length(fishery_list), mode = "list")
-# for (i in seq_along(fishery_list)) { 
-  dum <- comm_list
+ssdr_list <- vector(length = length(fishery_list), mode = "list")
+for (i in seq_along(fishery_list)) {
+  dum <- fishery_list[[i]]
   obj <- MakeADFun(dum$data, dum$parameters, random = c("z1_k"), 
-                   # DLL = "negbin_fe")
                   DLL = "negbin_1re_cumsum")
   
   ## Call function minimizer
@@ -155,25 +153,21 @@ dyn.load(dynlib(here::here("src", "negbin_1re_cumsum")))
   sdr <- sdreport(obj)
   ssdr <- summary(sdr)
   
-#   f_name <- paste(dum$data_type, "negbin_ssdr.RDS", sep = "_")
-#   saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
-#   
-#   ssdr_list[[i]] <- ssdr
-# }
+  f_name <- paste(dum$data_type, "negbin_spline_ssdr.RDS", sep = "_")
+  saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
 
+  ssdr_list[[i]] <- ssdr
+}
   
-  
-  # ssdr_list <- map(fishery_list, function(x) {
-  #   f_name <- paste(x$data_type, "negbin_ssdr.RDS", sep = "_")
-  #   readRDS(here::here("generated_data", "model_fits", f_name))
-  # })
-  # 
-  # pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
-  # 
-  # pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
-    
-  in_list <- comm_list
-  in_ssdr <- ssdr
+ssdr_list <- map(fishery_list, function(x) {
+  f_name <- paste(x$data_type, "negbin_ssdr.RDS", sep = "_")
+  readRDS(here::here("generated_data", "model_fits", f_name))
+})
+
+# color pallette
+pal <- readRDS(here::here("generated_data", "color_pal.RDS"))  
+
+pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   catch <- in_list$input_data
   ssdr <- in_ssdr
   data_type <- in_list$data_type
@@ -183,87 +177,59 @@ dyn.load(dynlib(here::here("src", "negbin_1re_cumsum")))
     select(-area) %>% 
     distinct()
   
-  pred_y <- predict.gam(comm_list$m1, 
-                        pred_catch, type = "response") 
-  pred_catch2 <- pred_catch %>% 
-    mutate(y = pred_y)
+  # plot simple gam predictions for comparison  
+  # pred_y <- predict.gam(in_list$m1, 
+  #                       pred_catch, type = "response") 
+  # pred_catch2 <- pred_catch %>% 
+  #   mutate(y = pred_y)
   
+  # abundance across areas
+  ylab = ifelse(data_type == "rec", "Predicted Monthly Catch Rate", 
+                "Predicted Daily Catch Rate")
   abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund", ] 
   pred_ci <- data.frame(pred_est = abund_pred[ , "Estimate"],
                         pred_se =  abund_pred[ , "Std. Error"]) %>%
     cbind(pred_catch, .) %>% 
     mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
-           pred_up = pred_est + (qnorm(0.975) * pred_se)) 
-
-  ggplot(data = pred_ci, aes(x = month_n)) +
+           pred_up = pred_est + (qnorm(0.975) * pred_se),
+           area = fct_reorder(area, as.numeric(region)))
+  
+  area_preds <- ggplot(data = pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_est, colour = region )) +
     geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region), 
                 alpha = 0.5)  +
-    geom_line(data = pred_catch2, aes(x = month_n, y = y), col = "black") +
-    facet_wrap(~area)
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_colour_manual(name = "Region", values = pal) +
+    # geom_line(data = pred_catch2, aes(x = month_n, y = y), col = "black") +
+    facet_wrap(~area, scales = "free_y") +
+    labs(x = "Month", y = ylab) +
+    ggsidekick::theme_sleek()
   
+  # cumulative abundance across regions
   agg_abund_pred <- ssdr[rownames(ssdr) %in% "agg_pred_abund", ] 
   agg_pred_ci <- data.frame(pred_est = agg_abund_pred[ , "Estimate"],
-                        pred_se =  agg_abund_pred[ , "Std. Error"]) %>%
+                            pred_se =  agg_abund_pred[ , "Std. Error"]) %>%
     cbind(agg_pred_catch, .) %>% 
     mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
            pred_up = pred_est + (qnorm(0.975) * pred_se)) 
-  ggplot(data = agg_pred_ci, aes(x = month_n)) +
+  
+  agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_est, colour = region)) +
     geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region), 
-                alpha = 0.5) 
+                alpha = 0.5) +
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_colour_manual(name = "Region", values = pal) +
+    labs(x = "Month", y = ylab) +
+    ggsidekick::theme_sleek()
   
-
-  
-  ## plot predictions across different levels of effort
-  # pull coeficients
-  abund_b <- ssdr[rownames(ssdr) %in% "b1_j", ]
-  
-  # generate data for each factor level
-  pred_eff <- catch %>% 
-    select(area, month, eff_z, eff_z2) %>% 
-    group_by(area, month) %>% 
-    sample_n(., size = 50, replace = TRUE) %>% 
-    ungroup()
-  pred_mm2 <- model.matrix(~ area + month + eff_z + eff_z2, pred_eff)
-  pred_catch <- pred_mm2 %*% abund_b 
-  pred_plot <- pred_eff %>% 
-    mutate(log_catch = pred_catch[ , 'Estimate'],
-           catch = exp(log_catch),
-           dataset = "pred")
-  
-  if (length(unique(catch$area)) > 9) {
-    subset_areas <- sample(unique(catch$area), size = 9)
-    subset_months <- sample(unique(catch$month), size = 3)
-  } else {
-    subset_areas <- unique(catch$area)
-    subset_months <- unique(catch$month)
-  }
-  
-  var_effort_preds <- catch %>% 
-    mutate(dataset = "obs") %>% 
-    select(catch, dataset, area, month) %>% 
-    rbind(., 
-          pred_plot %>% 
-            select(catch, dataset, area, month)
-    ) %>% 
-    filter(area %in% subset_areas,
-           month %in% subset_months) %>% 
-    ggplot(.) +
-    geom_boxplot(aes(x = month, y = catch, fill = dataset)) +
-    facet_wrap(~ area, nrow = 3, scales = "free_y") +
-    ggsidekick::theme_sleek() +
-    labs(fill = "Data", title = data_type)
-  
-  f_name <- paste(data_type, "negbin_prediction.pdf", sep = "_")
+  f_name <- paste(data_type, "negbin_spline_prediction.pdf", sep = "_")
   pdf(here::here("figs", "model_pred", "neg_bin_only", f_name))
-  print(real_preds)
+  print(area_preds)
   print(agg_preds)
-  print(var_effort_preds)
   dev.off()
   
-  f_name2 <- paste(data_type, "negbin_predictions.RDS", sep = "_")
-  plot_list_out <- list(real_preds, agg_preds)
+  f_name2 <- paste(data_type, "negbin_spline_predictions.RDS", sep = "_")
+  plot_list_out <- list(area_preds, agg_preds)
   saveRDS(plot_list_out, 
           here::here("figs", "model_pred", "neg_bin_only", f_name2))
-  # })
+})
