@@ -68,7 +68,7 @@ table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
 # PREP DATA --------------------------------------------------------------------
 
-prep_catch <- function (catch_dat, data_type = NULL, kk = 4) {
+prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
   
   # model matrix for fixed effects
@@ -78,7 +78,7 @@ prep_catch <- function (catch_dat, data_type = NULL, kk = 4) {
   months <- unique(catch_dat$month_n)
   n_months <- length(months)
   spline_type <- ifelse(n_months == 12, "cc", "tp")
-  m1 <- gam(catch ~ s(month_n, bs = spline_type, k = kk, by = area) +
+  m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
                    eff_z + eff_z2, 
                  knots = list(month_n = c(min(months), max(months))),
                  data = catch_dat,
