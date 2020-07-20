@@ -66,23 +66,25 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 
 table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
+ggplot(rec_catch, aes(x = eff_z, y = catch)) +
+  geom_point() +
+  stat_smooth(method = "gam", k = 2) +
+  facet_wrap(~area_n)
+
 # PREP DATA --------------------------------------------------------------------
 
 prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
-  
-  # model matrix for fixed effects
-  # fix_mm1 <- model.matrix(~ area + month + eff_z + eff_z2, catch_dat)
   
   #generate model matrix based on GAM
   months <- unique(catch_dat$month_n)
   n_months <- length(months)
   spline_type <- ifelse(n_months == 12, "cc", "tp")
   m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
-                   eff_z + eff_z2, 
-                 knots = list(month_n = c(min(months), max(months))),
-                 data = catch_dat,
-                 family = nb)
+               s(eff_z, bs = "tp", k = 4),
+             knots = list(month_n = c(min(months), max(months))),
+             data = catch_dat,
+             family = nb)
   fix_mm <- predict(m1, type = "lpmatrix")
   
   # make predictive model matrix including null values for effort
@@ -91,8 +93,8 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
                   max(catch_dat$month_n),
                   length.out = 50),
     area = unique(catch_dat$area),
-    eff_z = 0,
-    eff_z2 = 0
+    eff_z = 0#,
+    # eff_z2 = 0
   ) %>% 
     left_join(., catch_dat %>% select(region, area), by = "area") %>% 
     mutate(reg_month = paste(region, round(month_n, 3), sep = "_")) %>% 
@@ -100,7 +102,6 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
   pred_mm_catch <- predict(m1, pred_dat, type = "lpmatrix")
   
   # construct factor key for regional aggregates associated with areas
-  # pred_dat_catch <- make_pred_dat(catch_dat) 
   grouping_vec <- as.numeric(as.factor(as.character(pred_dat$reg_month))) - 1
   grouping_key <- unique(grouping_vec)
   
@@ -168,6 +169,7 @@ ssdr_list <- map(fishery_list, function(x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))  
 
 pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
+  # in_list <- dum
   catch <- in_list$input_data
   ssdr <- in_ssdr
   data_type <- in_list$data_type
