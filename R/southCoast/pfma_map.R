@@ -13,18 +13,7 @@ library(mapdata)
 theme_set(ggsidekick::theme_sleek())
 
 # relevant stat areas based on composition data 
-rec_areas <- readRDS(here::here("data", "gsiCatchData", "rec", 
-                          "recIndProbsLong.rds")) %>% 
-  filter(!is.na(area_n)) %>% 
-  pull(area_n) %>% 
-  unique()
-# commercial data
-comm_areas <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "wcviIndProbsLong.rds")) %>% 
-  pull(area_n) %>% 
-  unique()
-areas <- c(rec_areas, comm_areas)
-
+areas <- readRDS(here::here("data", "gsiCatchData", "pfma", "areas_to_plot.RDS"))
 
 #big map
 n_am <- map_data("worldHires", region = c("usa", "canada")) %>%
