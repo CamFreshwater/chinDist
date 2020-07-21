@@ -190,10 +190,10 @@ full_dat <- tibble(
 
 catch_dat <- full_dat$catch_data[[1]]
 comp_dat <- full_dat$comp_long[[1]]
-n_knots <- 4
+n_knots <- 3
 
 # function to generate TMB data inputs from wide dataframes
-gen_tmb <- function(catch_dat, comp_dat, n_knots) {
+gen_tmb <- function(catch_dat, comp_dat) {
   ## catch data
   yr_vec_catch <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
   
@@ -201,6 +201,7 @@ gen_tmb <- function(catch_dat, comp_dat, n_knots) {
   #retained
   months1 <- unique(catch_dat$month_n)
   spline_type <- ifelse(max(months1) == 12, "cc", "tp")
+  n_knots <- ifelse(max(months1) == 12, 4, 3)
   m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
               s(eff_z, bs = "tp", k = 4),
             knots = list(month_n = c(min(months1), max(months1))),
@@ -273,6 +274,7 @@ gen_tmb <- function(catch_dat, comp_dat, n_knots) {
   
   months2 <- unique(gsi_wide$month_n)
   spline_type <- ifelse(max(months2) == 12, "cc", "tp")
+  n_knots <- ifelse(max(months2) == 12, 4, 3)
   # response variable doesn't matter, since not fit
   m2 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
               s(month_n, bs = spline_type, k = n_knots, by = region), 
@@ -320,7 +322,7 @@ gen_tmb <- function(catch_dat, comp_dat, n_knots) {
 
 #add tmb data assuming average effort predictions (for month specific look at
 # non-spline code)
-tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb, n_knots = 4)
+tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
 
 
 # join all data into a tibble then generate model inputs
@@ -359,18 +361,64 @@ dat2 <- dat %>%
   mutate(sdr = map2(tmb_data, tmb_pars, fit_mod),
          ssdr = map(sdr, summary)
          )
-saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
+saveRDS(dat2b %>% select(-sdr), here::here("generated_data", "model_fits",
                          "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits", 
                            "combined_model_dir.RDS"))
 
 
-## GENERATE PREDICTIONS --------------------------------------------------------
+## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
-ssdr <- dat2$ssdr[[1]]
-pred_dat_comp <- dat2$pred_dat_comp[[1]]
-comp_long <- dat2$comp_long[[1]]
+# function to calculate raw proportions based on observed composition data
+make_raw_prop_dat <- function(comp_long) {
+  comp_long %>%
+    group_by(region, month_n, year, agg) %>%
+    summarize(samp_g = sum(agg_prob)) %>% 
+    group_by(region, month_n, year) %>%
+    mutate(samp_total = sum(samp_g)) %>% 
+    ungroup() %>% 
+    mutate(samp_g_ppn = samp_g / samp_total,
+           stock = fct_reorder(agg, desc(samp_g_ppn))) 
+}
+
+# function to calculate raw stock-specific abundance observations
+# data_type necessary for monthly vs. daily predictions
+make_raw_abund_dat <- function(catch, raw_prop, fishery) {
+  if (fishery == "sport") {
+    dum <-  catch %>% 
+      group_by(region, month_n, year) %>%
+      summarize(
+        #sum rec because subareas each have one monthly value
+        #mean commercial because daily values for each area
+        cum_catch = as.numeric(sum(catch)),
+        cum_effort = as.numeric(sum(eff))) %>% 
+      ungroup()
+  }
+  if (fishery == "troll") {
+    dum <- catch %>% 
+      group_by(region, area, month_n, year) %>% 
+      # calculate daily catch within month first
+      summarize(
+        mu_catch = mean(catch),
+        mu_effort = mean(eff)
+      ) %>% 
+      group_by(region, month_n, year) %>% 
+      summarize(
+        cum_catch = as.numeric(sum(mu_catch)),
+        cum_effort = as.numeric(sum(mu_effort))
+      ) %>% 
+      ungroup()
+  }
+  dum  %>%
+    mutate(agg_cpue = cum_catch / cum_effort,
+           month = as.character(month_n)) %>%
+    left_join(., raw_prop, by = c("region", "month_n", "year")) %>%
+    mutate(catch_g = samp_g_ppn * cum_catch,
+           cpue_g = samp_g_ppn * agg_cpue,
+           region = as.factor(region)) %>%
+    filter(!is.na(stock))
+}
 
 ## Function to generate aggregate abundance predictions (use comp predictions
 # because aggregate)
@@ -400,7 +448,8 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
     cbind(dum, .) %>%
     mutate(pred_prob_low = pmax(pred_prob_est + (qnorm(0.025) * pred_prob_se),
                                 0),
-           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se),
+           pred_prob_up = pmin(pred_prob_est + (qnorm(0.975) * pred_prob_se), 
+                               1),
            comp_abund_est = as.vector(comp_abund_pred[ , "Estimate"]),
            comp_abund_se =  as.vector(comp_abund_pred[ , "Std. Error"]),
            comp_abund_low = pmax(comp_abund_est + (qnorm(0.025) * comp_abund_se),
@@ -408,14 +457,17 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
            comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
 }
 
+
 pred_dat <- dat2 %>% 
-  select(-sdr) %>% 
   mutate(
     #predictions assuming mean effort
     abund_pred_ci = map2(pred_dat_comp, ssdr, gen_abund_pred),
     comp_pred_ci = pmap(list(comp_long, pred_dat_comp, ssdr), 
-                        .f = gen_comp_pred)) %>% 
-  select(dataset:catch_data, abund_pred_ci:comp_pred_ci)
+                        .f = gen_comp_pred),
+    raw_prop = map(comp_long, make_raw_prop_dat),
+    raw_abund = pmap(list(catch_data, raw_prop, fishery), 
+                     .f = make_raw_abund_dat)) %>% 
+  select(dataset:catch_data, abund_pred_ci:raw_abund)
 saveRDS(pred_dat, here::here("generated_data", 
                              "combined_model_dir_predictions.RDS"))
 
@@ -426,7 +478,7 @@ saveRDS(pred_dat, here::here("generated_data",
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
 # source file for plotting functions
-source(here::here("R", "functions", "plot_predictions.R"))
+source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
 reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region))
@@ -442,101 +494,29 @@ file_path <- here::here("figs", "model_pred", "combined")
 
 
 ## Plot abundance
-rec_abund <- plot_abund(pred_dat$abund_pred_ci[[1]], 
+rec_abund <- plot_abund(pred_dat$abund_pred_ci[[3]], 
                         ylab = "Predicted\nMonthly Catch")
-comm_abund <- plot_abund(pred_dat$abund_pred_ci[[2]], 
-                         ylab = "Predicted\nDaily Catch")
-rec_abund2 <- plot_abund(pred_dat$abund_pred_ci2[[1]], 
-                        ylab = "Predicted\nMonthly Catch")
-comm_abund2 <- plot_abund(pred_dat$abund_pred_ci2[[2]], 
+comm_abund <- plot_abund(pred_dat$abund_pred_ci[[1]], 
                          ylab = "Predicted\nDaily Catch")
 x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
 
-pdf(paste(file_path, "pred_abundance.pdf", sep = "/"))
+pdf(paste(file_path, "pred_abundance_splines.pdf", sep = "/"))
 cowplot::plot_grid(rec_abund, comm_abund, nrow = 2) %>% 
   arrangeGrob(., bottom = x.grob, 
               top = textGrob("Mean Effort", gp = gpar(fontsize=11))) %>% 
   grid.arrange
-cowplot::plot_grid(rec_abund2, comm_abund2, nrow = 2) %>% 
-  arrangeGrob(., bottom = x.grob, 
-              top = textGrob("Variable Effort", gp = gpar(fontsize=11))) %>% 
-  grid.arrange
 dev.off()
 
 
-## Composition predictions (effort doesn't impact predictions)
-pdf(paste(file_path, "composition.pdf", sep = "/"))
-map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp)
+## Composition prediction
+pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
+map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, raw = TRUE)
 dev.off()
 
 # combined estimates of stock-specific CPUE
-pdf(paste(file_path, "stock-specific_abund_meanE.pdf", sep = "/"))
+pdf(paste(file_path, "stock-specific_abund_splines.pdf", sep = "/"))
 map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund, raw = FALSE)
+map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund, 
+     raw = FALSE, facet_scales = "fixed")
 dev.off()
-pdf(paste(file_path, "stock-specific_abund_varyE.pdf", sep = "/"))
-map2(pred_dat$comp_pred_ci2, pred_dat$raw_abund, plot_ss_abund)
-dev.off()
 
-
-
-
-
-
-
-
-
-
-
-
-
-# function to calculate raw proportions based on observed composition data
-make_raw_prop_dat <- function(comp_long) {
-  comp_long %>%
-    group_by(region, month, year, agg) %>%
-    summarize(samp_g = length(unique(sample_id))) %>% 
-    group_by(region, month, year) %>%
-    mutate(samp_total = sum(samp_g)) %>% 
-    ungroup() %>% 
-    mutate(samp_g_ppn = samp_g / samp_total,
-           stock = fct_reorder(agg, desc(samp_g_ppn))) 
-}
-
-# function to calculate raw stock-specific abundance observations
-# data_type necessary for monthly vs. daily predictions
-make_raw_abund_dat <- function(catch, raw_prop) {
-  dt <- unique(catch$data_type)
-  
-  if (dt == "rec") {
-    dum <-  catch %>% 
-      group_by(region, month, year) %>%
-      summarize(
-        #sum rec because subareas each have one monthly value
-        #mean commercial because daily values for each area
-        cum_catch = as.numeric(sum(catch)),
-        cum_effort = as.numeric(sum(eff))) %>% 
-      ungroup()
-  }
-  if (dt == "comm") {
-    dum <- catch %>% 
-      group_by(region, area, month, year) %>% 
-      # calculate daily catch within month first
-      summarize(
-        mu_catch = mean(catch),
-        mu_effort = mean(eff)
-      ) %>% 
-      group_by(region, month, year) %>% 
-      summarize(
-        cum_catch = as.numeric(sum(mu_catch)),
-        cum_effort = as.numeric(sum(mu_effort))
-      ) %>% 
-      ungroup()
-  }
-  dum  %>%
-    mutate(agg_cpue = cum_catch / cum_effort,
-           month = as.character(month)) %>%
-    left_join(., raw_prop, by = c("region", "month", "year")) %>%
-    mutate(catch_g = samp_g_ppn * cum_catch,
-           cpue_g = samp_g_ppn * agg_cpue,
-           region = as.factor(region)) %>%
-    filter(!is.na(stock))
-}

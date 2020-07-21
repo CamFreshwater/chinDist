@@ -10,7 +10,7 @@ plot_abund <- function(dat, ylab) {
     geom_line(aes(y = pred_est, colour = region)) +
     geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region), 
                 alpha = 0.5) +
-    labs(x = "", y = "ylab") +
+    labs(x = "", y = ylab) +
     ggsidekick::theme_sleek() +
     # facet_wrap(~region) +
     scale_x_continuous(breaks = seq(months[1], months[2], by = 1)) +
@@ -19,7 +19,7 @@ plot_abund <- function(dat, ylab) {
 }
 
 # Plot composition data 
-plot_comp <- function(comp_pred, #raw_prop, raw = TRUE, 
+plot_comp <- function(comp_pred, raw_prop, raw = TRUE, 
                       ncol = NULL, facet_scales = "free_y") {
   months = range(comp_pred$month_n)
   p <- ggplot(data = comp_pred, aes(x = month_n)) +
@@ -31,21 +31,21 @@ plot_comp <- function(comp_pred, #raw_prop, raw = TRUE,
     scale_x_continuous(breaks = seq(months[1], months[2], by = 1)) +
     labs(y = "Predicted Encounter Probability", x = "Month") +
     facet_wrap(~ stock, ncol = ncol, scales = facet_scales) +
-    ggsidekick::theme_sleek()
+    ggsidekick::theme_sleek() +
+    theme(legend.position="top")
   
- # if (raw == TRUE) {
-  #   p + 
-  #     geom_point(data = raw_prop,
-  #              aes(x = as.numeric(as.character(month)), y = samp_g_ppn, 
-  #                  fill = region),
-  #              shape = 21, alpha = 0.4, position = position_dodge(0.6))
-  # } else {
+ if (raw == TRUE) {
+   p +
+     geom_point(data = raw_prop,
+              aes(x = month_n, y = samp_g_ppn, fill = region),
+              shape = 21, alpha = 0.4, position = position_dodge(0.6))
+ } else {
     p
-  # }
+  }
 }
 
 # Plot stock specific abundance data
-plot_ss_abund <- function(comp_pred, #raw_abund, raw = TRUE
+plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
   months = range(comp_pred$month_n)
   p <- ggplot(data = comp_pred, aes(x = month_n)) +
@@ -56,19 +56,18 @@ plot_ss_abund <- function(comp_pred, #raw_abund, raw = TRUE
     scale_colour_manual(name = "Region", values = pal) +
     scale_x_continuous(breaks = seq(months[1], months[2], by = 1)) +
     labs(y = "Predicted Catch", x = "Month") +
-    facet_wrap(~ stock, ncol = ncol#, scales = facet_scales
-               ) +
+    facet_wrap(~ stock, ncol = ncol, scales = facet_scales) +
     ggsidekick::theme_sleek() +
     theme(legend.position="top")
   
-  # if (raw == TRUE) {
-  #   p + 
-  #     geom_point(data = raw_abund, 
-  #                aes(x = as.numeric(as.character(month)), y = catch_g, 
-  #                    fill = region),
-  #                shape = 21, alpha = 0.3, position = position_dodge(0.6))
-  # } else {
+  if (raw == TRUE) {
+    p +
+      geom_point(data = raw_abund,
+                 aes(x = as.numeric(as.character(month)), y = catch_g,
+                     fill = region),
+                 shape = 21, alpha = 0.3, position = position_dodge(0.6))
+  } else {
     p
-  # }
+  }
 }
 
