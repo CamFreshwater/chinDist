@@ -77,11 +77,10 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
          eff_z)
 
-# confirm one estimate of effort per month-subarea
-# tt <- rec_catch %>%
-#   group_by(subarea, year, month) %>%
-#   summarize(n_eff = length(unique(mu_boat_trips)))
-# range(tt$n_eff)
+# export areas to make maps
+# areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
+# saveRDS(areas_retained, 
+#         here::here("data", "gsiCatchData", "pfma", "areas_to_plot.RDS"))
 
 
 # CLEAN GENETICS  --------------------------------------------------------------
@@ -188,9 +187,9 @@ full_dat <- tibble(
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-catch_dat <- full_dat$catch_data[[1]]
-comp_dat <- full_dat$comp_long[[1]]
-n_knots <- 3
+# catch_dat <- full_dat$catch_data[[1]]
+# comp_dat <- full_dat$comp_long[[1]]
+# n_knots <- 3
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -211,16 +210,15 @@ gen_tmb <- function(catch_dat, comp_dat) {
   
   # generic data frame that is skeleton for both comp and catch predictions
   if (comp_dat$gear[1] == "sport") {
-    pred_dat <- split(comp_dat, comp_dat$region) %>% 
-      map(., function (x) {
+    pred_dat <- group_split(comp_dat, region) %>% 
+      map_dfr(., function (x) {
         expand.grid(
           month_n = seq(min(x$month_n), 
                         max(x$month_n),
                         by = 0.1),
           region = unique(x$region)
         )
-      }) %>% 
-      bind_rows()
+      }) 
   } else {
     pred_dat <- expand.grid(
       month_n = seq(min(comp_dat$month_n), 
@@ -328,10 +326,10 @@ tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
 # join all data into a tibble then generate model inputs
 dat <- full_dat %>% 
   mutate(
-    tmb_data = map(tmb_list, function(x) x$data),
-    tmb_pars = map(tmb_list, function(x) x$pars),
-    pred_dat_catch = map(tmb_list, function(x) x$pred_dat_catch),
-    pred_dat_comp = map(tmb_list, function(x) x$pred_dat_comp)
+    tmb_data = map(tmb_list, "data"),
+    tmb_pars = map(tmb_list, "pars"),
+    pred_dat_catch = map(tmb_list, ~ .$pred_dat_catch),
+    pred_dat_comp = map(tmb_list, ~ .$pred_dat_comp)
   )
 
 
@@ -345,13 +343,16 @@ dat <- full_dat %>%
 compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
-fit_mod <- function(tmb_data, tmb_pars) {
-  obj <- MakeADFun(tmb_data, tmb_pars, 
-                   #dat$tmb_data[[1]], dat$tmb_pars[[1]],
+fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
+  obj <- MakeADFun(#tmb_data, tmb_pars, 
+                   dat$tmb_data[[1]], dat$tmb_pars[[1]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
+  for (i in seq(2, nlminb_loops, length = max(0, nlminb_loops - 1))) {
+    opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
+  }
   sdreport(obj)
   # ssdr <- summary(sdr)
 }
