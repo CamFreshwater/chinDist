@@ -20,8 +20,7 @@ clean_catch <- function(dat) {
            month_n = as.numeric(month),
            month = as.factor(month_n),
            year = as.factor(year),
-           eff_z = as.numeric(scale(eff)),
-           eff_z2 = eff_z^2) %>% 
+           eff_z = as.numeric(scale(eff))) %>% 
     arrange(region, month) 
 }
 
@@ -50,8 +49,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
             eff = sum(subarea_eff),
             cpue = catch / eff) %>% 
   ungroup() %>% 
-  mutate(temp_strata = paste(month_n, region, sep = "_"),
-         region_c = as.character(region),
+  mutate(region_c = as.character(region),
          region = abbreviate(region, minlength = 4))  %>% 
   clean_catch(.) %>% 
   # drop months with minimal catch estimates
@@ -93,16 +91,19 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
                   max(catch_dat$month_n),
                   length.out = 50),
     area = unique(catch_dat$area),
-    eff_z = 0#,
-    # eff_z2 = 0
+    eff_z = 0
   ) %>% 
     left_join(., catch_dat %>% select(region, area), by = "area") %>% 
-    mutate(reg_month = paste(region, round(month_n, 3), sep = "_")) %>% 
+    mutate(month = as.factor(round(month_n, 3)),
+           order = row_number(),
+           reg_month = paste(region, month, sep = "_"),
+           reg_month_f = fct_reorder(factor(reg_month), order)) %>% 
+    select(-order, -reg_month) %>% 
     distinct()
   pred_mm_catch <- predict(m1, pred_dat, type = "lpmatrix")
   
   # construct factor key for regional aggregates associated with areas
-  grouping_vec <- as.numeric(as.factor(as.character(pred_dat$reg_month))) - 1
+  grouping_vec <- as.numeric(pred_dat$reg_month_f) - 1
   grouping_key <- unique(grouping_vec)
   
   data <- list(y1_i = catch_dat$catch,
