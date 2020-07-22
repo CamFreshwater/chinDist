@@ -110,6 +110,12 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   select(-temp_strata2) %>% 
   droplevels()
 
+# tt <- rec %>% 
+#   group_by(pst_agg, month_n, region) %>% 
+#   summarize(cnt = sum(adj_prob))
+# ggplot(tt) +
+#   geom_boxplot(aes(x = as.factor(month_n), y = cnt)) +
+#   facet_wrap(~pst_agg, scales = "free_y")
 
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
@@ -129,13 +135,13 @@ calc_agg_prob <- function(grouped_data, full_data) {
 pool_aggs <- function(full_data) {
   full_data %>% 
     mutate(
-      pst_agg = case_when(
-        grepl("CR-", pst_agg) ~ "CR",
-        grepl("CST", pst_agg) ~ "CA/OR/WA",
-        pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
-        pst_agg %in% c("PSD", "SOG") ~ "SalSea",
-        TRUE ~ pst_agg
-      ),
+      # pst_agg = case_when(
+      #   grepl("CR-", pst_agg) ~ "CR",
+      #   grepl("CST", pst_agg) ~ "CA/OR/WA",
+      #   pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
+      #   pst_agg %in% c("PSD", "SOG") ~ "SalSea",
+      #   TRUE ~ pst_agg
+      # ),
       reg1 = case_when(
         Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
                            "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
@@ -184,6 +190,8 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
+full_dat <- full_dat %>% 
+  filter(grouping == "pst")
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -326,10 +334,10 @@ tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
 # join all data into a tibble then generate model inputs
 dat <- full_dat %>% 
   mutate(
-    tmb_data = map(tmb_list, "data"),
-    tmb_pars = map(tmb_list, "pars"),
-    pred_dat_catch = map(tmb_list, ~ .$pred_dat_catch),
-    pred_dat_comp = map(tmb_list, ~ .$pred_dat_comp)
+    tmb_data = purrr::map(tmb_list, "data"),
+    tmb_pars = purrr::map(tmb_list, "pars"),
+    pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
+    pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   )
 
 
@@ -344,14 +352,16 @@ compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(#tmb_data, tmb_pars, 
-                   dat$tmb_data[[1]], dat$tmb_pars[[1]],
+  obj <- MakeADFun(tmb_data, tmb_pars, 
+                   # dat$tmb_data[[1]], dat$tmb_pars[[1]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
-  for (i in seq(2, nlminb_loops, length = max(0, nlminb_loops - 1))) {
-    opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
+  if (nlminb_loops > 1) {
+    for (i in seq(2, nlminb_loops, length = max(0, nlminb_loops - 1))) {
+      opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
+    }
   }
   sdreport(obj)
   # ssdr <- summary(sdr)
@@ -359,10 +369,10 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
 
 # join all data into a tibble then generate model inputs
 dat2 <- dat %>%
-  mutate(sdr = map2(tmb_data, tmb_pars, fit_mod),
-         ssdr = map(sdr, summary)
+  mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
+         ssdr = purrr::map(sdr, summary)
          )
-saveRDS(dat2b %>% select(-sdr), here::here("generated_data", "model_fits",
+saveRDS(dat2, here::here("generated_data", "model_fits",
                          "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits", 
@@ -465,7 +475,7 @@ pred_dat <- dat2 %>%
     abund_pred_ci = map2(pred_dat_comp, ssdr, gen_abund_pred),
     comp_pred_ci = pmap(list(comp_long, pred_dat_comp, ssdr), 
                         .f = gen_comp_pred),
-    raw_prop = map(comp_long, make_raw_prop_dat),
+    raw_prop = purrr::map(comp_long, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
                      .f = make_raw_abund_dat)) %>% 
   select(dataset:catch_data, abund_pred_ci:raw_abund)
@@ -483,12 +493,9 @@ source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
 reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region))
-# pal <- viridis::viridis(n = length(reg_vals), alpha = 1, 
-#                         begin = 0, end = 1, 
-#                         option = "D")
 pal <- RColorBrewer::brewer.pal(n = length(reg_vals), "Set1")
 names(pal) <- reg_vals
-saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
+# saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
 
 # generic settings
 file_path <- here::here("figs", "model_pred", "combined")
