@@ -167,7 +167,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     droplevels() %>%
     mutate(region_c = as.character(region),
            region = factor(abbreviate(region, minlength = 4))) %>% 
-    select(sample_id, gear, region, region_c, year, month, month_n, season, agg, 
+    select(sample_id, gear, region, region_c, year, month, month_n, season, agg,
            agg_prob) %>%
     distinct()
 }
@@ -190,8 +190,7 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
-full_dat <- full_dat %>% 
-  filter(grouping == "pst")
+
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -211,7 +210,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
   n_knots <- ifelse(max(months1) == 12, 4, 3)
   m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
               s(eff_z, bs = "tp", k = 4),
-            knots = list(month_n = c(min(months1), max(months1))),
+            # knots = list(month_n = c(min(months1), max(months1))),
             data = catch_dat,
             family = nb)
   fix_mm_catch <- predict(m1, type = "lpmatrix")
@@ -284,7 +283,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
   # response variable doesn't matter, since not fit
   m2 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
               s(month_n, bs = spline_type, k = n_knots, by = region), 
-            knots = list(month_n = c(min(months2), max(months2))),
+            # knots = list(month_n = c(min(months2), max(months2))),
             data = gsi_wide)
   fix_mm_comp <- predict(m2, type = "lpmatrix")
   
@@ -343,11 +342,6 @@ dat <- full_dat %>%
 
 ## FIT MODELS ------------------------------------------------------------------
 
-
-# pred_dat <- dat$pred_dat_comp[[2]]
-# n_levels <- nrow(tmb_list[[1]]$data$X2_pred_ij)
-# n_pred_levels <- length(tmb_list[[1]]$data$pred_factor2k_levels)
-
 compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
@@ -372,7 +366,7 @@ dat2 <- dat %>%
   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-saveRDS(dat2, here::here("generated_data", "model_fits",
+saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
                          "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits", 
@@ -385,7 +379,7 @@ dat2 <- readRDS(here::here("generated_data", "model_fits",
 make_raw_prop_dat <- function(comp_long) {
   comp_long %>%
     group_by(region, month_n, year, agg) %>%
-    summarize(samp_g = sum(agg_prob)) %>% 
+    summarize(samp_g = sum(agg_prob)) %>%
     group_by(region, month_n, year) %>%
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
@@ -468,6 +462,27 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
            comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
 }
 
+## Function to reorder stocks for plotting
+stock_reorder <- function(key, comp_data) {
+  if (key == "pst_agg") {
+    out <- comp_data %>% 
+      mutate(stock =  fct_relevel(stock, "CA_ORCST", "CR-sp&su", "CR-bright", 
+                                  "CR-tule", "WACST", "PSD", "SOG", "FR-early", 
+                                  "FR-late", "WCVI", "NBC_SEAK"),
+             stock = fct_recode(stock, "WA-coast" = "WACST", 
+                                "CA/OR-coast" = "CA_ORCST", 
+                                "NBC/SEAK" = "NBC_SEAK"))
+  }
+  if (key == "reg1") {
+    out <- comp_data %>% 
+      mutate(stock =  fct_relevel(stock, "Fraser_Spring_4.2", 
+                                  "Fraser_Spring_5.2", "Fraser_Summer_4.1", 
+                                  "Fraser_Summer_5.2", "Fraser_Fall", "SOMN", 
+                                  "ECVI", "WCVI", "Other"
+      ))
+  }
+  return(out)
+}
 
 pred_dat <- dat2 %>% 
   mutate(
@@ -478,10 +493,13 @@ pred_dat <- dat2 %>%
     raw_prop = purrr::map(comp_long, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
                      .f = make_raw_abund_dat)) %>% 
-  select(dataset:catch_data, abund_pred_ci:raw_abund)
+  select(dataset:catch_data, abund_pred_ci:raw_abund) %>% 
+  mutate(
+    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+  )
 saveRDS(pred_dat, here::here("generated_data", 
                              "combined_model_dir_predictions.RDS"))
-
 # pred_dat <- readRDS(here::here("generated_data",
 #                                "combined_model_predictions.RDS"))
 
@@ -502,9 +520,13 @@ file_path <- here::here("figs", "model_pred", "combined")
 
 
 ## Plot abundance
-rec_abund <- plot_abund(pred_dat$abund_pred_ci[[3]], 
+rec1 <- pred_dat %>% 
+  filter(dataset == "gsi_sport_can") 
+rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
                         ylab = "Predicted\nMonthly Catch")
-comm_abund <- plot_abund(pred_dat$abund_pred_ci[[1]], 
+comm1 <- pred_dat %>% 
+  filter(dataset == "gsi_troll_can") 
+comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
                          ylab = "Predicted\nDaily Catch")
 x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
 
@@ -517,14 +539,94 @@ dev.off()
 
 
 ## Composition prediction
+comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+                   raw = TRUE)
 pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
-map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, raw = TRUE)
+comp_plots
 dev.off()
 
 # combined estimates of stock-specific CPUE
+ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
+                            plot_ss_abund, raw = FALSE)
+ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
+                           plot_ss_abund,  raw = FALSE, facet_scales = "fixed")
 pdf(paste(file_path, "stock-specific_abund_splines.pdf", sep = "/"))
-map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund, raw = FALSE)
-map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, plot_ss_abund, 
-     raw = FALSE, facet_scales = "fixed")
+ss_abund_plots_free
+ss_abund_plots_fix
 dev.off()
 
+
+
+tt <- pred_dat$raw_prop[[2]]
+tt2 <- full_dat$comp_long[[2]] %>% 
+  filter(month_n == "5",
+         region == "JndF") %>% 
+  glimpse()
+tt %>% 
+  filter(month_n == "5",
+         region == "JndF")
+
+
+full_dat$comp_long[[2]] %>% 
+  filter(month_n == "5",
+         region == "JndF") %>%
+  group_by(region, month_n, year, agg) %>%
+  summarize(samp_g = sum(agg_prob)) %>%
+  group_by(region, month_n, year) %>%
+  mutate(samp_total = sum(samp_g)) %>%
+  ungroup() %>% 
+  mutate(samp_g_ppn = samp_g / samp_total,
+         stock = fct_reorder(agg, desc(samp_g_ppn))) %>% 
+  glimpse()
+
+full_dat$comp_long[[2]] %>% 
+  filter(month_n == "5",
+         region == "JndF") %>%
+  group_by(region, month_n, year, agg) %>%
+  summarize(samp_g = sum(agg_prob)) %>%
+  group_by(region, month_n, year) %>%
+  mutate(samp_total = sum(samp_g)) %>%
+  ungroup() %>% 
+  mutate(samp_g_ppn = samp_g / samp_total,
+         stock = fct_reorder(agg, desc(samp_g_ppn))) %>% 
+  glimpse()
+
+# helper function to calculate aggregate probs
+calc_agg_prob <- function(grouped_data, full_data) {
+  grouped_data %>% 
+    summarize(agg_prob = sum(adj_prob)) %>% 
+    arrange(sample_id, desc(agg_prob)) %>%
+    ungroup() %>% 
+    distinct() %>% 
+    left_join(.,
+              full_data %>% 
+                select(sample_id, temp_strata:area_n) %>% 
+                distinct(),
+              by = "sample_id")
+}
+
+
+tt <- full_dat$raw_data[[2]] %>%
+  filter(region == "Juan de Fuca",
+         month_n == "5") %>% 
+  pool_aggs(.) %>% 
+  rename(agg = "reg1") %>%
+  group_by(sample_id, agg) %>%
+  calc_agg_prob(., full_dat$raw_data[[2]]) %>% 
+  group_by(region, month, year) %>%
+  mutate(nn = sum(agg_prob)) %>% 
+  arrange(desc(year)) %>% 
+  ungroup() %>%
+  droplevels() %>%
+  mutate(region_c = as.character(region),
+         region = factor(abbreviate(region, minlength = 4))) %>% 
+  select(sample_id, gear, region, year, month, month_n, season, agg,
+         agg_prob, nn) %>% 
+  distinct()
+
+tt %>% 
+  group_by(region, month_n, year) %>%
+  summarize(samp_g = sum(agg_prob)) 
+
+tt[1:3,] %>% 
+  
