@@ -17,11 +17,10 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
          !month_n < 5,
          !month_n > 9) %>%
   mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
-# commercial data
-comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "wcviIndProbsLong.rds")) %>%
-  mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
-  
+rec2 <- rec %>% 
+  filter(region == "Juan de Fuca")
+rec3 <- rec %>% 
+  filter(region %in% c("Juan de Fuca", "Johnstone Strait"))
 
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
@@ -44,13 +43,6 @@ calc_agg_prob <- function(grouped_data, full_data) {
 pool_aggs <- function(full_data) {
   full_data %>% 
     mutate(
-      # pst_agg = case_when(
-      #   grepl("CR-", pst_agg) ~ "CR",
-      #   grepl("CST", pst_agg) ~ "CA/OR/WA",
-      #   pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
-      #   pst_agg %in% c("PSD", "SOG") ~ "SalSea",
-      #   TRUE ~ pst_agg
-      # ),
       reg1 = case_when(
         Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
                            "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
@@ -71,12 +63,12 @@ clean_comp <- function(grouping_col, raw_data, ...) {
 
 # combined tibble 
 comp <- tibble(
-  sample = rep("gsi", 4),
-  fishery = rep(c("troll", "sport"), times = 2),
-  grouping = rep(c(rep("pst", 2), rep("can", 2)), 1),
+  sample = rep("gsi", 3),
+  fishery = c("sport", "sport_sub", "sport_sub2"),
+  grouping = rep("pst", 3),
   dataset = paste(sample, fishery, grouping, sep = "_"),
   # incorporate raw_comp data
-  raw_data = list(comm, rec, comm, rec)
+  raw_data = list(rec, rec2, rec3)
 ) %>% 
   mutate(
     grouping_col = case_when(
@@ -84,8 +76,7 @@ comp <- tibble(
       grouping == "can" ~ "reg1"
     ),
     data = pmap(list(grouping_col, raw_data), .f = clean_comp)
-  )
-
+  ) 
 
 ## PREP INPUTS ----------------------------------------------------------------
 
@@ -110,7 +101,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
   y_obs <- gsi_wide %>% 
     select(-c(sample_id:season)) %>% 
     as.matrix() 
-
+  
   yr_vec <- as.numeric(gsi_wide$year) - 1
   
   #generate model matrix based on GAM
@@ -120,11 +111,17 @@ prep_dir_inputs <- function(comp_in, data_type) {
   spline_type <- ifelse(max(months) == 12, "cc", "tp")
   # response variable doesn't matter, since not fit
   m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-              s(month_n, bs = spline_type, k = n_knots, by = region), 
+              s(month_n, bs = spline_type, k = n_knots, by = region),
             knots = list(month_n = c(min(months), max(months))),
             data = gsi_wide)
   fix_mm <- predict(m1, type = "lpmatrix")
-  
+  # m1b <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
+  #             s(month_n, bs = spline_type, k = n_knots, by = region), 
+  #           knots = list(month_n = c(min(months), max(months))),
+  #           data = gsi_wide, 
+  #           fit = FALSE)
+  # fix_mmb <- m1b$X
+   
   # data frame for predictions
   # account for strong differences in sampling months for sport fishery
   if (comp_in$gear[1] == "sport") {
@@ -158,17 +155,17 @@ prep_dir_inputs <- function(comp_in, data_type) {
                                      ncol = ncol(y_obs)),
                      z_rfac = rep(0, times = length(unique(yr_vec))),
                      log_sigma_rfac = 0
-                     )
+  )
   
-  list("fix_mm" = fix_mm, "pred_dat" = pred_dat, 
+  list("fix_mm" = fix_mm, "pred_dat" = pred_dat, "pred_mm" = pred_mm, 
        "data" = data, "parameters" = parameters, "data_type" = data_type,
        "long_data" = gsi_trim, "wide_data" = gsi_wide)
 }
 
 # add model parameters
 comp2 <- comp %>%
-  mutate(model_inputs = map2(data, dataset, .f = prep_dir_inputs))
-         
+  mutate(model_inputs = map2(data, dataset, .f = prep_dir_inputs)) 
+
 # FIT --------------------------------------------------------------------------
 
 compile(here::here("src", "dirichlet_randInt.cpp"))
@@ -176,7 +173,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  x <- comp2$model_inputs[[2]]
+  # x <- comp3$model_inputs[[2]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -189,33 +186,25 @@ fit_model <- function(x) {
   ## Get parameter uncertainties and convergence diagnostics
   sdr <- sdreport(obj)
   ssdr <- summary(sdr)
-  
-  f_name <- paste(x$data_type, "dirichlet_spline_ssdr.RDS", sep = "_")
-  saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
+  return(ssdr)
 }
 
 # fit
-map(comp2$model_inputs, .f = fit_model)
-
+comp2$ssdr <- map(comp2$model_inputs, .f = fit_model)
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
-comp2$ssdr <- map(comp2$model_inputs, function (x) {
-  f_name <- paste(x$data_type, "dirichlet_spline_ssdr.RDS", sep = "_")
-  readRDS(here::here("generated_data", "model_fits", f_name))
-})
-
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
-plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  x <- comp2$model_inputs[[2]]
+out_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
+  # x <- comp2$model_inputs[[2]]
   # ssdr <- comp2$ssdr[[2]]
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks
   stk_names <- colnames(y_obs)
   N <- nrow(y_obs)
-  pred_dat <- x$pred_dat
   
+  pred_dat <- x$pred_dat
   pred_dat2 <- purrr::map_dfr(seq_len(k), ~pred_dat)
   pred_mat <- ssdr[rownames(ssdr) %in% "pred_pi_prop", ]
   pred_ci <- data.frame(stock = as.character(rep(stk_names, 
@@ -227,6 +216,12 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
                                   (qnorm(0.025) * pred_prob_se)),
            pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se), 
            region = abbreviate(region, minlength = 4)) 
+  
+  coef_mat <- ssdr[rownames(ssdr) %in% "pred_gamma", ]
+  coef_est <- data.frame(stock = as.character(rep(stk_names, 
+                                                  each = nrow(pred_dat))),
+                         pred_prob_est = pred_mat[ , "Estimate"]) %>% 
+    cbind(pred_dat2, .)
   
   # calculate raw proportion data for comparison (wide necessary to 
   # account for infilling)
@@ -241,9 +236,9 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
            stock = fct_reorder(agg, desc(samp_g_ppn)), 
            region = abbreviate(region, minlength = 4)) 
   
-  raw_prop %>%
-    filter(region == "JndF", stock == "SOG", month == "5") %>%
-    print(n = Inf)
+  # raw_prop %>%
+  #   filter(region == "JndF", stock == "SOG", month == "5") %>%
+  #   print(n = Inf)
   
   pred_plot <- ggplot(data = pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_prob_est, colour = region )) +
@@ -265,16 +260,30 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
     geom_point(data = raw_prop, 
                aes(x = as.numeric(as.character(month)), 
                    y = samp_g_ppn, fill = region),
-               shape = 21, alpha = 0.4, position = position_dodge(0.6)) 
+               shape = 21, alpha = 0.4, position = position_dodge(0.6))
   
-  f_name <- paste(x$data_type, "dirichlet_spline_pred.pdf", sep = "_")
-  pdf(here::here("figs", "model_pred", "dirichlet_only", f_name))
-  print(pred_plot)
-  print(pred_plot2)
-  print(pred_plot_raw)
-  dev.off()
-  
-  f_name2 <- paste(x$data_type, "dirichlet_spline_pred.rds", sep = "_")
-  saveRDS(pred_plot,
-          here::here("figs", "model_pred", "dirichlet_only", f_name2))
+  return(list("plot" = pred_plot_raw, "coef_est" = coef_est))
+})
+
+out_list[[1]]$plot
+out_list[[2]]$plot
+
+map(out_list, function (x) {
+  x$coef_est %>% 
+    filter(stock == "SOG", month_n == "5", region == "Juan de Fuca")
+})
+
+map(comp2$model_inputs, function (x) {
+  head(x$pred_mm)
+})
+
+tt1 <- comp2$model_inputs[[1]]$pred_mm[,c(5,6)]
+tt <- comp2$model_inputs[[3]]$pred_mm[,c(3,4)]
+head(tt1[which(tt1!=0,arr.ind = T),])
+head(tt[which(tt!=0,arr.ind = T),])
+head(comp2$model_inputs[[2]]$pred_mm)
+
+map(comp2$model_inputs, function (x) {
+  x$pred_dat %>% 
+    filter(region == "Juan de Fuca")
 })

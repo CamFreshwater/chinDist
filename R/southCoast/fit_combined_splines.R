@@ -110,14 +110,20 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   select(-temp_strata2) %>% 
   droplevels()
 
-# tt <- rec %>% 
-#   group_by(pst_agg, month_n, region) %>% 
-#   summarize(cnt = sum(adj_prob))
-# ggplot(tt) +
-#   geom_boxplot(aes(x = as.factor(month_n), y = cnt)) +
-#   facet_wrap(~pst_agg, scales = "free_y")
 
 # helper function to calculate aggregate probs
+# calc_agg_prob <- function(grouped_data, full_data) {
+#   grouped_data %>% 
+#     summarize(agg_prob = sum(adj_prob)) %>% 
+#     arrange(sample_id, desc(agg_prob)) %>%
+#     ungroup() %>% 
+#     distinct() %>% 
+#     left_join(.,
+#               full_data %>% 
+#                 select(sample_id, temp_strata:area_n) %>% 
+#                 distinct(),
+#               by = "sample_id")
+# }
 calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
     summarize(agg_prob = sum(adj_prob)) %>% 
@@ -126,7 +132,10 @@ calc_agg_prob <- function(grouped_data, full_data) {
     distinct() %>% 
     left_join(.,
               full_data %>% 
-                select(sample_id, temp_strata:area_n) %>% 
+                #important to subset appropriately to remove individual traits
+                #that lead to duplicates
+                select(sample_id, region, year, month, gear, season, month_n, 
+                       area_n) %>% 
                 distinct(),
               by = "sample_id")
 }
@@ -162,7 +171,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     mutate(nn = sum(agg_prob)) %>%
     #remove strata with less than 100 individuals total (necessary for 
     #convergence for Canadian specific predictions)
-    filter(!nn < 100) %>%
+    filter(!nn < 10) %>%
     ungroup() %>%
     droplevels() %>%
     mutate(region_c = as.character(region),
@@ -191,12 +200,10 @@ full_dat <- tibble(
   )
 
 
-
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-# catch_dat <- full_dat$catch_data[[1]]
-# comp_dat <- full_dat$comp_long[[1]]
-# n_knots <- 3
+catch_dat <- full_dat$catch_data[[2]]
+comp_dat <- full_dat$comp_long[[2]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -234,8 +241,8 @@ gen_tmb <- function(catch_dat, comp_dat) {
       region = unique(comp_dat$region)
     )
   }
-  # list of strata to retain in catch predictive model to ensure aggregate
-  # abundance can be calculated
+  # list of strata from composition dataset to retain in catch predictive model 
+  # to ensure aggregate abundance can be calculated
   comp_strata <- unique(paste(pred_dat$month_n, pred_dat$region, sep = "_"))
   
   # make predictive model matrix including null values for effort
@@ -246,7 +253,6 @@ gen_tmb <- function(catch_dat, comp_dat) {
     area = unique(catch_dat$area),
     eff_z = 0
   ) %>%
-    # mutate(eff_z = 0) %>%
     left_join(., 
               catch_dat %>% select(region, area) %>% distinct(), 
               by = "area") %>% 
@@ -346,8 +352,8 @@ compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(tmb_data, tmb_pars, 
-                   # dat$tmb_data[[1]], dat$tmb_pars[[1]],
+  obj <- MakeADFun(#tmb_data, tmb_pars, 
+                   dat$tmb_data[[2]], dat$tmb_pars[[2]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -357,21 +363,23 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
       opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
     }
   }
-  sdreport(obj)
-  # ssdr <- summary(sdr)
+  sdr <- sdreport(obj)
+  ssdr <- summary(sdr)
 }
 
 # join all data into a tibble then generate model inputs
-dat2 <- dat %>%
-  mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
-         ssdr = purrr::map(sdr, summary)
-         )
-saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
-                         "combined_model_dir.RDS"))
+# dat2 <- dat %>%
+#   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
+#          ssdr = purrr::map(sdr, summary)
+#          )
+# saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
+#                          "combined_model_dir.RDS"))
+# 
+# dat2 <- readRDS(here::here("generated_data", "model_fits", 
+#                            "combined_model_dir.RDS"))
 
-dat2 <- readRDS(here::here("generated_data", "model_fits", 
-                           "combined_model_dir.RDS"))
-
+dat2 <- dat[2, ] %>% 
+  mutate(ssdr = list(ssdr))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
@@ -541,8 +549,12 @@ dev.off()
 ## Composition prediction
 comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
                    raw = TRUE)
+comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+                       raw = TRUE, facet_scales = "fixed")
+
 pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
 comp_plots
+comp_plots_fix
 dev.off()
 
 # combined estimates of stock-specific CPUE
@@ -557,12 +569,10 @@ dev.off()
 
 
 
-tt <- pred_dat$raw_prop[[2]]
-tt2 <- full_dat$comp_long[[2]] %>% 
+tt <- pred_dat$raw_prop[[1]] %>% 
   filter(month_n == "5",
-         region == "JndF") %>% 
-  glimpse()
-tt %>% 
+         region == "JndF")
+tt2 <- full_dat$comp_long[[2]] %>% 
   filter(month_n == "5",
          region == "JndF")
 
@@ -579,17 +589,6 @@ full_dat$comp_long[[2]] %>%
          stock = fct_reorder(agg, desc(samp_g_ppn))) %>% 
   glimpse()
 
-full_dat$comp_long[[2]] %>% 
-  filter(month_n == "5",
-         region == "JndF") %>%
-  group_by(region, month_n, year, agg) %>%
-  summarize(samp_g = sum(agg_prob)) %>%
-  group_by(region, month_n, year) %>%
-  mutate(samp_total = sum(samp_g)) %>%
-  ungroup() %>% 
-  mutate(samp_g_ppn = samp_g / samp_total,
-         stock = fct_reorder(agg, desc(samp_g_ppn))) %>% 
-  glimpse()
 
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
@@ -600,20 +599,42 @@ calc_agg_prob <- function(grouped_data, full_data) {
     distinct() %>% 
     left_join(.,
               full_data %>% 
-                select(sample_id, temp_strata:area_n) %>% 
+                #important to subset appropriately to remove individual traits
+                #that lead to duplicates
+                select(sample_id, region, year, month, gear, season, month_n, 
+                       area_n) %>% 
                 distinct(),
               by = "sample_id")
 }
 
 
-tt <- full_dat$raw_data[[2]] %>%
+tt3 <- full_dat$raw_data[[2]] %>%
   filter(region == "Juan de Fuca",
          month_n == "5") %>% 
   pool_aggs(.) %>% 
   rename(agg = "reg1") %>%
   group_by(sample_id, agg) %>%
-  calc_agg_prob(., full_dat$raw_data[[2]]) %>% 
-  group_by(region, month, year) %>%
+  select(sample_id, agg, gear, region, year, month, month_n, season, adj_prob) %>% 
+  summarize(agg_prob = sum(adj_prob)) %>% 
+  arrange(sample_id, desc(agg_prob)) %>%
+  ungroup() %>%
+  left_join(.,
+            full_dat$raw_data[[2]] %>% 
+              select(sample_id, region, year, month, gear, season, month_n, 
+                     area_n) %>% 
+              distinct(),
+            by = "sample_id") %>% 
+  glimpse()
+
+  
+  
+  # calc_agg_prob(., 
+  #               full_dat$raw_data[[2]] %>% 
+  #                 select(gear, region, year, month, month_n, season) %>% 
+  #                 distinct()) %>%
+  glimpse()
+group_by(region, month, year) %>%
+  print(n = Inf)
   mutate(nn = sum(agg_prob)) %>% 
   arrange(desc(year)) %>% 
   ungroup() %>%
