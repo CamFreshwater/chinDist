@@ -93,6 +93,20 @@ rec <-  readRDS(here::here("data", "gsiCatchData", "rec",
          !month_n > max(rec_catch$month_n)) %>%
   mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
 
+# check which WCVI stocks are in Johnstone Strait
+# rec %>% 
+#   filter(region == "Johnstone Strait") %>% 
+#   group_by(sample_id, stock, Region1Name, area) %>% 
+#   summarize(lump_prob = sum(adj_prob)) %>% 
+#   filter(Region1Name == "WCVI",
+#          !lump_prob == 0) %>%
+#   group_by(stock) %>% 
+#   filter(!lump_prob < 4) %>% 
+#   ungroup() %>% 
+#   ggplot(.) +
+#   geom_boxplot(aes(x = stock, y = lump_prob)) +
+#   facet_wrap(~area)
+
 # GSI samples in commercial database associated with Taaq fishery
 taaq <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                             "taaq_summary.csv"), stringsAsFactors = F) %>% 
@@ -169,8 +183,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     calc_agg_prob(., raw_data) %>% 
     group_by(region, month, year) %>%
     mutate(nn = sum(agg_prob)) %>%
-    #remove strata with less than 100 individuals total (necessary for 
-    #convergence for Canadian specific predictions)
+    #remove strata with less than 10 individuals total
     filter(!nn < 10) %>%
     ungroup() %>%
     droplevels() %>%
@@ -215,13 +228,14 @@ gen_tmb <- function(catch_dat, comp_dat) {
   months1 <- unique(catch_dat$month_n)
   spline_type <- ifelse(max(months1) == 12, "cc", "tp")
   n_knots <- ifelse(max(months1) == 12, 4, 3)
-  m1 <- gam(catch ~ area + s(month_n, bs = spline_type, k = n_knots, by = area) +
+  m1 <- gam(catch ~ 
+              area + s(month_n, bs = spline_type, k = n_knots, by = area) +
               s(eff_z, bs = "tp", k = 4),
             # knots = list(month_n = c(min(months1), max(months1))),
             data = catch_dat,
             family = nb)
   fix_mm_catch <- predict(m1, type = "lpmatrix")
-  
+
   # generic data frame that is skeleton for both comp and catch predictions
   if (comp_dat$gear[1] == "sport") {
     pred_dat <- group_split(comp_dat, region) %>% 
@@ -353,8 +367,8 @@ compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(#tmb_data, tmb_pars, 
-                   dat$tmb_data[[2]], dat$tmb_pars[[2]],
+  obj <- MakeADFun(tmb_data, tmb_pars, 
+                   # dat$tmb_data[[2]], dat$tmb_pars[[2]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -364,30 +378,30 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
       opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
     }
   }
-  sdr <- sdreport(obj)
-  ssdr <- summary(sdr)
+  sdreport(obj)
+  # ssdr <- summary(sdr)
 }
 
 # join all data into a tibble then generate model inputs
-# dat2 <- dat %>%
-#   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
-#          ssdr = purrr::map(sdr, summary)
-#          )
-# saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
-#                          "combined_model_dir.RDS"))
-# 
-# dat2 <- readRDS(here::here("generated_data", "model_fits", 
-#                            "combined_model_dir.RDS"))
+dat2 <- dat %>%
+  mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
+         ssdr = purrr::map(sdr, summary)
+         )
+saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
+                         "combined_model_dir.RDS"))
 
-dat2 <- dat[2, ] %>% 
-  mutate(ssdr = list(ssdr))
+dat2 <- readRDS(here::here("generated_data", "model_fits",
+                           "combined_model_dir.RDS"))
+
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
 # function to calculate raw proportions based on observed composition data
-make_raw_prop_dat <- function(comp_wide) {
+make_raw_prop_dat <- function(comp_long, comp_wide) {
+  n_stks <- length(unique(comp_long$agg))
   comp_wide %>%
-    pivot_longer(7:ncol(.), names_to = "agg", values_to = "agg_prob") %>% 
+    pivot_longer((ncol(.) - n_stks + 1):ncol(.), 
+                 names_to = "agg", values_to = "agg_prob") %>% 
     group_by(region, month_n, year, agg) %>%
     summarize(samp_g = sum(agg_prob)) %>%
     group_by(region, month_n, year) %>%
@@ -494,13 +508,14 @@ stock_reorder <- function(key, comp_data) {
   return(out)
 }
 
+
 pred_dat <- dat2 %>% 
   mutate(
     #predictions assuming mean effort
     abund_pred_ci = map2(pred_dat_comp, ssdr, gen_abund_pred),
     comp_pred_ci = pmap(list(comp_long, pred_dat_comp, ssdr), 
                         .f = gen_comp_pred),
-    raw_prop = purrr::map(comp_wide, make_raw_prop_dat),
+    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
                      .f = make_raw_abund_dat)) %>% 
   select(dataset:catch_data, abund_pred_ci:raw_abund) %>% 
@@ -552,7 +567,7 @@ dev.off()
 comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
                    raw = TRUE)
 comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
-                       raw = TRUE, facet_scales = "fixed")
+                       raw = FALSE, facet_scales = "fixed")
 
 pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
 comp_plots

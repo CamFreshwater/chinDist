@@ -55,7 +55,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   # drop months with minimal catch estimates
   filter(!month_n < 5,
          !month_n > 9) %>% 
-  # drop areas with fewer than 10 datapoints
+  # drop areas with fewer than 10 (i.e annual estimate per subarea = 1 sample)
   group_by(area_n) %>% 
   add_tally() %>% 
   ungroup() %>% 
@@ -64,10 +64,16 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 
 table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
-ggplot(rec_catch, aes(x = eff_z, y = catch)) +
-  geom_point() +
-  stat_smooth(method = "gam", k = 2) +
+
+ggplot(rec_catch, aes(x = eff_z, y = catch, fill = region)) +
+  geom_point(shape = 21) +
+  # stat_smooth(method = "gam", k = 2) +
   facet_wrap(~area_n)
+ggplot(rec_catch) +
+  geom_boxplot(aes(x = area, y = catch, fill = region)) 
+ggplot(rec_catch) +
+  geom_boxplot(aes(x = area, y = catch / eff, fill = region)) 
+
 
 # PREP DATA --------------------------------------------------------------------
 
@@ -179,12 +185,6 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   agg_pred_catch <- pred_catch %>% 
     select(-area) %>% 
     distinct()
-  
-  # plot simple gam predictions for comparison  
-  # pred_y <- predict.gam(in_list$m1, 
-  #                       pred_catch, type = "response") 
-  # pred_catch2 <- pred_catch %>% 
-  #   mutate(y = pred_y)
   
   # abundance across areas
   ylab = ifelse(data_type == "rec", "Predicted Monthly Catch Rate", 

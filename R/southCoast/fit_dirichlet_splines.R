@@ -89,8 +89,8 @@ comp <- tibble(
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-comp_in <- comp$data[[2]]
-data_type <- comp$dataset[[2]]
+# comp_in <- comp$data[[2]]
+# data_type <- comp$dataset[[2]]
 
 prep_dir_inputs <- function(comp_in, data_type) {
   gsi_trim <- comp_in %>% 
@@ -208,7 +208,7 @@ comp2$ssdr <- map(comp2$model_inputs, function (x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  x <- comp2$model_inputs[[2]]
+  # x <- comp2$model_inputs[[2]]
   # ssdr <- comp2$ssdr[[2]]
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks
