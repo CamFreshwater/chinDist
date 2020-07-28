@@ -1,9 +1,7 @@
 ## Dirichlet model fit
 # July 17, 2020
-# Fit dirichlet model to stock composition data at various aggregate levels
-# Accounts for uncertain GSI and uses julian day within a strata as a sampling 
-# event
-# Same as fit_dirichlet but adds splines 
+# Debug initial dirichlet splines. Driven by lack of factor fixed effect to 
+#account for mean differences. 
 
 library(tidyverse)
 library(TMB)
@@ -80,8 +78,8 @@ comp <- tibble(
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-comp_in <- comp$data[[2]]
-data_type <- comp$dataset[[2]]
+comp_in <- comp$data[[1]]
+data_type <- comp$dataset[[1]]
 
 prep_dir_inputs <- function(comp_in, data_type) {
   gsi_trim <- comp_in %>% 
@@ -108,19 +106,13 @@ prep_dir_inputs <- function(comp_in, data_type) {
   months <- unique(gsi_wide$month_n)
   n_months <- length(months)
   n_knots <- ifelse(max(months) == 12, 4, 3)
-  spline_type <- ifelse(max(months) == 12, "cc", "tp")
+  spline_type <- ifelse(max(months) == 12, "cc", "ts")
   # response variable doesn't matter, since not fit
   m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-              s(month_n, bs = spline_type, k = n_knots, by = region),
+              region + s(month_n, bs = spline_type, k = n_knots, by = region),
             knots = list(month_n = c(min(months), max(months))),
             data = gsi_wide)
   fix_mm <- predict(m1, type = "lpmatrix")
-  # m1b <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-  #             s(month_n, bs = spline_type, k = n_knots, by = region), 
-  #           knots = list(month_n = c(min(months), max(months))),
-  #           data = gsi_wide, 
-  #           fit = FALSE)
-  # fix_mmb <- m1b$X
    
   # data frame for predictions
   # account for strong differences in sampling months for sport fishery
@@ -163,7 +155,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
 }
 
 # add model parameters
-comp2 <- comp %>%
+comp2 <- comp[-2, ] %>%
   mutate(model_inputs = map2(data, dataset, .f = prep_dir_inputs)) 
 
 # FIT --------------------------------------------------------------------------
@@ -173,7 +165,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  # x <- comp3$model_inputs[[2]]
+  x <- comp2$model_inputs[[1]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -197,7 +189,7 @@ comp2$ssdr <- map(comp2$model_inputs, .f = fit_model)
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 out_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  # x <- comp2$model_inputs[[2]]
+  x <- comp2$model_inputs[[1]]
   # ssdr <- comp2$ssdr[[2]]
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks

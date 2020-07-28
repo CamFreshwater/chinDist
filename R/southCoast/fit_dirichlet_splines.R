@@ -120,7 +120,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
   spline_type <- ifelse(max(months) == 12, "cc", "tp")
   # response variable doesn't matter, since not fit
   m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-              s(month_n, bs = spline_type, k = n_knots, by = region), 
+              region + s(month_n, bs = spline_type, k = n_knots, by = region),
             knots = list(month_n = c(min(months), max(months))),
             data = gsi_wide)
   fix_mm <- predict(m1, type = "lpmatrix")
@@ -176,7 +176,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  x <- comp2$model_inputs[[2]]
+  # x <- comp2$model_inputs[[2]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -241,10 +241,10 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
            stock = fct_reorder(agg, desc(samp_g_ppn)), 
            region = abbreviate(region, minlength = 4)) 
   
-  raw_prop %>%
-    filter(region == "JndF", stock == "SOG", month == "5") %>%
-    print(n = Inf)
-  
+  # raw_prop %>%
+  #   filter(region == "JndF", stock == "SOG", month == "5") %>%
+  #   print(n = Inf)
+  # 
   pred_plot <- ggplot(data = pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_prob_est, colour = region )) +
     geom_ribbon(aes(ymin = pred_prob_low, ymax = pred_prob_up, fill = region), 

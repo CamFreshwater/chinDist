@@ -215,7 +215,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
   months1 <- unique(catch_dat$month_n)
   spline_type <- ifelse(max(months1) == 12, "cc", "tp")
   n_knots <- ifelse(max(months1) == 12, 4, 3)
-  m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
+  m1 <- gam(catch ~ area + s(month_n, bs = spline_type, k = n_knots, by = area) +
               s(eff_z, bs = "tp", k = 4),
             # knots = list(month_n = c(min(months1), max(months1))),
             data = catch_dat,
@@ -288,7 +288,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
   n_knots <- ifelse(max(months2) == 12, 4, 3)
   # response variable doesn't matter, since not fit
   m2 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-              s(month_n, bs = spline_type, k = n_knots, by = region), 
+              region + s(month_n, bs = spline_type, k = n_knots, by = region), 
             # knots = list(month_n = c(min(months2), max(months2))),
             data = gsi_wide)
   fix_mm_comp <- predict(m2, type = "lpmatrix")
@@ -327,7 +327,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
     z2_k = rep(0, times = length(unique(yr_vec_comp))),
     log_sigma_zk2 = log(0.75)
   )
-  list("data" = data, "pars" = pars, 
+  list("data" = data, "pars" = pars, "comp_wide" = gsi_wide,
        "pred_dat_catch" = pred_dat_catch, "pred_dat_comp" = pred_dat)
 }
 
@@ -339,6 +339,7 @@ tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
 # join all data into a tibble then generate model inputs
 dat <- full_dat %>% 
   mutate(
+    comp_wide = purrr::map(tmb_list, "comp_wide"),
     tmb_data = purrr::map(tmb_list, "data"),
     tmb_pars = purrr::map(tmb_list, "pars"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
@@ -384,8 +385,9 @@ dat2 <- dat[2, ] %>%
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
 # function to calculate raw proportions based on observed composition data
-make_raw_prop_dat <- function(comp_long) {
-  comp_long %>%
+make_raw_prop_dat <- function(comp_wide) {
+  comp_wide %>%
+    pivot_longer(7:ncol(.), names_to = "agg", values_to = "agg_prob") %>% 
     group_by(region, month_n, year, agg) %>%
     summarize(samp_g = sum(agg_prob)) %>%
     group_by(region, month_n, year) %>%
@@ -394,7 +396,7 @@ make_raw_prop_dat <- function(comp_long) {
     mutate(samp_g_ppn = samp_g / samp_total,
            stock = fct_reorder(agg, desc(samp_g_ppn))) 
 }
-
+  
 # function to calculate raw stock-specific abundance observations
 # data_type necessary for monthly vs. daily predictions
 make_raw_abund_dat <- function(catch, raw_prop, fishery) {
@@ -498,7 +500,7 @@ pred_dat <- dat2 %>%
     abund_pred_ci = map2(pred_dat_comp, ssdr, gen_abund_pred),
     comp_pred_ci = pmap(list(comp_long, pred_dat_comp, ssdr), 
                         .f = gen_comp_pred),
-    raw_prop = purrr::map(comp_long, make_raw_prop_dat),
+    raw_prop = purrr::map(comp_wide, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
                      .f = make_raw_abund_dat)) %>% 
   select(dataset:catch_data, abund_pred_ci:raw_abund) %>% 

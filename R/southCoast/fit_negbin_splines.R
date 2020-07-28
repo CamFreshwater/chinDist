@@ -78,7 +78,7 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
   months <- unique(catch_dat$month_n)
   n_months <- length(months)
   spline_type <- ifelse(n_months == 12, "cc", "tp")
-  m1 <- gam(catch ~ s(month_n, bs = spline_type, k = n_knots, by = area) +
+  m1 <- gam(catch ~ area + s(month_n, bs = spline_type, k = n_knots, by = area) +
                s(eff_z, bs = "tp", k = 4),
              knots = list(month_n = c(min(months), max(months))),
              data = catch_dat,
