@@ -34,8 +34,7 @@ calc_agg_prob <- function(grouped_data, full_data) {
               full_data %>% 
                 #important to subset appropriately to remove individual traits
                 #that lead to duplicates
-                select(sample_id, region, year, month, gear, season, month_n, 
-                       area_n) %>% 
+                select(sample_id, region, year, month, gear, month_n) %>% 
                 distinct(),
               by = "sample_id")
 }
@@ -100,7 +99,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
     filter(!nn < 10) %>%
     ungroup() %>%
     droplevels() %>%
-    select(sample_id, region, year, month, month_n, season, agg, agg_prob) %>%
+    select(sample_id, region, year, month, month_n, agg, agg_prob) %>%
     distinct()
   
   gsi_wide <- gsi_trim %>% 
@@ -108,7 +107,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
     mutate_if(is.numeric, ~replace_na(., 0.000001))
   
   y_obs <- gsi_wide %>% 
-    select(-c(sample_id:season)) %>% 
+    select(-c(sample_id:month_n)) %>% 
     as.matrix() 
 
   yr_vec <- as.numeric(gsi_wide$year) - 1

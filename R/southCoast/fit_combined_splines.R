@@ -148,8 +148,7 @@ calc_agg_prob <- function(grouped_data, full_data) {
               full_data %>% 
                 #important to subset appropriately to remove individual traits
                 #that lead to duplicates
-                select(sample_id, region, year, month, gear, season, month_n, 
-                       area_n) %>% 
+                select(sample_id, region, year, month, gear, month_n) %>% 
                 distinct(),
               by = "sample_id")
 }
@@ -176,7 +175,7 @@ pool_aggs <- function(full_data) {
 
 # helper function to use above for gsi and cwt samples (cwt ignored for now)
 clean_comp <- function(grouping_col, raw_data, ...) {
-  raw_data %>% 
+  temp <- raw_data %>% 
     pool_aggs() %>% 
     rename(agg = grouping_col) %>%
     group_by(sample_id, agg) %>%
@@ -189,10 +188,13 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     droplevels() %>%
     mutate(region_c = as.character(region),
            region = factor(abbreviate(region, minlength = 4))) %>% 
-    select(sample_id, gear, region, region_c, year, month, month_n, season, agg,
+    select(sample_id, gear, region, region_c, year, month, month_n, agg,
            agg_prob, nn) %>%
     distinct()
 }
+
+# temp %>% select(region, year, month, nn) %>% distinct() %>% pull(nn) %>% sum()
+# temp %>% select(region, year, month) %>% distinct() %>% nrow()
 
 ## combine genetics in tibble 
 full_dat <- tibble(
@@ -212,21 +214,35 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
-# How many samples in filtered rec fishery?
+# Check coverage of recreational fishery
 tt <- full_dat %>% 
   filter(dataset == "gsi_sport_pst")
 # gsi
 tt$comp_long[[1]] %>% 
-  group_by(year, month, region) %>% 
-  summarize(strata_n = sum(nn)) %>% 
+  select(year, month, region, nn) %>%
+  distinct() %>% 
+  group_by(year, month, region) %>%
+  mutate(strata_n = sum(nn)) %>% 
   arrange(region, month, year) %>% 
   print(n = Inf)
+
 # catch 
 tt$catch_data[[1]] %>%
   group_by(month, region) %>% 
   tally() %>% 
   arrange(region, month) %>% 
   print(n = Inf)
+
+# How many samples total?
+f <- function(x) {
+  x %>% 
+    select(month, year, region, nn) %>% 
+    distinct() %>% 
+    pull(nn) %>% 
+    sum()
+}
+f(full_dat$comp_long[[1]])
+f(full_dat$comp_long[[2]])
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -307,7 +323,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
     mutate_if(is.numeric, ~replace_na(., 0.000001))
   
   obs_comp <- gsi_wide %>% 
-    select(-c(sample_id:season)) %>% 
+    select(-c(sample_id:nn)) %>% 
     as.matrix() 
   
   yr_vec_comp <- as.numeric(gsi_wide$year) - 1
@@ -382,8 +398,8 @@ compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(#tmb_data, tmb_pars, 
-                    dat$tmb_data[[4]], dat$tmb_pars[[4]],
+  obj <- MakeADFun(tmb_data, tmb_pars, 
+                   # dat$tmb_data[[4]], dat$tmb_pars[[4]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -393,9 +409,9 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
       opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
     }
   }
-  # sdreport(obj)
-  sdr <- sdreport(obj)
-  ssdr <- summary(sdr)
+  sdreport(obj)
+  # sdr <- sdreport(obj)
+  # ssdr <- summary(sdr)
 }
 
 # join all data into a tibble then generate model inputs
