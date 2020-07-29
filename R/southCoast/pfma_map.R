@@ -78,11 +78,11 @@ pfma_simp_df2 %>%
 #color palette
 col.reg <- levels(pfma_simp_df2$region)
 pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Set1")
-# pal <- viridis::viridis(n = length(col.reg), alpha = 1, begin = 0, end = 1, 
-#                         option = "D")
+names(pal) <- col.reg
 alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.3, 0.9, length = (length(alpha_labs) / length(col.reg))),
                   length(col.reg))
+saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
 
 pfma_map <- ggplot() +
   coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
@@ -101,7 +101,7 @@ pfma_map <- ggplot() +
   theme(plot.margin=unit(c(0.1,0,0,0), "mm"),
         legend.position = "top")
 
-png(here::here("figs", "ms_figs", "pfma_map.png"), res = 300, units = "in",
+png(here::here("figs", "ms_figs", "pfma_map.png"), res = 400, units = "in",
     height = 4, width = 6)
 pfma_map
 dev.off()

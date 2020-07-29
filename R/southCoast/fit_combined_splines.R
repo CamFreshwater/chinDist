@@ -12,6 +12,7 @@ library(ggplot2)
 library(grid)
 library(gridExtra)
 library(mgcv)
+library(scales)
 
 # CLEAN CATCH -----------------------------------------------------------------
 
@@ -66,7 +67,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   ungroup() %>% 
   clean_catch(.) %>% 
   # drop months with minimal catch estimates
-  filter(!month_n < 5,
+  filter(!month_n < 3,
          !month_n > 9) %>% 
   # drop areas with fewer than 10 datapoints
   group_by(area_n) %>% 
@@ -123,7 +124,6 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   filter(!temp_strata2 %in% taaq$temp_strata2) %>%
   select(-temp_strata2) %>% 
   droplevels()
-
 
 # helper function to calculate aggregate probs
 # calc_agg_prob <- function(grouped_data, full_data) {
@@ -190,7 +190,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     mutate(region_c = as.character(region),
            region = factor(abbreviate(region, minlength = 4))) %>% 
     select(sample_id, gear, region, region_c, year, month, month_n, season, agg,
-           agg_prob) %>%
+           agg_prob, nn) %>%
     distinct()
 }
 
@@ -212,6 +212,21 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
+# How many samples in filtered rec fishery?
+tt <- full_dat %>% 
+  filter(dataset == "gsi_sport_pst")
+# gsi
+tt$comp_long[[1]] %>% 
+  group_by(year, month, region) %>% 
+  summarize(strata_n = sum(nn)) %>% 
+  arrange(region, month, year) %>% 
+  print(n = Inf)
+# catch 
+tt$catch_data[[1]] %>%
+  group_by(month, region) %>% 
+  tally() %>% 
+  arrange(region, month) %>% 
+  print(n = Inf)
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -367,8 +382,8 @@ compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(tmb_data, tmb_pars, 
-                   # dat$tmb_data[[2]], dat$tmb_pars[[2]],
+  obj <- MakeADFun(#tmb_data, tmb_pars, 
+                    dat$tmb_data[[4]], dat$tmb_pars[[4]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -378,8 +393,9 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
       opt <- nlminb(start = opt$par, objective = obj$fn, gradient = obj$gr)
     }
   }
-  sdreport(obj)
-  # ssdr <- summary(sdr)
+  # sdreport(obj)
+  sdr <- sdreport(obj)
+  ssdr <- summary(sdr)
 }
 
 # join all data into a tibble then generate model inputs
@@ -387,12 +403,11 @@ dat2 <- dat %>%
   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-saveRDS(dat2 %>% select(-sdr), here::here("generated_data", "model_fits",
-                         "combined_model_dir.RDS"))
+saveRDS(dat2 %>% select(-sdr), 
+        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
-
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
@@ -402,9 +417,9 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
   comp_wide %>%
     pivot_longer((ncol(.) - n_stks + 1):ncol(.), 
                  names_to = "agg", values_to = "agg_prob") %>% 
-    group_by(region, month_n, year, agg) %>%
+    group_by(region, region_c, month_n, year, agg) %>%
     summarize(samp_g = sum(agg_prob)) %>%
-    group_by(region, month_n, year) %>%
+    group_by(region, region_c, month_n, year) %>%
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
     mutate(samp_g_ppn = samp_g / samp_total,
@@ -416,7 +431,7 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
 make_raw_abund_dat <- function(catch, raw_prop, fishery) {
   if (fishery == "sport") {
     dum <-  catch %>% 
-      group_by(region, month_n, year) %>%
+      group_by(region, region_c, month_n, year) %>%
       summarize(
         #sum rec because subareas each have one monthly value
         #mean commercial because daily values for each area
@@ -426,13 +441,13 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
   }
   if (fishery == "troll") {
     dum <- catch %>% 
-      group_by(region, area, month_n, year) %>% 
+      group_by(region, region_c, area, month_n, year) %>% 
       # calculate daily catch within month first
       summarize(
         mu_catch = mean(catch),
         mu_effort = mean(eff)
       ) %>% 
-      group_by(region, month_n, year) %>% 
+      group_by(region, region_c, month_n, year) %>% 
       summarize(
         cum_catch = as.numeric(sum(mu_catch)),
         cum_effort = as.numeric(sum(mu_effort))
@@ -451,12 +466,15 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
 
 ## Function to generate aggregate abundance predictions (use comp predictions
 # because aggregate)
-gen_abund_pred <- function(pred_dat_comp, ssdr) {
+gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "agg_pred_abund", ] 
+  pred_dat <- pred_dat_comp %>% 
+    left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
+              by = "region")
   
   data.frame(pred_est = abund_pred[ , "Estimate"],
                         pred_se =  abund_pred[ , "Std. Error"]) %>%
-    cbind(pred_dat_comp, .) %>% 
+    cbind(pred_dat, .) %>% 
     mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
            pred_up = pred_est + (qnorm(0.975) * pred_se))
 }
@@ -469,7 +487,10 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   stk_names <- unique(comp_long$agg)
   n_preds <- nrow(pred_dat_comp)
   
-  dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat_comp)
+  pred_dat <- pred_dat_comp %>% 
+    left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
+              by = "region") 
+  dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
   
   data.frame(stock = as.character(rep(stk_names, each = n_preds)),
              pred_prob_est = comp_pred[ , "Estimate"],
@@ -512,9 +533,10 @@ stock_reorder <- function(key, comp_data) {
 pred_dat <- dat2 %>% 
   mutate(
     #predictions assuming mean effort
-    abund_pred_ci = map2(pred_dat_comp, ssdr, gen_abund_pred),
-    comp_pred_ci = pmap(list(comp_long, pred_dat_comp, ssdr), 
-                        .f = gen_comp_pred),
+    abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
+                                          .f = gen_abund_pred)),
+    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
+                        .f = gen_comp_pred)),
     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
                      .f = make_raw_abund_dat)) %>% 
@@ -535,31 +557,48 @@ saveRDS(pred_dat, here::here("generated_data",
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
-reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region))
-pal <- RColorBrewer::brewer.pal(n = length(reg_vals), "Set1")
-names(pal) <- reg_vals
-# saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
+# reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region))
+# pal <- RColorBrewer::brewer.pal(n = length(reg_vals), "Set1")
+# names(pal) <- reg_vals
+pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
+
+#pfma map (used to steal legend)
+pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
 
 # generic settings
 file_path <- here::here("figs", "model_pred", "combined")
 
-
 ## Plot abundance
-rec1 <- pred_dat %>% 
-  filter(dataset == "gsi_sport_can") 
-rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
-                        ylab = "Predicted\nMonthly Catch")
 comm1 <- pred_dat %>% 
-  filter(dataset == "gsi_troll_can") 
+  filter(dataset == "gsi_troll_pst") 
 comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
-                         ylab = "Predicted\nDaily Catch")
-x.grob <- textGrob("Month", gp = gpar(col = "grey30", fontsize=10))
+                         ylab = "Predicted Daily\nCatch Index") +
+  annotate("text", x = -Inf, y = Inf, label = "a)", hjust = -1, vjust = 2)
+rec1 <- pred_dat %>% 
+  filter(dataset == "gsi_sport_pst") 
+rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
+                        ylab = "Predicted Monthly\nCatch Index") +
+  annotate("text", x = -Inf, y = Inf, label = "b)", hjust = -1, vjust = 2)
+
+combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2) %>% 
+  arrangeGrob(., 
+              bottom = textGrob("Month", 
+                                gp = gpar(col = "grey30", fontsize=10))) %>% 
+  grid.arrange()
+# add legend from PFMA map
+combo_abund2 <- cowplot::plot_grid(
+  cowplot::get_legend(pfma_map),
+  combo_abund,
+  ncol=1, rel_heights=c(.1, .9)
+)
 
 pdf(paste(file_path, "pred_abundance_splines.pdf", sep = "/"))
-cowplot::plot_grid(rec_abund, comm_abund, nrow = 2) %>% 
-  arrangeGrob(., bottom = x.grob, 
-              top = textGrob("Mean Effort", gp = gpar(fontsize=11))) %>% 
-  grid.arrange
+combo_abund2
+dev.off()
+
+png(here::here("figs", "ms_figs", "abund_pred.png"), res = 400, units = "in",
+    height = 5, width = 5)
+combo_abund2
 dev.off()
 
 
@@ -574,7 +613,8 @@ comp_plots
 comp_plots_fix
 dev.off()
 
-# combined estimates of stock-specific CPUE
+
+## Stock-specific CPUE predictions
 ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
                             plot_ss_abund, raw = FALSE)
 ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
@@ -586,85 +626,4 @@ dev.off()
 
 
 
-tt <- pred_dat$raw_prop[[1]] %>% 
-  filter(month_n == "5",
-         region == "JndF")
-tt2 <- full_dat$comp_long[[2]] %>% 
-  filter(month_n == "5",
-         region == "JndF")
-
-
-full_dat$comp_long[[2]] %>% 
-  filter(month_n == "5",
-         region == "JndF") %>%
-  group_by(region, month_n, year, agg) %>%
-  summarize(samp_g = sum(agg_prob)) %>%
-  group_by(region, month_n, year) %>%
-  mutate(samp_total = sum(samp_g)) %>%
-  ungroup() %>% 
-  mutate(samp_g_ppn = samp_g / samp_total,
-         stock = fct_reorder(agg, desc(samp_g_ppn))) %>% 
-  glimpse()
-
-
-# helper function to calculate aggregate probs
-calc_agg_prob <- function(grouped_data, full_data) {
-  grouped_data %>% 
-    summarize(agg_prob = sum(adj_prob)) %>% 
-    arrange(sample_id, desc(agg_prob)) %>%
-    ungroup() %>% 
-    distinct() %>% 
-    left_join(.,
-              full_data %>% 
-                #important to subset appropriately to remove individual traits
-                #that lead to duplicates
-                select(sample_id, region, year, month, gear, season, month_n, 
-                       area_n) %>% 
-                distinct(),
-              by = "sample_id")
-}
-
-
-tt3 <- full_dat$raw_data[[2]] %>%
-  filter(region == "Juan de Fuca",
-         month_n == "5") %>% 
-  pool_aggs(.) %>% 
-  rename(agg = "reg1") %>%
-  group_by(sample_id, agg) %>%
-  select(sample_id, agg, gear, region, year, month, month_n, season, adj_prob) %>% 
-  summarize(agg_prob = sum(adj_prob)) %>% 
-  arrange(sample_id, desc(agg_prob)) %>%
-  ungroup() %>%
-  left_join(.,
-            full_dat$raw_data[[2]] %>% 
-              select(sample_id, region, year, month, gear, season, month_n, 
-                     area_n) %>% 
-              distinct(),
-            by = "sample_id") %>% 
-  glimpse()
-
-  
-  
-  # calc_agg_prob(., 
-  #               full_dat$raw_data[[2]] %>% 
-  #                 select(gear, region, year, month, month_n, season) %>% 
-  #                 distinct()) %>%
-  glimpse()
-group_by(region, month, year) %>%
-  print(n = Inf)
-  mutate(nn = sum(agg_prob)) %>% 
-  arrange(desc(year)) %>% 
-  ungroup() %>%
-  droplevels() %>%
-  mutate(region_c = as.character(region),
-         region = factor(abbreviate(region, minlength = 4))) %>% 
-  select(sample_id, gear, region, year, month, month_n, season, agg,
-         agg_prob, nn) %>% 
-  distinct()
-
-tt %>% 
-  group_by(region, month_n, year) %>%
-  summarize(samp_g = sum(agg_prob)) 
-
-tt[1:3,] %>% 
   
