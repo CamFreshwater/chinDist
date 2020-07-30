@@ -126,18 +126,6 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   droplevels()
 
 # helper function to calculate aggregate probs
-# calc_agg_prob <- function(grouped_data, full_data) {
-#   grouped_data %>% 
-#     summarize(agg_prob = sum(adj_prob)) %>% 
-#     arrange(sample_id, desc(agg_prob)) %>%
-#     ungroup() %>% 
-#     distinct() %>% 
-#     left_join(.,
-#               full_data %>% 
-#                 select(sample_id, temp_strata:area_n) %>% 
-#                 distinct(),
-#               by = "sample_id")
-# }
 calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
     summarize(agg_prob = sum(adj_prob)) %>% 
@@ -573,9 +561,6 @@ saveRDS(pred_dat, here::here("generated_data",
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
-# reg_vals <- c(levels(comm_catch$region), levels(rec_catch$region))
-# pal <- RColorBrewer::brewer.pal(n = length(reg_vals), "Set1")
-# names(pal) <- reg_vals
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 #pfma map (used to steal legend)
@@ -612,23 +597,18 @@ pdf(paste(file_path, "pred_abundance_splines.pdf", sep = "/"))
 combo_abund2
 dev.off()
 
-png(here::here("figs", "ms_figs", "abund_pred.png"), res = 400, units = "in",
-    height = 5, width = 5)
-combo_abund2
-dev.off()
-
-
 ## Composition prediction
 comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
                    raw = TRUE)
 comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
-                       raw = FALSE, facet_scales = "fixed")
+                       raw = TRUE, facet_scales = "fixed")
+comp_plots_fix2 <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+                        raw = FALSE, facet_scales = "fixed")
 
 pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
 comp_plots
 comp_plots_fix
 dev.off()
-
 
 ## Stock-specific CPUE predictions
 ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
@@ -641,5 +621,52 @@ ss_abund_plots_fix
 dev.off()
 
 
+## Manuscript figures   
+png(here::here("figs", "ms_figs", "abund_pred.png"), res = 400, units = "in",
+    height = 5, width = 5)
+combo_abund2
+dev.off()
 
-  
+png(here::here("figs", "ms_figs", "comp_pst_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+comp_plots_fix[[1]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_pst_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+comp_plots_fix[[2]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_can_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+comp_plots_fix[[3]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_can_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+comp_plots_fix[[4]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "abund_pst_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+ss_abund_plots_free[[1]] +
+  labs(y = "Predicted Daily Catch Index")
+dev.off()
+
+png(here::here("figs", "ms_figs", "abund_pst_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+ss_abund_plots_free[[2]] +
+  labs(y = "Predicted Monthly Catch Index")
+dev.off()
+
+png(here::here("figs", "ms_figs", "abund_can_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+ss_abund_plots_free[[3]] +
+  labs(y = "Predicted Daily Catch Index")
+dev.off()
+
+png(here::here("figs", "ms_figs", "abund_can_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+ss_abund_plots_free[[4]] +
+  labs(y = "Predicted Monthly Catch Index")
+dev.off()
