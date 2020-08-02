@@ -55,8 +55,8 @@ plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
   # months = range(comp_pred$month_n)
   p <- ggplot(data = comp_pred, aes(x = month_n)) +
-    geom_line(aes(y = comp_abund_est, colour = region_c)) +
-    geom_ribbon(aes(ymin = comp_abund_low, ymax = comp_abund_up, 
+    geom_line(aes(y = comp_abund_est / 1000, colour = region_c)) +
+    geom_ribbon(aes(ymin = comp_abund_low / 1000, ymax = comp_abund_up / 1000, 
                     fill = region_c), 
                 alpha = 0.5) +
     scale_fill_manual(name = "Region", values = pal) +

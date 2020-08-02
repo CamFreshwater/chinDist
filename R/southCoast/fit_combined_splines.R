@@ -68,7 +68,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   clean_catch(.) %>% 
   # drop months with minimal catch estimates
   filter(!month_n < 3,
-         !month_n > 9) %>% 
+         !month_n > 10) %>% 
   # drop areas with fewer than 10 datapoints
   group_by(area_n) %>% 
   add_tally() %>% 

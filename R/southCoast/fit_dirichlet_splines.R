@@ -13,9 +13,10 @@ library(mgcv)
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal",
-         !month_n < 5,
-         !month_n > 9) %>%
+  filter(legal == "legal"#,
+         # !month_n < 5,
+         # !month_n > 9
+         ) %>%
   mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
@@ -88,8 +89,8 @@ comp <- tibble(
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-# comp_in <- comp$data[[2]]
-# data_type <- comp$dataset[[2]]
+comp_in <- comp$data[[4]]
+data_type <- comp$dataset[[4]]
 
 prep_dir_inputs <- function(comp_in, data_type) {
   gsi_trim <- comp_in %>% 
@@ -175,7 +176,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  # x <- comp2$model_inputs[[2]]
+  x <- comp2$model_inputs[[4]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -207,7 +208,7 @@ comp2$ssdr <- map(comp2$model_inputs, function (x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  # x <- comp2$model_inputs[[2]]
+  x <- comp2$model_inputs[[4]]
   # ssdr <- comp2$ssdr[[2]]
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks
@@ -224,21 +225,25 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
     cbind(pred_dat2, .) %>%
     mutate(pred_prob_low = pmax(0, pred_prob_est + 
                                   (qnorm(0.025) * pred_prob_se)),
-           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se), 
-           region = abbreviate(region, minlength = 4)) 
+           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se) 
+           #region = abbreviate(region, minlength = 4)
+           ) 
   
   # calculate raw proportion data for comparison (wide necessary to 
   # account for infilling)
+  n_stks <- length(stk_names)
   raw_prop <- x$wide_data %>% 
-    pivot_longer(7:ncol(.), names_to = "agg", values_to = "agg_prob") %>% 
+    pivot_longer((ncol(.) - n_stks + 1):ncol(.), 
+                 names_to = "agg", values_to = "agg_prob") %>% 
     group_by(region, month, year, agg) %>%
     summarize(samp_g = sum(agg_prob)) %>% 
     group_by(region, month, year) %>%
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
     mutate(samp_g_ppn = samp_g / samp_total,
-           stock = fct_reorder(agg, desc(samp_g_ppn)), 
-           region = abbreviate(region, minlength = 4)) 
+           stock = fct_reorder(agg, desc(samp_g_ppn))#, 
+           # region = abbreviate(region, minlength = 4)
+           ) 
   
   # raw_prop %>%
   #   filter(region == "JndF", stock == "SOG", month == "5") %>%
@@ -264,7 +269,8 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
     geom_point(data = raw_prop, 
                aes(x = as.numeric(as.character(month)), 
                    y = samp_g_ppn, fill = region),
-               shape = 21, alpha = 0.4, position = position_dodge(0.6)) 
+               shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
+    facet_wrap(~stock)
   
   f_name <- paste(x$data_type, "dirichlet_spline_pred.pdf", sep = "_")
   pdf(here::here("figs", "model_pred", "dirichlet_only", f_name))
