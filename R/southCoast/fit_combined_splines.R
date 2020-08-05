@@ -50,7 +50,7 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
          eff_z)
   
-#recreational catch data
+#recreational catch data - sampling unit is area-month-year catch estimate
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
                                 "monthlyCatch_rec.RDS")) %>% 
   #drop sublegal fish and regions without genetics
@@ -550,9 +550,9 @@ pred_dat <- dat2 %>%
     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
   )
 saveRDS(pred_dat, here::here("generated_data", 
-                             "combined_model_dir_predictions.RDS"))
-# pred_dat <- readRDS(here::here("generated_data",
-#                                "combined_model_predictions.RDS"))
+                             "combined_model_predictions.RDS"))
+pred_dat <- readRDS(here::here("generated_data",
+                               "combined_model_predictions.RDS"))
 
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
@@ -573,12 +573,12 @@ file_path <- here::here("figs", "model_pred", "combined")
 comm1 <- pred_dat %>% 
   filter(dataset == "gsi_troll_pst") 
 comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
-                         ylab = "Predicted Daily\nCatch Index") +
+                         ylab = "Commercial Catch Index") +
   annotate("text", x = -Inf, y = Inf, label = "a)", hjust = -1, vjust = 2)
 rec1 <- pred_dat %>% 
   filter(dataset == "gsi_sport_pst") 
 rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
-                        ylab = "Predicted Monthly\nCatch Index") +
+                        ylab = "Recreational Catch Index") +
   annotate("text", x = -Inf, y = Inf, label = "b)", hjust = -1, vjust = 2)
 
 combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2) %>% 
@@ -650,23 +650,43 @@ dev.off()
 png(here::here("figs", "ms_figs", "abund_pst_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
 ss_abund_plots_free[[1]] +
-  labs(y = "Predicted Daily Catch Index")
+  labs(y = "Predicted Commercial Catch Index")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_pst_rec.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
 ss_abund_plots_free[[2]] +
-  labs(y = "Predicted Monthly Catch Index")
+  labs(y = "Predicted Recreational Catch Index")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_can_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7)
 ss_abund_plots_free[[3]] +
-  labs(y = "Predicted Daily Catch Index")
+  labs(y = "Predicted Commercial Catch Index")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_can_rec.png"), res = 400, units = "in",
     height = 5.5, width = 7)
 ss_abund_plots_free[[4]] +
-  labs(y = "Predicted Monthly Catch Index")
+  labs(y = "Predicted Recreational Catch Index")
 dev.off()
+
+
+### Summary supplemental tables
+tally_f <- function(dat) {
+  dat %>% 
+    group_by(region, area, month) %>% 
+    tally() %>% 
+    rename(pfma = area)
+}
+tally_f(rec_catch)
+tally_f(comm_catch)
+
+unique(full_dat$comp_long[[1]]$year)
+unique(full_dat$comp_long[[2]]$year)
+
+t1 <- pred_dat$catch[[1]]
+t2 <- pred_dat$catch[[2]]
+
+tally_f(t1)
+tally_f(t2)

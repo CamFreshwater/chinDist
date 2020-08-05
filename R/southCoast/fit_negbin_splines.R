@@ -13,25 +13,47 @@ clean_catch <- function(dat) {
   dat %>% 
     filter(!is.na(eff),
            !eff == "0") %>% 
-    mutate(region = factor(region),
+    mutate(region_c = as.character(region),
+           region = factor(abbreviate(region, minlength = 4)),
            area_n = as.numeric(area),
            area = as.factor(area),
            month = as.factor(month),
            month_n = as.numeric(month),
            month = as.factor(month_n),
            year = as.factor(year),
-           eff_z = as.numeric(scale(eff))) %>% 
+           eff_z = as.numeric(scale(eff))
+    ) %>% 
     arrange(region, month) 
 }
 
 #commercial catch data
 comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
                                  "dailyCatch_WCVI.rds")) %>% 
-  rename(eff = boatDays, region = catchReg) %>% 
+  # calculate monthly catch and effort 
+  group_by(catchReg, area, month, year) %>% 
+  summarize(catch = sum(catch), 
+            eff = sum(boatDays), 
+            cpue = catch / eff) %>% 
+  ungroup() %>% 
+  rename(region = catchReg) %>% 
   clean_catch(.) %>% 
   # drop inside areas where seasonal catches not available
-  filter(!area_n < 100) %>% 
-  droplevels()
+  filter(!area_n < 100,
+         !month_n < 5,
+         !month_n > 9) %>% 
+  droplevels() %>% 
+  select(region, region_c, area, area_n, month, month_n, year, catch, eff, cpue, 
+         eff_z)
+
+# tally_f <- function(dat) {
+#   dat %>% 
+#     group_by(region, area) %>% 
+#     tally()
+# }
+# tally_f(comm_catch) %>% 
+#   print(n = Inf)
+# tally_f(comm_catch2) %>% 
+#   print(n = Inf)
 
 #recreational catch data
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
@@ -49,8 +71,6 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
             eff = sum(subarea_eff),
             cpue = catch / eff) %>% 
   ungroup() %>% 
-  mutate(region_c = as.character(region),
-         region = abbreviate(region, minlength = 4))  %>% 
   clean_catch(.) %>% 
   # drop months with minimal catch estimates
   filter(!month_n < 5,
@@ -72,8 +92,25 @@ ggplot(rec_catch, aes(x = eff_z, y = catch, fill = region)) +
 ggplot(rec_catch) +
   geom_boxplot(aes(x = area, y = catch, fill = region)) 
 ggplot(rec_catch) +
-  geom_boxplot(aes(x = area, y = catch / eff, fill = region)) 
+  geom_boxplot(aes(x = area, y = cpue, fill = region)) 
 
+rec_catch %>% 
+  group_by(region, month, year) %>% 
+  summarize(sum_catch = sum(catch)) %>% 
+  ggplot(.) +
+  geom_boxplot(aes(x = month, y = sum_catch, fill = region)) +
+  facet_wrap(~region)
+comm_catch %>% 
+  group_by(region, month, year) %>% 
+  summarize(sum_catch = sum(catch)) %>% 
+  ggplot(.) +
+  geom_boxplot(aes(x = month, y = sum_catch, fill = region)) +
+  facet_wrap(~region)
+
+ggplot(rec_catch) +
+  geom_histogram(aes(x = eff))
+ggplot(comm_catch) +
+  geom_histogram(aes(x = eff))
 
 # PREP DATA --------------------------------------------------------------------
 
@@ -99,7 +136,7 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
     area = unique(catch_dat$area),
     eff_z = 0
   ) %>% 
-    left_join(., catch_dat %>% select(region, area), by = "area") %>% 
+    left_join(., catch_dat %>% select(region, region_c, area), by = "area") %>% 
     mutate(month = as.factor(round(month_n, 3)),
            order = row_number(),
            reg_month = paste(region, month, sep = "_"),
@@ -138,7 +175,7 @@ prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
        "input_data" = catch_dat, "m1" = m1)
 }
 
-comm_list <- prep_catch(comm_catch, data_type = "comm")
+comm_list <- prep_catch(comm_catch, data_type = "comm_trim")
 rec_list <- prep_catch(rec_catch, data_type = "rec")
 fishery_list <- list(comm_list, rec_list)
 
@@ -148,7 +185,6 @@ fishery_list <- list(comm_list, rec_list)
 compile(here::here("src", "negbin_1re_cumsum.cpp"))
 dyn.load(dynlib(here::here("src", "negbin_1re_cumsum")))
 
-ssdr_list <- vector(length = length(fishery_list), mode = "list")
 for (i in seq_along(fishery_list)) {
   dum <- fishery_list[[i]]
   obj <- MakeADFun(dum$data, dum$parameters, random = c("z1_k"), 
@@ -163,12 +199,10 @@ for (i in seq_along(fishery_list)) {
   
   f_name <- paste(dum$data_type, "negbin_spline_ssdr.RDS", sep = "_")
   saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
-
-  ssdr_list[[i]] <- ssdr
 }
   
 ssdr_list <- map(fishery_list, function(x) {
-  f_name <- paste(x$data_type, "negbin_ssdr.RDS", sep = "_")
+  f_name <- paste(x$data_type, "negbin_spline_ssdr.RDS", sep = "_")
   readRDS(here::here("generated_data", "model_fits", f_name))
 })
 
@@ -176,9 +210,10 @@ ssdr_list <- map(fishery_list, function(x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))  
 
 pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
-  # in_list <- dum
-  catch <- in_list$input_data
+  # in_list <- fishery_list[[1]]
+  # ssdr <- ssdr_list[[2]]
   ssdr <- in_ssdr
+  catch <- in_list$input_data
   data_type <- in_list$data_type
   
   pred_catch <- in_list$pred_data
@@ -195,15 +230,14 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     cbind(pred_catch, .) %>% 
     mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
            pred_up = pred_est + (qnorm(0.975) * pred_se),
-           area = fct_reorder(area, as.numeric(region)))
+           area = fct_reorder(area, as.numeric(region_c)))
   
   area_preds <- ggplot(data = pred_ci, aes(x = month_n)) +
-    geom_line(aes(y = pred_est, colour = region )) +
-    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region), 
+    geom_line(aes(y = pred_est, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region_c), 
                 alpha = 0.5)  +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
-    # geom_line(data = pred_catch2, aes(x = month_n, y = y), col = "black") +
     facet_wrap(~area, scales = "free_y") +
     labs(x = "Month", y = ylab) +
     ggsidekick::theme_sleek()
@@ -217,8 +251,8 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
            pred_up = pred_est + (qnorm(0.975) * pred_se)) 
   
   agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
-    geom_line(aes(y = pred_est, colour = region)) +
-    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region), 
+    geom_line(aes(y = pred_est, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region_c), 
                 alpha = 0.5) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
@@ -232,7 +266,8 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   dev.off()
   
   f_name2 <- paste(data_type, "negbin_spline_predictions.RDS", sep = "_")
-  plot_list_out <- list(area_preds, agg_preds)
+  plot_list_out <- list(area_preds, agg_preds, pred_ci, agg_pred_ci)
   saveRDS(plot_list_out, 
           here::here("figs", "model_pred", "neg_bin_only", f_name2))
 })
+

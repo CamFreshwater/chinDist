@@ -4,7 +4,7 @@
 # Modified from plot_predictions to include splines
 
 # Plot aggregate abundance data
-plot_abund <- function(dat, ylab) {
+plot_abund <- function(dat, ylab = NULL) {
   # months = range(dat$month_n)
   ggplot(data = dat, aes(x = month_n)) +
     geom_line(aes(y = pred_est / 1000, colour = region_c)) +
