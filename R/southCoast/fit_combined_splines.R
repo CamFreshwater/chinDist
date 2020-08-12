@@ -40,8 +40,8 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   # calculate monthly catch and effort 
   group_by(catchReg, area, month, year) %>% 
   summarize(catch = sum(catch), 
-            eff = sum(boatDays)) %>% 
-  ungroup() %>% 
+            eff = sum(boatDays),
+            .groups = "drop") %>% 
   rename(region = catchReg) %>% 
   clean_catch(.) %>% 
   # drop inside areas where seasonal catches not available
@@ -63,8 +63,8 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   #group by area to be consistent with commercial data
   group_by(month, month_n, year, area, region, legal) %>% 
   summarize(catch = sum(subarea_catch),
-            eff = sum(subarea_eff)) %>% 
-  ungroup() %>% 
+            eff = sum(subarea_eff),
+            .groups = "drop") %>% 
   clean_catch(.) %>% 
   # drop months with minimal catch estimates
   filter(!month_n < 3,
@@ -128,9 +128,9 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
-    summarize(agg_prob = sum(adj_prob)) %>% 
+    summarize(agg_prob = sum(adj_prob), .groups = 'drop') %>% 
     arrange(sample_id, desc(agg_prob)) %>%
-    ungroup() %>% 
+    # ungroup() %>% 
     distinct() %>% 
     left_join(.,
               full_data %>% 
@@ -203,23 +203,23 @@ full_dat <- tibble(
   )
 
 # Check coverage of recreational fishery
-tt <- full_dat %>% 
-  filter(dataset == "gsi_sport_pst")
+# tt <- full_dat %>% 
+#   filter(dataset == "gsi_sport_pst")
 # gsi
-tt$comp_long[[1]] %>% 
-  select(year, month, region, nn) %>%
-  distinct() %>% 
-  group_by(year, month, region) %>%
-  mutate(strata_n = sum(nn)) %>% 
-  arrange(region, month, year) %>% 
-  print(n = Inf)
+# tt$comp_long[[1]] %>% 
+#   select(year, month, region, nn) %>%
+#   distinct() %>% 
+#   group_by(year, month, region) %>%
+#   mutate(strata_n = sum(nn)) %>% 
+#   arrange(region, month, year) %>% 
+#   print(n = Inf)
 
 # catch 
-tt$catch_data[[1]] %>%
-  group_by(month, region) %>% 
-  tally() %>% 
-  arrange(region, month) %>% 
-  print(n = Inf)
+# tt$catch_data[[1]] %>%
+#   group_by(month, region) %>% 
+#   tally() %>% 
+#   arrange(region, month) %>% 
+#   print(n = Inf)
 
 # How many samples total?
 f <- function(x) {
@@ -234,8 +234,8 @@ f(full_dat$comp_long[[2]])
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-catch_dat <- full_dat$catch_data[[2]]
-comp_dat <- full_dat$comp_long[[2]]
+# catch_dat <- full_dat$catch_data[[2]]
+# comp_dat <- full_dat$comp_long[[2]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -382,14 +382,16 @@ dat <- full_dat %>%
 
 ## FIT MODELS ------------------------------------------------------------------
 
-compile(here::here("src", "nb_dirichlet_1re.cpp"))
-dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
+# compile(here::here("src", "nb_dirichlet_1re.cpp"))
+# dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
+compile(here::here("src", "nb_dirichlet_1re_temp.cpp"))
+dyn.load(dynlib(here::here("src", "nb_dirichlet_1re_temp")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, 
                    # dat$tmb_data[[4]], dat$tmb_pars[[4]],
                    random = c("z1_k", "z2_k"), 
-                   DLL = "nb_dirichlet_1re")
+                   DLL = "nb_dirichlet_1re_temp")
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
   if (nlminb_loops > 1) {
@@ -407,8 +409,8 @@ dat2 <- dat %>%
   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-saveRDS(dat2 %>% select(-sdr), 
-        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+# saveRDS(dat2 %>% select(-sdr), 
+#         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
@@ -476,11 +478,14 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
               by = "region")
   
-  data.frame(pred_est = abund_pred[ , "Estimate"],
-                        pred_se =  abund_pred[ , "Std. Error"]) %>%
+  data.frame(est_link = abund_pred[ , "Estimate"],
+             se_link =  abund_pred[ , "Std. Error"]) %>%
     cbind(pred_dat, .) %>% 
-    mutate(pred_low = pred_est + (qnorm(0.025) * pred_se),
-           pred_up = pred_est + (qnorm(0.975) * pred_se))
+    mutate(
+      pred_est = exp(est_link),
+      pred_low = exp(est_link + (qnorm(0.025) * se_link)),
+      pred_up = exp(est_link + (qnorm(0.975) * se_link))
+    )
 }
 
 ## Function to generate composition and stock-specific abundance predictions
@@ -496,19 +501,22 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
               by = "region") 
   dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
   
-  data.frame(stock = as.character(rep(stk_names, each = n_preds)),
-             pred_prob_est = comp_pred[ , "Estimate"],
-             pred_prob_se =  comp_pred[ , "Std. Error"]) %>% 
+  data.frame(
+    stock = as.character(rep(stk_names, each = n_preds)),
+    link_prob_est = comp_pred[ , "Estimate"],
+    link_prob_se =  comp_pred[ , "Std. Error"],
+    link_abund_est = comp_abund_pred[ , "Estimate"],
+    link_abund_se =  comp_abund_pred[ , "Std. Error"]
+  ) %>% 
     cbind(dum, .) %>%
-    mutate(pred_prob_low = pmax(pred_prob_est + (qnorm(0.025) * pred_prob_se),
-                                0),
-           pred_prob_up = pmin(pred_prob_est + (qnorm(0.975) * pred_prob_se), 
-                               1),
-           comp_abund_est = as.vector(comp_abund_pred[ , "Estimate"]),
-           comp_abund_se =  as.vector(comp_abund_pred[ , "Std. Error"]),
-           comp_abund_low = pmax(comp_abund_est + (qnorm(0.025) * comp_abund_se),
-                                 0),
-           comp_abund_up = comp_abund_est + (qnorm(0.975) * comp_abund_se)) 
+    mutate(
+      pred_prob_est = car::logit(link_prob_est),
+      pred_prob_low = car::logit(link_prob_est + (qnorm(0.025) * link_prob_se)),
+      pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)),
+      comp_abund_est = exp(link_abund_est),
+      comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)),
+      comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se))
+    )  
 }
 
 ## Function to reorder stocks for plotting
