@@ -409,8 +409,8 @@ dat2 <- dat %>%
   mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-# saveRDS(dat2 %>% select(-sdr), 
-#         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+saveRDS(dat2 %>% select(-sdr),
+        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
@@ -424,7 +424,8 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
     pivot_longer((ncol(.) - n_stks + 1):ncol(.), 
                  names_to = "agg", values_to = "agg_prob") %>% 
     group_by(region, region_c, month_n, year, agg) %>%
-    summarize(samp_g = sum(agg_prob)) %>%
+    summarize(samp_g = sum(agg_prob),
+              .groups = "drop") %>%
     group_by(region, region_c, month_n, year) %>%
     mutate(samp_total = sum(samp_g)) %>% 
     ungroup() %>% 
@@ -442,8 +443,8 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
         #sum rec because subareas each have one monthly value
         #mean commercial because daily values for each area
         cum_catch = as.numeric(sum(catch)),
-        cum_effort = as.numeric(sum(eff))) %>% 
-      ungroup()
+        cum_effort = as.numeric(sum(eff)),
+        .groups = "drop") 
   }
   if (fishery == "troll") {
     dum <- catch %>% 
@@ -451,14 +452,15 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
       # calculate daily catch within month first
       summarize(
         mu_catch = mean(catch),
-        mu_effort = mean(eff)
+        mu_effort = mean(eff),
+        .groups = "drop"
       ) %>% 
       group_by(region, region_c, month_n, year) %>% 
       summarize(
         cum_catch = as.numeric(sum(mu_catch)),
-        cum_effort = as.numeric(sum(mu_effort))
-      ) %>% 
-      ungroup()
+        cum_effort = as.numeric(sum(mu_effort)),
+        .groups = "drop"
+      ) 
   }
   dum  %>%
     mutate(agg_cpue = cum_catch / cum_effort,
@@ -473,7 +475,7 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
 ## Function to generate aggregate abundance predictions (use comp predictions
 # because aggregate)
 gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
-  abund_pred <- ssdr[rownames(ssdr) %in% "agg_pred_abund", ] 
+  abund_pred <- ssdr[rownames(ssdr) %in% "log_agg_pred_abund", ] 
   pred_dat <- pred_dat_comp %>% 
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
               by = "region")
@@ -490,8 +492,8 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 
 ## Function to generate composition and stock-specific abundance predictions
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
-  comp_pred <- ssdr[rownames(ssdr) %in% "pred_pi_prop", ]
-  comp_abund_pred <- ssdr[rownames(ssdr) %in% "pred_abund_mg", ]
+  comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
+  comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
   
   stk_names <- unique(comp_long$agg)
   n_preds <- nrow(pred_dat_comp)
@@ -623,6 +625,7 @@ ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund,
                             plot_ss_abund, raw = FALSE)
 ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
                            plot_ss_abund,  raw = FALSE, facet_scales = "fixed")
+
 pdf(paste(file_path, "stock-specific_abund_splines.pdf", sep = "/"))
 ss_abund_plots_free
 ss_abund_plots_fix
