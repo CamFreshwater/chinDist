@@ -105,21 +105,25 @@ Type objective_function<Type>::operator() ()
   matrix<Type> pred_abund = exp(log_pred_abund.array());
 
   // REPORT(pred_abund);
-  ADREPORT(pred_abund);
+  ADREPORT(log_pred_abund);
 
-  // // Calculate predicted abundance based on higher level groupings
+  // Calculate predicted abundance based on higher level groupings
   int n_preds = pred_factor2k_h.size();
   int n_pred_levels = pred_factor2k_levels.size();
   vector<Type> agg_pred_abund(n_pred_levels);
+  vector<Type> log_agg_pred_abund(n_pred_levels);
   
   for (int h = 0; h < n_preds; h++) {
     for (int m = 0; m < n_pred_levels; m++) {
       if (pred_factor2k_h(h) == pred_factor2k_levels(m)) {
         agg_pred_abund(m) += pred_abund(h);
+        log_agg_pred_abund(m) = log(agg_pred_abund(m));
       }
     }
   }
-  ADREPORT(agg_pred_abund);
+
+  // ADREPORT(agg_pred_abund);
+  ADREPORT(log_agg_pred_abund);
 
 
   // Composition 
@@ -130,7 +134,8 @@ Type objective_function<Type>::operator() ()
   matrix<Type> pred_pi(n_pred_levels, n_cat);      // predicted counts in real 
   vector<Type> pred_n_plus(n_pred_levels); 
   matrix<Type> pred_pi_prop(n_pred_levels, n_cat); // predicted counts as ppn.
-
+  matrix<Type> inv_logit_pred_pi_prop(n_pred_levels, n_cat); // pred. ppn link
+  
   pred_eff = X2_pred_ij * b2_jg; 
   pred_gamma = exp(pred_eff.array());
   pred_gamma_plus = pred_gamma.rowwise().sum();
@@ -144,11 +149,13 @@ Type objective_function<Type>::operator() ()
   for(int m = 0; m < n_pred_levels; m++) {
     for(int k = 0; k < n_cat; k++) {
       pred_pi_prop(m, k) = pred_pi(m, k) / pred_n_plus(m);
+      inv_logit_pred_pi_prop(m, k) = invlogit(pred_pi_prop(m, k));
     }
   }
 
   // REPORT(pred_pi_prop);
-  ADREPORT(pred_pi_prop);
+  // ADREPORT(pred_pi_prop);
+  ADREPORT(inv_logit_pred_pi_prop);
 
 
   // Combined predictions
@@ -159,9 +166,11 @@ Type objective_function<Type>::operator() ()
   		pred_abund_mg(m, k) = agg_pred_abund(m) * pred_pi_prop(m, k);
   	}
   }
+  matrix<Type> log_pred_abund_mg = log(pred_abund_mg.array());
 
   // REPORT(pred_abund_mg);
-  ADREPORT(pred_abund_mg);
+  // ADREPORT(pred_abund_mg);
+  ADREPORT(log_pred_abund_mg);
 
   return jnll;
 }

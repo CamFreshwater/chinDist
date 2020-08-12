@@ -382,16 +382,14 @@ dat <- full_dat %>%
 
 ## FIT MODELS ------------------------------------------------------------------
 
-# compile(here::here("src", "nb_dirichlet_1re.cpp"))
-# dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
-compile(here::here("src", "nb_dirichlet_1re_temp.cpp"))
-dyn.load(dynlib(here::here("src", "nb_dirichlet_1re_temp")))
+compile(here::here("src", "nb_dirichlet_1re.cpp"))
+dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, 
                    # dat$tmb_data[[4]], dat$tmb_pars[[4]],
                    random = c("z1_k", "z2_k"), 
-                   DLL = "nb_dirichlet_1re_temp")
+                   DLL = "nb_dirichlet_1re")
   
   opt <- nlminb(obj$par, obj$fn, obj$gr)
   if (nlminb_loops > 1) {
