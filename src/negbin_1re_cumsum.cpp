@@ -41,27 +41,31 @@ Type objective_function<Type>::operator() ()
     jnll -= dnorm(z1_k(k), Type(0.0), exp(log_sigma_zk1), true);
   }
 
-  vector<Type> log_prediction(X1_pred_ij.rows());
-  log_prediction = X1_pred_ij * b1_j;
-  matrix<Type> pred_abund = exp(log_prediction.array());
+  vector<Type> log_pred_abund(X1_pred_ij.rows());
+  log_pred_abund = X1_pred_ij * b1_j;
+  matrix<Type> pred_abund = exp(log_pred_abund.array());
 
   // REPORT(pred_abund);
   ADREPORT(pred_abund);
+  ADREPORT(log_pred_abund);
 
   // Calculate predicted abundance based on higher level groupings
   int n_preds = pred_factor2k_h.size();
   int n_pred_levels = pred_factor2k_levels.size();
   vector<Type> agg_pred_abund(n_pred_levels);
-  
+  vector<Type> log_agg_pred_abund(n_pred_levels);
+
   for (int h = 0; h < n_preds; h++) {
     for (int g = 0; g < n_pred_levels; g++) {
       if (pred_factor2k_h(h) == pred_factor2k_levels(g)) {
         agg_pred_abund(g) += pred_abund(h);
+        log_agg_pred_abund(g) = log(agg_pred_abund(g));
       }
     }
   }
 
-  ADREPORT(agg_pred_abund);
+  // ADREPORT(agg_pred_abund);
+  ADREPORT(log_agg_pred_abund);
 
   return jnll;
 }
