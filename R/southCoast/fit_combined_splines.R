@@ -29,7 +29,8 @@ clean_catch <- function(dat) {
            month_n = as.numeric(month),
            month = as.factor(month_n),
            year = as.factor(year),
-           eff_z = as.numeric(scale(eff))
+           eff_z = as.numeric(scale(eff)),
+           offset = log(eff)
            ) %>% 
     arrange(region, month) 
 }
@@ -48,7 +49,7 @@ comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
   filter(!area_n < 100) %>% 
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z)
+         eff_z, offset)
   
 #recreational catch data - sampling unit is area-month-year catch estimate
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
@@ -76,7 +77,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   filter(!n < 10) %>% 
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z)
+         eff_z, offset)
 
 # export areas to make maps
 # areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
@@ -234,8 +235,8 @@ f(full_dat$comp_long[[2]])
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-# catch_dat <- full_dat$catch_data[[2]]
-# comp_dat <- full_dat$comp_long[[2]]
+catch_dat <- full_dat$catch_data[[2]]
+comp_dat <- full_dat$comp_long[[2]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -247,14 +248,24 @@ gen_tmb <- function(catch_dat, comp_dat) {
   months1 <- unique(catch_dat$month_n)
   spline_type <- ifelse(max(months1) == 12, "cc", "tp")
   n_knots <- ifelse(max(months1) == 12, 4, 3)
-  m1 <- gam(catch ~ 
+
+  # old model version with spline for effort
+  # m1 <- gam(catch ~ 
+  #             area + s(month_n, bs = spline_type, k = n_knots, by = area) +
+  #             s(eff_z, bs = "tp", k = 4),
+  #           # knots = list(month_n = c(min(months1), max(months1))),
+  #           data = catch_dat,
+  #           family = nb)
+  m1 <- gam(catch ~
               area + s(month_n, bs = spline_type, k = n_knots, by = area) +
-              s(eff_z, bs = "tp", k = 4),
-            # knots = list(month_n = c(min(months1), max(months1))),
+              offset,
             data = catch_dat,
             family = nb)
   fix_mm_catch <- predict(m1, type = "lpmatrix")
 
+  # position of offset vector
+  offset_pos <- grep("^offset$", colnames(fix_mm_catch))
+  
   # generic data frame that is skeleton for both comp and catch predictions
   if (comp_dat$gear[1] == "sport") {
     pred_dat <- group_split(comp_dat, region) %>% 
@@ -284,7 +295,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
                   max(catch_dat$month_n),
                   by = 0.1),
     area = unique(catch_dat$area),
-    eff_z = 0
+    offset = mean(catch_dat$offset)
   ) %>%
     left_join(., 
               catch_dat %>% select(region, area) %>% distinct(), 
@@ -360,14 +371,21 @@ gen_tmb <- function(catch_dat, comp_dat) {
     z2_k = rep(0, times = length(unique(yr_vec_comp))),
     log_sigma_zk2 = log(0.75)
   )
+  
+  # fix starting value of offset to one, then map
+  pars$b1_j[offset_pos] <- 1
+  b_j_map <- seq_along(pars$b1_j)
+  b_j_map[offset_pos] <- NA
+  tmb_map <- list(b1_j = as.factor(b_j_map))
+  
   list("data" = data, "pars" = pars, "comp_wide" = gsi_wide,
-       "pred_dat_catch" = pred_dat_catch, "pred_dat_comp" = pred_dat)
+       "pred_dat_catch" = pred_dat_catch, "pred_dat_comp" = pred_dat,
+       "tmb_map" = tmb_map)
 }
 
 #add tmb data assuming average effort predictions (for month specific look at
 # non-spline code)
 tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
-
 
 # join all data into a tibble then generate model inputs
 dat <- full_dat %>% 
@@ -375,6 +393,7 @@ dat <- full_dat %>%
     comp_wide = purrr::map(tmb_list, "comp_wide"),
     tmb_data = purrr::map(tmb_list, "data"),
     tmb_pars = purrr::map(tmb_list, "pars"),
+    tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   )
@@ -385,9 +404,9 @@ dat <- full_dat %>%
 compile(here::here("src", "nb_dirichlet_1re.cpp"))
 dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
-fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
-  obj <- MakeADFun(tmb_data, tmb_pars, 
-                   # dat$tmb_data[[4]], dat$tmb_pars[[4]],
+fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
+  obj <- MakeADFun(tmb_data, tmb_pars, map = tmb_map,
+                   # dat$tmb_data[[1]], dat$tmb_pars[[1]], map = dat$tmb_map[[1]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -404,14 +423,15 @@ fit_mod <- function(tmb_data, tmb_pars, nlminb_loops = 2) {
 
 # join all data into a tibble then generate model inputs
 dat2 <- dat %>%
-  mutate(sdr = purrr::map2(tmb_data, tmb_pars, fit_mod, nlminb_loops = 2),
+  mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
+                           .f = fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
 saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+        here::here("generated_data", "model_fits", "combined_model_dir_t.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
-                           "combined_model_dir.RDS"))
+                           "combined_model_dir_t.RDS"))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
@@ -540,7 +560,6 @@ stock_reorder <- function(key, comp_data) {
   }
   return(out)
 }
-
 
 pred_dat <- dat2 %>% 
   mutate(
