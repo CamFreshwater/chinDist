@@ -66,6 +66,7 @@ Type objective_function<Type>::operator() ()
   matrix<Type> pred_pi(n_levels, n_cat);      // predicted counts in real 
   vector<Type> pred_n_plus(n_levels); 
   matrix<Type> pred_pi_prop(n_levels, n_cat); // predicted counts as ppn.
+  matrix<Type> inv_logit_pred_pi_prop(n_levels, n_cat); // pred. ppn link
 
   pred_eff = pred_cov * z_ints; 
   pred_gamma = exp(pred_eff.array());
@@ -80,16 +81,18 @@ Type objective_function<Type>::operator() ()
   for(int m = 0; m < n_levels; m++) {
     for(int k = 0; k < n_cat; k++) {
       pred_pi_prop(m, k) = pred_pi(m, k) / pred_n_plus(m);
+      inv_logit_pred_pi_prop(m, k) = invlogit(pred_pi_prop(m, k));
     }
   }
 
-  REPORT(pred_gamma);
-  ADREPORT(pred_gamma);
-  REPORT(pred_pi);
-  ADREPORT(pred_pi);
-  REPORT(pred_pi_prop);
-  ADREPORT(pred_pi_prop);
-  
+  // REPORT(pred_gamma);
+  // ADREPORT(pred_gamma);
+  // REPORT(pred_pi);
+  // ADREPORT(pred_pi);
+  // REPORT(pred_pi_prop);
+  // ADREPORT(pred_pi_prop);
+  ADREPORT(inv_logit_pred_pi_prop);
+
   // Return negative loglikelihood
   return jnll;
   
