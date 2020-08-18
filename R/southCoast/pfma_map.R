@@ -55,29 +55,36 @@ pfma_simp_df2 <- pfma_simp_df %>%
       is.na(stat_n) ~ "Juan de Fuca",
       stat_n < 125 & stat_n > 120 ~ "SWVI",
       stat_n < 25 & stat_n > 20 ~ "SWVI",
-      stat_n < 20 & stat_n > 12 ~ "Georgia Strait",
-      stat_n %in% c("28", "29") ~ "Georgia Strait",
-      stat_n %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
+      # stat_n < 20 & stat_n > 12 ~ "Georgia Strait",
+      # stat_n %in% c("28", "29") ~ "Georgia Strait",
+      # stat_n %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
+      stat_n %in% c("14", "15", "16") ~ "N. Strait of Georgia",
+      stat_n %in% c("17", "18", "19", "28", "29") ~ "S. Strait of Georgia",
+      stat_n %in% c("12", "13") ~ "Queen Charlotte and\nJohnstone Straits",
       TRUE ~ NA_character_
     ),
     # catchReg = case_when(
     #   stat_n < 125 & stat_n > 27 ~ "SWVI",
     #   stat_n < 25 ~ "SWVI",
     #   TRUE ~ "NWVI"),
-    region = fct_relevel(region, 'NWVI', 'SWVI', 'Johnstone Strait', 
-                         'Juan de Fuca', 'Georgia Strait'),
+    region = fct_relevel(region, 'NWVI', 'SWVI', 
+                         'Queen Charlotte and\nJohnstone Straits',
+                         'N. Strait of Georgia', 'S. Strait of Georgia',
+                         'Juan de Fuca'),
     statArea = fct_reorder2(STATAREA, lat, region)
   )
+
+
 
 pfma_simp_df2 %>% 
   select(region, statArea) %>% 
   distinct() %>% 
-  arrange(statArea)
+  arrange(region)
 
 
 #color palette
 col.reg <- levels(pfma_simp_df2$region)
-pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Set1")
+pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Dark2")
 names(pal) <- col.reg
 alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.3, 0.9, length = (length(alpha_labs) / length(col.reg))),
