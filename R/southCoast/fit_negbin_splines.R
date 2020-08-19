@@ -71,14 +71,32 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
             cpue = catch / eff,
             .groups = "drop") %>% 
   clean_catch(.) %>% 
-  # drop months with minimal catch estimates
-  filter(!month_n < 5,
-         !month_n > 9) %>% 
-  # drop areas with fewer than 10 (i.e annual estimate per subarea = 1 sample)
+  mutate(
+    min_m = case_when(
+      region == "NSoG" ~ 5,
+      region %in% c("QnCS", "QCaJS") ~ 6,
+      region == "JdFS" ~ 3,
+      region == "SSoG" ~ 1
+    ),
+    max_m = case_when(
+      region %in% c("JdFS", "SSoG") ~ 10,
+      region == "QnCS" ~ 8, 
+      region %in% c("NSoG", "QCaJS")  ~ 9
+    ),
+    region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS")
+  ) %>% 
+  # drop areas with fewer than 10 datapoints (month-year-area observation = 1)
   group_by(area_n) %>% 
+  filter(!month_n < min_m,
+         !month_n > max_m) %>% 
   add_tally() %>% 
   ungroup() %>% 
-  filter(!n < 10) %>% 
+  filter(!n < 10) %>%
+  droplevels() %>% 
+  select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
+         eff_z, offset) %>% 
+  # not enough years from Queen Charlotte Sound - drop for nwo
+  filter(!region %in% c("QnCS")) %>%
   droplevels()
 
 table(rec_catch$month_n, rec_catch$area, rec_catch$region)
@@ -117,7 +135,7 @@ table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
 # PREP DATA --------------------------------------------------------------------
 
-# catch_dat <- comm_catch
+catch_dat <- rec_catch
 
 prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1

@@ -53,10 +53,25 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
 # Plot stock specific abundance data
 plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
-  # months = range(comp_pred$month_n)
+  #adjustment to account for massive CIs on certain stocks in NSoG
+  if ("NSoG" %in% comp_pred$region) {
+    comp_pred <- comp_pred %>%
+      group_by(stock) %>% 
+      mutate(#temp_id = paste(stock, region, sep = "_"),
+             # comb_abund_low = case_when(
+             #   temp_id %in% c("Fraser_Spring_4.2_NSoG", "CA/OR-coast_NSoG")
+             # ))
+             scaled_mean = 2 * max(comp_abund_est),
+             comp_abund_up = pmin(scaled_mean, comp_abund_up))
+  }
+  
+  # comp_pred %>% 
+  #   filter(stock == "CA/OR-coast", region == "NSoG") %>% 
+  #   select(scaled_mean, comp_abund_est, comp_abund_up)
+  
   p <- ggplot(data = comp_pred, aes(x = month_n)) +
-    geom_line(aes(y = comp_abund_est / 1000, colour = region_c)) +
-    geom_ribbon(aes(ymin = comp_abund_low / 1000, ymax = comp_abund_up / 1000, 
+    geom_line(aes(y = comp_abund_est, colour = region_c)) +
+    geom_ribbon(aes(ymin = comp_abund_low, ymax = comp_abund_up, 
                     fill = region_c), 
                 alpha = 0.5) +
     scale_fill_manual(name = "Region", values = pal) +
@@ -67,7 +82,7 @@ plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
     ggsidekick::theme_sleek() +
     theme(legend.position="top",
           axis.text=element_text(size=9))
-  
+
   if (raw == TRUE) {
     p +
       geom_point(data = raw_abund,

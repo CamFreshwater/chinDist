@@ -67,21 +67,39 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
             eff = sum(subarea_eff),
             .groups = "drop") %>% 
   clean_catch(.) %>% 
-  # drop months with minimal catch estimates
-  filter(!month_n < 3,
-         !month_n > 10) %>% 
-  # drop areas with fewer than 10 datapoints
+  # identify months to exclude based on minimal catch or comp estimates 
+  #(make region specific)
+  mutate(
+    min_m = case_when(
+      # region == "NSoG" ~ 6,
+      region %in% c("NSoG", "QnCS", "QCaJS") ~ 6,
+      region == "JdFS" ~ 3,
+      region == "SSoG" ~ 2
+    ),
+    max_m = case_when(
+      region %in% c("JdFS", "SSoG") ~ 10,
+      region == "QnCS" ~ 8, 
+      region %in% c("NSoG", "QCaJS")  ~ 9
+    ),
+    region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS")
+  ) %>% 
+  # drop areas with fewer than 10 datapoints (month-year-area observation = 1)
   group_by(area_n) %>% 
+  filter(!month_n < min_m,
+         !month_n > max_m) %>% 
   add_tally() %>% 
   ungroup() %>% 
-  filter(!n < 10) %>% 
+  filter(!n < 10) %>%
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z, offset)
+         eff_z, offset) %>% 
+  # not enough years from Queen Charlotte Sound - drop for nwo
+  filter(!region %in% c("QnCS")) %>%
+  droplevels()
 
 # export areas to make maps
 # areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
-# saveRDS(areas_retained, 
+# saveRDS(areas_retained,
 #         here::here("data", "gsiCatchData", "pfma", "areas_to_plot.RDS"))
 
 
@@ -90,10 +108,39 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 # recreational data
 rec <-  readRDS(here::here("data", "gsiCatchData", "rec", 
                            "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal",
-         !month_n < min(rec_catch$month_n),
-         !month_n > max(rec_catch$month_n)) %>%
-  mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
+  filter(legal == "legal") %>%
+  mutate(
+    temp_strata = paste(month, region, sep = "_"),
+    sample_id = paste(temp_strata, jDay, year, sep = "_"),
+    min_m = case_when(
+      # region == "N. Strait of Georgia" ~ 5,
+      region %in% c("N. Strait of Georgia", "Queen Charlotte Sound", 
+                    "Queen Charlotte and\nJohnstone Straits") ~ 6,
+      region == "Juan de Fuca Strait" ~ 3,
+      region == "S. Strait of Georgia" ~ 2
+    ),
+    max_m = case_when(
+      region %in% c("Juan de Fuca Strait", "S. Strait of Georgia") ~ 10,
+      region == "Queen Charlotte Sound" ~ 8, 
+      region %in% c("N. Strait of Georgia", 
+                    "Queen Charlotte and\nJohnstone Straits")  ~ 9
+    )
+  ) %>% 
+  group_by(region) %>% 
+  filter(!month_n < min_m,
+         !month_n > max_m) %>% 
+  filter(!region %in% c("Queen Charlotte Sound")) %>%
+  ungroup() %>% 
+  droplevels()
+
+xx2 <- rec %>%
+  filter(region %in% c("N. Strait of Georgia")) %>%
+  select(id, month, area, region, year) %>%
+  distinct()
+
+table(xx2$month, xx2$area)
+table(xx2$month, xx2$year)
+
 
 # check which WCVI stocks are in Johnstone Strait
 # rec %>% 
@@ -146,13 +193,6 @@ calc_agg_prob <- function(grouped_data, full_data) {
 pool_aggs <- function(full_data) {
   full_data %>% 
     mutate(
-      # pst_agg = case_when(
-      #   grepl("CR-", pst_agg) ~ "CR",
-      #   grepl("CST", pst_agg) ~ "CA/OR/WA",
-      #   pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
-      #   pst_agg %in% c("PSD", "SOG") ~ "SalSea",
-      #   TRUE ~ pst_agg
-      # ),
       reg1 = case_when(
         Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
                            "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
@@ -180,6 +220,12 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     select(sample_id, gear, region, region_c, year, month, month_n, agg,
            agg_prob, nn) %>%
     distinct()
+  if (raw_data$gear[1] == "sport") {
+    temp %>% 
+      mutate(region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS"))
+  } else {
+    temp
+  }
 }
 
 # temp %>% select(region, year, month, nn) %>% distinct() %>% pull(nn) %>% sum()
@@ -233,6 +279,10 @@ f <- function(x) {
 f(full_dat$comp_long[[1]])
 f(full_dat$comp_long[[2]])
 
+tt <- full_dat$comp_long[[2]]
+tt <- full_dat$catch_data[[2]]
+table(tt$region, tt$month)
+
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
 catch_dat <- full_dat$catch_data[[2]]
@@ -249,13 +299,6 @@ gen_tmb <- function(catch_dat, comp_dat) {
   spline_type <- ifelse(max(months1) == 12, "cc", "tp")
   n_knots <- ifelse(max(months1) == 12, 4, 3)
 
-  # old model version with spline for effort
-  # m1 <- gam(catch ~ 
-  #             area + s(month_n, bs = spline_type, k = n_knots, by = area) +
-  #             s(eff_z, bs = "tp", k = 4),
-  #           # knots = list(month_n = c(min(months1), max(months1))),
-  #           data = catch_dat,
-  #           family = nb)
   m1 <- gam(catch ~
               area + s(month_n, bs = spline_type, k = n_knots, by = area) +
               offset,
@@ -302,6 +345,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
               by = "area") %>% 
     mutate(strata = paste(month_n, region, sep = "_")) %>% 
     filter(strata %in% comp_strata) %>% 
+    arrange(region) %>%
     #convoluted fuckery to ensure ordering is correct for key
     mutate(month = as.factor(month_n),
            order = row_number(),
@@ -369,7 +413,7 @@ gen_tmb <- function(catch_dat, comp_dat) {
                    nrow = ncol(fix_mm_comp), 
                    ncol = ncol(obs_comp)),
     z2_k = rep(0, times = length(unique(yr_vec_comp))),
-    log_sigma_zk2 = log(0.75)
+    log_sigma_zk2 = log(0.5)
   )
   
   # fix starting value of offset to one, then map
@@ -396,7 +440,8 @@ dat <- full_dat %>%
     tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
-  )
+  ) %>% 
+  filter(fishery == "sport")
 
 
 ## FIT MODELS ------------------------------------------------------------------
@@ -406,7 +451,7 @@ dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, map = tmb_map,
-                   # dat$tmb_data[[1]], dat$tmb_pars[[1]], map = dat$tmb_map[[1]],
+                   #dat$tmb_data[[1]], dat$tmb_pars[[1]], map = dat$tmb_map[[1]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -417,9 +462,22 @@ fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
     }
   }
   sdreport(obj)
-  # sdr <- sdreport(obj)
+  # sdr1 <- sdreport(obj)
   # ssdr <- summary(sdr)
 }
+
+
+xx <- dat$comp_long[[1]]
+xx2 <- dat$comp_long[[2]]
+table(xx$year, xx$month, xx$region)
+
+dat_s <- dat %>% 
+  mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
+                           .f = fit_mod, nlminb_loops = 2),
+         ssdr = purrr::map(sdr, summary))
+# dat_s$sdr[[1]] <- sdr1
+# dat_s2 <- dat_s %>% 
+#   mutate(ssdr = purrr::map(sdr, summary))
 
 # join all data into a tibble then generate model inputs
 dat2 <- dat %>%
@@ -432,6 +490,10 @@ saveRDS(dat2 %>% select(-sdr),
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir_t.RDS"))
+
+dat2 <- dat2 %>% 
+  filter(!fishery == "sport") %>% 
+  rbind(., dat_s %>% select(-sdr))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
@@ -496,7 +558,8 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "log_agg_pred_abund", ] 
   pred_dat <- pred_dat_comp %>% 
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
-              by = "region")
+              by = "region") %>% 
+    mutate(region_c = fct_reorder(region_c, as.numeric(region)))
   
   data.frame(est_link = abund_pred[ , "Estimate"],
              se_link =  abund_pred[ , "Std. Error"]) %>%
@@ -509,6 +572,8 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 }
 
 ## Function to generate composition and stock-specific abundance predictions
+# pred_dat_comp <- dat$pred_dat_comp[[2]]
+# comp_long <- dat$comp_long[[2]]
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
@@ -518,7 +583,8 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   
   pred_dat <- pred_dat_comp %>% 
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
-              by = "region") 
+              by = "region") %>%
+    mutate(region_c = fct_reorder(region_c, as.numeric(region)))
   dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
   
   data.frame(
@@ -530,12 +596,13 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   ) %>% 
     cbind(dum, .) %>%
     mutate(
-      pred_prob_est = car::logit(link_prob_est),
-      pred_prob_low = car::logit(link_prob_est + (qnorm(0.025) * link_prob_se)),
+      pred_prob_low = pmax(0,
+                           car::logit(link_prob_est + (qnorm(0.025) *
+                                                         link_prob_se))),
       pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)),
-      comp_abund_est = exp(link_abund_est),
-      comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)),
-      comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se))
+      comp_abund_est = exp(link_abund_est) / 1000,
+      comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)) / 1000,
+      comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se)) / 1000
     )  
 }
 
@@ -588,7 +655,8 @@ pred_dat <- readRDS(here::here("generated_data",
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
-pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
+# pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
+pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
 
 #pfma map (used to steal legend)
 pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
@@ -641,7 +709,7 @@ dev.off()
 ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
                             plot_ss_abund, raw = FALSE)
 ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
-                           plot_ss_abund,  raw = FALSE, facet_scales = "fixed")
+                           plot_ss_abund, raw = FALSE, facet_scales = "fixed")
 
 pdf(paste(file_path, "stock-specific_abund_splines.pdf", sep = "/"))
 ss_abund_plots_free

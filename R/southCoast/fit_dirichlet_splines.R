@@ -13,11 +13,39 @@ library(mgcv)
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal"#,
-         # !month_n < 5,
-         # !month_n > 9
-         ) %>%
-  mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
+  filter(legal == "legal") %>%
+  mutate(
+    temp_strata = paste(month, region, sep = "_"),
+    sample_id = paste(temp_strata, jDay, year, sep = "_"),
+    min_m = case_when(
+      region == "N. Strait of Georgia" ~ 5,
+      region %in% c("Queen Charlotte Sound", 
+                    "Queen Charlotte and\nJohnstone Straits") ~ 6,
+      region == "Juan de Fuca Strait" ~ 3,
+      region == "S. Strait of Georgia" ~ 1
+    ),
+    max_m = case_when(
+      region %in% c("Juan de Fuca Strait", "S. Strait of Georgia") ~ 10,
+      region == "Queen Charlotte Sound" ~ 8, 
+      region %in% c("N. Strait of Georgia", 
+                    "Queen Charlotte and\nJohnstone Straits")  ~ 9
+    ),
+    region = fct_relevel(as.factor(region), 
+                         "Queen Charlotte and\nJohnstone Straits",
+                         "N. Strait of Georgia", "S. Strait of Georgia", 
+                         "Juan de Fuca Strait")
+  ) %>% 
+  group_by(region) %>% 
+  filter(!month_n < min_m,
+         !month_n > max_m) %>% 
+  filter(!region %in% c("Queen Charlotte Sound")) %>%
+  ungroup() %>% 
+  droplevels()
+
+table(rec$region, rec$month)
+table(rec$area, rec$month)
+table(rec$year, rec$month, rec$region)
+
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "wcviIndProbsLong.rds")) %>%
@@ -27,9 +55,8 @@ comm <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
-    summarize(agg_prob = sum(adj_prob)) %>% 
+    summarize(agg_prob = sum(adj_prob), .groups = "drop") %>% 
     arrange(sample_id, desc(agg_prob)) %>%
-    ungroup() %>% 
     distinct() %>% 
     left_join(.,
               full_data %>% 
@@ -89,8 +116,8 @@ comp <- tibble(
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-comp_in <- comp$data[[4]]
-data_type <- comp$dataset[[4]]
+# comp_in <- comp$data[[2]]
+# data_type <- comp$dataset[[2]]
 
 prep_dir_inputs <- function(comp_in, data_type) {
   gsi_trim <- comp_in %>% 
@@ -121,7 +148,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
   # response variable doesn't matter, since not fit
   m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
               region + s(month_n, bs = spline_type, k = n_knots, by = region),
-            knots = list(month_n = c(min(months), max(months))),
+            # knots = list(month_n = c(min(months), max(months))),
             data = gsi_wide)
   fix_mm <- predict(m1, type = "lpmatrix")
   
@@ -176,7 +203,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  x <- comp2$model_inputs[[4]]
+  x <- comp2$model_inputs[[2]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -208,7 +235,7 @@ comp2$ssdr <- map(comp2$model_inputs, function (x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  x <- comp2$model_inputs[[4]]
+  x <- comp2$model_inputs[[2]]
   # ssdr <- comp2$ssdr[[2]]
   y_obs <- x$data$y_obs
   k <- ncol(y_obs) # number of stocks
@@ -217,17 +244,21 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
   pred_dat <- x$pred_dat
   
   pred_dat2 <- purrr::map_dfr(seq_len(k), ~pred_dat)
-  pred_mat <- ssdr[rownames(ssdr) %in% "pred_pi_prop", ]
-  pred_ci <- data.frame(stock = as.character(rep(stk_names, 
-                                                 each = nrow(pred_dat))),
-                        pred_prob_est = pred_mat[ , "Estimate"],
-                        pred_prob_se =  pred_mat[ , "Std. Error"]) %>% 
+  pred_mat <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
+  pred_ci <- data.frame(
+    stock = as.character(rep(stk_names, each = nrow(pred_dat))),
+    link_prob_est = pred_mat[ , "Estimate"],
+    link_prob_se =  pred_mat[ , "Std. Error"]
+  ) %>% 
     cbind(pred_dat2, .) %>%
-    mutate(pred_prob_low = pmax(0, pred_prob_est + 
-                                  (qnorm(0.025) * pred_prob_se)),
-           pred_prob_up = pred_prob_est + (qnorm(0.975) * pred_prob_se) 
+    mutate(pred_prob_est = car::logit(link_prob_est),
+           pred_prob_low = pmax(0,
+                                car::logit(link_prob_est + (qnorm(0.025) * 
+                                                              link_prob_se))),
+           pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)) 
            #region = abbreviate(region, minlength = 4)
            ) 
+
   
   # calculate raw proportion data for comparison (wide necessary to 
   # account for infilling)
@@ -253,8 +284,8 @@ plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
     geom_line(aes(y = pred_prob_est, colour = region )) +
     geom_ribbon(aes(ymin = pred_prob_low, ymax = pred_prob_up, fill = region), 
                 alpha = 0.5) +
-    scale_fill_manual(name = "Region", values = pal) +
-    scale_colour_manual(name = "Region", values = pal) +
+    # scale_fill_manual(name = "Region", values = pal) +
+    # scale_colour_manual(name = "Region", values = pal) +
     labs(y = "Predicted Encounter Probability", x = "Month") +
     scale_x_continuous(breaks = seq(1, 12, by = 1)) +
     facet_wrap(~stock, scales = "free_y") +

@@ -51,26 +51,19 @@ pfma_simp_df2 <- pfma_simp_df %>%
     region = case_when(
       stat_n > 124 ~ "NWVI",
       stat_n < 28 & stat_n > 24 ~ "NWVI",
-      stat_n %in% c("20", "121", "21") ~ "Juan de Fuca",
-      is.na(stat_n) ~ "Juan de Fuca",
+      stat_n %in% c("20", "121", "21") ~ "Juan de Fuca Strait",
+      is.na(stat_n) ~ "Juan de Fuca Strait",
       stat_n < 125 & stat_n > 120 ~ "SWVI",
       stat_n < 25 & stat_n > 20 ~ "SWVI",
-      # stat_n < 20 & stat_n > 12 ~ "Georgia Strait",
-      # stat_n %in% c("28", "29") ~ "Georgia Strait",
-      # stat_n %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
       stat_n %in% c("14", "15", "16") ~ "N. Strait of Georgia",
       stat_n %in% c("17", "18", "19", "28", "29") ~ "S. Strait of Georgia",
       stat_n %in% c("12", "13") ~ "Queen Charlotte and\nJohnstone Straits",
       TRUE ~ NA_character_
     ),
-    # catchReg = case_when(
-    #   stat_n < 125 & stat_n > 27 ~ "SWVI",
-    #   stat_n < 25 ~ "SWVI",
-    #   TRUE ~ "NWVI"),
     region = fct_relevel(region, 'NWVI', 'SWVI', 
                          'Queen Charlotte and\nJohnstone Straits',
                          'N. Strait of Georgia', 'S. Strait of Georgia',
-                         'Juan de Fuca'),
+                         'Juan de Fuca Strait'),
     statArea = fct_reorder2(STATAREA, lat, region)
   )
 
@@ -84,12 +77,16 @@ pfma_simp_df2 %>%
 
 #color palette
 col.reg <- levels(pfma_simp_df2$region)
-pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Dark2")
-names(pal) <- col.reg
+brew_pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Dark2")
+names(brew_pal) <- col.reg
+saveRDS(brew_pal, here::here("generated_data", "color_pal.RDS"))
+disco_pal <- disco::disco(palette = "bright", n = length(col.reg))[c(2,1,3:6)]
+names(disco_pal) <- col.reg
+saveRDS(disco_pal, here::here("generated_data", "disco_color_pal.RDS"))
+
 alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.3, 0.9, length = (length(alpha_labs) / length(col.reg))),
                   length(col.reg))
-saveRDS(pal, here::here("generated_data", "color_pal.RDS"))
 
 pfma_map <- ggplot() +
   coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
@@ -99,7 +96,7 @@ pfma_map <- ggplot() +
                                          alpha = statArea),
                lwd = 1) +
   geom_polygon(data = n_am, aes(x=long, y = lat, group = group)) + 
-  scale_colour_manual(values = pal, name = "", guide = FALSE) +
+  scale_colour_manual(values = disco_pal, name = "", guide = FALSE) +
   # scale_fill_viridis_d(option = "D", name = "") +
   scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
   scale_alpha_manual(labels = alpha_labs, values = alpha_vals, guide = FALSE) +
@@ -113,8 +110,8 @@ png(here::here("figs", "ms_figs", "pfma_map.png"), res = 400, units = "in",
 pfma_map
 dev.off()
 
-pdf(here::here("figs", "ms_figs", "pfma_map.pdf"))
-pfma_map
-dev.off()
+# pdf(here::here("figs", "ms_figs", "pfma_map.pdf"))
+# pfma_map
+# dev.off()
 
 saveRDS(pfma_map, here::here("generated_data", "pfma_map.rds"))
