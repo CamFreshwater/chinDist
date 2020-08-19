@@ -206,14 +206,15 @@ rec_catch1 <- rec_catch %>%
     region = case_when(
       pfma_n > 124 ~ "NWVI",
       pfma_n < 28 & pfma_n > 24 ~ "NWVI",
-      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca",
-      is.na(pfma_n) ~ "Juan de Fuca",
+      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca Strait",
+      is.na(pfma_n) ~ "Juan de Fuca Strait",
       pfma_n < 125 & pfma_n > 120 ~ "SWVI",
       pfma_n < 25 & pfma_n > 20 ~ "SWVI",
-      pfma_n < 20 & pfma_n > 12 ~ "Georgia Strait",
-      pfma_n %in% c("28", "29") ~ "Georgia Strait",
-      pfma_n %in% c("10", "11", "12", "111") ~ "Johnstone Strait"
-    ),
+      pfma_n %in% c("14", "15", "16") ~ "N. Strait of Georgia",
+      pfma_n %in% c("17", "18", "19", "28", "29") ~ "S. Strait of Georgia",
+      pfma_n %in% c("10", "11", "111") ~ "Queen Charlotte Sound",
+      pfma_n %in% c("12", "13") ~ "Queen Charlotte and\nJohnstone Straits"
+      ),
     strata = paste(pfma_n, CREEL_SUB_AREA, YEAR, MONTH, sep = "_"),
     month = fct_relevel(MONTH, "January", "February", "March", "April", 
                         "May", "June", "July", "August", "September", 
@@ -223,6 +224,12 @@ rec_catch1 <- rec_catch %>%
   select(strata, month, month_n, year = YEAR, area = pfma_n,
          subarea = CREEL_SUB_AREA, region, 
          DISPOSITION, ADIPOSE_MARK, ESTIMATE, STANDARD_ERROR)
+
+# tt <- rec_catch1 %>%
+#   filter(region == "Juan de Fuca Strait") %>%
+#   # filter(area %in% c("11", "111", "12", "13")) %>%
+#   droplevels()
+# table(tt$area, tt$month)
 
 # separate effort and catch data, reformat, then recombine  
 rec_eff <- rec_catch1 %>% 
