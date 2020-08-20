@@ -462,19 +462,14 @@ fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
     }
   }
   sdreport(obj)
-  # sdr1 <- sdreport(obj)
+  # sdr <- sdreport(obj)
   # ssdr <- summary(sdr)
 }
 
-
-xx <- dat$comp_long[[1]]
-xx2 <- dat$comp_long[[2]]
-table(xx$year, xx$month, xx$region)
-
-dat_s <- dat %>% 
-  mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
-                           .f = fit_mod, nlminb_loops = 2),
-         ssdr = purrr::map(sdr, summary))
+# dat_s <- dat %>% 
+#   mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
+#                            .f = fit_mod, nlminb_loops = 2),
+#          ssdr = purrr::map(sdr, summary))
 # dat_s$sdr[[1]] <- sdr1
 # dat_s2 <- dat_s %>% 
 #   mutate(ssdr = purrr::map(sdr, summary))
@@ -491,9 +486,9 @@ saveRDS(dat2 %>% select(-sdr),
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir_t.RDS"))
 
-dat2 <- dat2 %>% 
-  filter(!fishery == "sport") %>% 
-  rbind(., dat_s %>% select(-sdr))
+# dat2 <- dat2 %>% 
+#   filter(!fishery == "sport") %>% 
+#   rbind(., dat_s %>% select(-sdr))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
