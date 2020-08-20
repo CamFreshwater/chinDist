@@ -54,16 +54,17 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
 plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
   #adjustment to account for massive CIs on certain stocks in NSoG
-  # if ("NSoG" %in% comp_pred$region) {
-  #   comp_pred <- comp_pred %>%
-  #     group_by(stock) %>% 
-  #     mutate(#temp_id = paste(stock, region, sep = "_"),
-  #            # comb_abund_low = case_when(
-  #            #   temp_id %in% c("Fraser_Spring_4.2_NSoG", "CA/OR-coast_NSoG")
-  #            # ))
-  #            scaled_mean = 2 * max(comp_abund_est),
-  #            comp_abund_up = pmin(scaled_mean, comp_abund_up))
-  # }
+  if ("NSoG" %in% comp_pred$region) {
+    comp_pred <- comp_pred %>%
+      group_by(stock) %>%
+      mutate(temp_id = paste(stock, region, sep = "_")) %>% 
+      filter(!temp_id %in% c("Fraser_Spring_4.2_NSoG", "CA/OR-coast_NSoG"))#,
+             # comb_abund_low = case_when(
+             #   temp_id %in% c("Fraser_Spring_4.2_NSoG", "CA/OR-coast_NSoG")
+             # ))
+             # scaled_mean = 2 * max(comp_abund_est),
+             # comp_abund_up = pmin(scaled_mean, comp_abund_up)) %>% 
+  }
   
   p <- ggplot(data = comp_pred, aes(x = month_n)) +
     geom_line(aes(y = comp_abund_est, colour = region_c)) +

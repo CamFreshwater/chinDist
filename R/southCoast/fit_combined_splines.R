@@ -71,15 +71,15 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   #(make region specific)
   mutate(
     min_m = case_when(
-      # region == "NSoG" ~ 6,
-      region %in% c("NSoG", "QnCS", "QCaJS") ~ 6,
-      region == "JdFS" ~ 3,
+      region == "NSoG" ~ 5,
+      region %in% c("QnCS", "QCaJS") ~ 6,
+      region == "JdFS" ~ 4,
       region == "SSoG" ~ 2
     ),
     max_m = case_when(
-      region %in% c("JdFS", "SSoG") ~ 10,
+      region %in% c("SSoG") ~ 10,
       region == "QnCS" ~ 8, 
-      region %in% c("NSoG", "QCaJS")  ~ 9
+      region %in% c("JdFS", "NSoG", "QCaJS")  ~ 9
     ),
     region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS")
   ) %>% 
@@ -106,39 +106,43 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 # CLEAN GENETICS  --------------------------------------------------------------
 
 # recreational data
-rec <-  readRDS(here::here("data", "gsiCatchData", "rec", 
+rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                            "recIndProbsLong.rds")) %>% 
   filter(legal == "legal") %>%
   mutate(
     temp_strata = paste(month, region, sep = "_"),
     sample_id = paste(temp_strata, jDay, year, sep = "_"),
     min_m = case_when(
-      # region == "N. Strait of Georgia" ~ 5,
-      region %in% c("N. Strait of Georgia", "Queen Charlotte Sound", 
+      region == "N. Strait of Georgia" ~ 5,
+      region %in% c(#"N. Strait of Georgia", 
+        "Queen Charlotte Sound", 
                     "Queen Charlotte and\nJohnstone Straits") ~ 6,
-      region == "Juan de Fuca Strait" ~ 3,
+      region == "Juan de Fuca Strait" ~ 4,
       region == "S. Strait of Georgia" ~ 2
     ),
     max_m = case_when(
-      region %in% c("Juan de Fuca Strait", "S. Strait of Georgia") ~ 10,
+      region %in% c("S. Strait of Georgia") ~ 10,
       region == "Queen Charlotte Sound" ~ 8, 
-      region %in% c("N. Strait of Georgia", 
+      region %in% c("Juan de Fuca Strait", 
+                    "N. Strait of Georgia", 
                     "Queen Charlotte and\nJohnstone Straits")  ~ 9
     )
   ) %>% 
   group_by(region) %>% 
   filter(!month_n < min_m,
          !month_n > max_m) %>% 
-  filter(!region %in% c("Queen Charlotte Sound")) %>%
+  filter(!region %in% c(#"Queen Charlotte and\nJohnstone Straits",
+                        "Queen Charlotte Sound")) %>%
   ungroup() %>% 
   droplevels()
 
 xx2 <- rec %>%
-  filter(region %in% c("N. Strait of Georgia")) %>%
+  # filter(region %in% c("N. Strait of Georgia",
+  #                      "Juan de Fuca Strait")) %>%
   select(id, month, area, region, year) %>%
   distinct()
 
-table(xx2$month, xx2$area)
+table(xx2$month, xx2$region)
 table(xx2$month, xx2$year)
 
 
@@ -221,7 +225,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
            agg_prob, nn) %>%
     distinct()
   if (raw_data$gear[1] == "sport") {
-    temp %>% 
+    temp %>%
       mutate(region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS"))
   } else {
     temp
@@ -279,14 +283,11 @@ f <- function(x) {
 f(full_dat$comp_long[[1]])
 f(full_dat$comp_long[[2]])
 
-tt <- full_dat$comp_long[[2]]
-tt <- full_dat$catch_data[[2]]
-table(tt$region, tt$month)
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-catch_dat <- full_dat$catch_data[[2]]
-comp_dat <- full_dat$comp_long[[2]]
+catch_dat <- full_dat$catch_data[[4]]
+comp_dat <- full_dat$comp_long[[4]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -363,11 +364,11 @@ gen_tmb <- function(catch_dat, comp_dat) {
   ## composition data
   gsi_wide <- comp_dat %>% 
     pivot_wider(., names_from = agg, values_from = agg_prob) %>%
-    mutate_if(is.numeric, ~replace_na(., 0.000001))
+    mutate_if(is.numeric, ~replace_na(., 0.00001))
   
   obs_comp <- gsi_wide %>% 
     select(-c(sample_id:nn)) %>% 
-    as.matrix() 
+    as.matrix()  
   
   yr_vec_comp <- as.numeric(gsi_wide$year) - 1
   
@@ -377,12 +378,19 @@ gen_tmb <- function(catch_dat, comp_dat) {
   # response variable doesn't matter, since not fit
   m2 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
               region + s(month_n, bs = spline_type, k = n_knots, by = region), 
-            # knots = list(month_n = c(min(months2), max(months2))),
             data = gsi_wide)
   fix_mm_comp <- predict(m2, type = "lpmatrix")
   
   pred_mm_comp <- predict(m2, pred_dat, type = "lpmatrix")
 
+  ## region-stock combinations with 0 observations to map
+  comp_map <- comp_dat %>%
+    group_by(region, agg) %>%
+    complete(., region, nesting(agg)) %>% 
+    summarize(total_obs = sum(agg_prob), .groups = "drop") %>% 
+    filter(is.na(total_obs)) %>% 
+    select(agg, region)
+  
   #input data
   data = list(
     #abundance input data
@@ -409,27 +417,51 @@ gen_tmb <- function(catch_dat, comp_dat) {
     z1_k = rep(0, length(unique(yr_vec_catch))),
     log_sigma_zk1 = log(0.25),
     #composition parameters
-    b2_jg = matrix(0, 
+    b2_jg = matrix(runif(ncol(fix_mm_comp) * ncol(obs_comp), 0.1, 0.9), 
                    nrow = ncol(fix_mm_comp), 
                    ncol = ncol(obs_comp)),
     z2_k = rep(0, times = length(unique(yr_vec_comp))),
     log_sigma_zk2 = log(0.5)
   )
   
-  # fix starting value of offset to one, then map
+  # mapped values (not estimated)
+  # offset for effort
   pars$b1_j[offset_pos] <- 1
-  b_j_map <- seq_along(pars$b1_j)
-  b_j_map[offset_pos] <- NA
-  tmb_map <- list(b1_j = as.factor(b_j_map))
-  
+  b1_j_map <- seq_along(pars$b1_j)
+  b1_j_map[offset_pos] <- NA
+  tmb_map <- list(b1_j = as.factor(b1_j_map))
+  # offset for composition parameterss 
+  if (!is.na(comp_map$agg[1])) {
+    temp_betas <- pars$b2_jg
+    for (i in 1:nrow(comp_map)) {
+      offset_stock_pos <- grep(paste(comp_map$agg[1], collapse="|"), 
+                               colnames(obs_comp))
+      offset_region_pos <- grep(paste(comp_map$region[1], collapse="|"), 
+                                colnames(fix_mm_comp))
+      for (j in seq_len(ncol(fix_mm_comp))) {
+        for (k in seq_len(ncol(obs_comp))) {
+          if (j %in% offset_region_pos & k %in% offset_stock_pos) {
+            pars$b2_jg[j, k] <- 0.00001
+            temp_betas[j, k] <- NA
+          }
+        }
+      }
+    }
+    comp_map_pos <- which(is.na(as.vector(temp_betas)))
+    b2_jg_map <- seq_along(pars$b2_jg)
+    b2_jg_map[comp_map_pos] <- NA
+    tmb_map <- c(tmb_map, list(b2_jg = as.factor(b2_jg_map)))
+  }
+
   list("data" = data, "pars" = pars, "comp_wide" = gsi_wide,
        "pred_dat_catch" = pred_dat_catch, "pred_dat_comp" = pred_dat,
        "tmb_map" = tmb_map)
 }
 
+
 #add tmb data assuming average effort predictions (for month specific look at
 # non-spline code)
-tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, gen_tmb)
+tmb_list <- map2(full_dat$catch_data, full_dat$comp_long, .f = gen_tmb)
 
 # join all data into a tibble then generate model inputs
 dat <- full_dat %>% 
@@ -440,8 +472,7 @@ dat <- full_dat %>%
     tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
-  ) %>% 
-  filter(fishery == "sport")
+  ) 
 
 
 ## FIT MODELS ------------------------------------------------------------------
@@ -451,7 +482,7 @@ dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, map = tmb_map,
-                   #dat$tmb_data[[1]], dat$tmb_pars[[1]], map = dat$tmb_map[[1]],
+                   #dat$tmb_data[[4]], dat$tmb_pars[[4]], map = dat$tmb_map[[4]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -481,10 +512,10 @@ dat2 <- dat %>%
          ssdr = purrr::map(sdr, summary)
          )
 saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", "combined_model_dir_t.RDS"))
+        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
-                           "combined_model_dir_t.RDS"))
+                           "combined_model_dir.RDS"))
 
 # dat2 <- dat2 %>% 
 #   filter(!fishery == "sport") %>% 
@@ -567,11 +598,14 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 }
 
 ## Function to generate composition and stock-specific abundance predictions
-# pred_dat_comp <- dat$pred_dat_comp[[2]]
-# comp_long <- dat$comp_long[[2]]
+pred_dat_comp <- dat$pred_dat_comp[[2]]
+comp_long <- dat$comp_long[[2]]
+ssdr <- dat2$ssdr[[2]]
+
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
+  beta_comp <- ssdr[rownames(ssdr) %in% "b2_jg", ]
   
   stk_names <- unique(comp_long$agg)
   n_preds <- nrow(pred_dat_comp)
@@ -591,6 +625,7 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   ) %>% 
     cbind(dum, .) %>%
     mutate(
+      pred_prob_est = car::logit(link_prob_est),
       pred_prob_low = pmax(0,
                            car::logit(link_prob_est + (qnorm(0.025) *
                                                          link_prob_se))),
