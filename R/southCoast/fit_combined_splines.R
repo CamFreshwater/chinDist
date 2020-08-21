@@ -97,6 +97,14 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   filter(!region %in% c("QnCS")) %>%
   droplevels()
 
+## Check CPUE 
+rec_catch %>% 
+  mutate(mu_eff = mean(eff),
+         cpue = catch / eff) %>% 
+  ggplot(., aes(month, cpue)) +
+  geom_boxplot() +
+  facet_wrap(~region, scales = "free_y")
+
 # export areas to make maps
 # areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
 # saveRDS(areas_retained,
@@ -799,20 +807,58 @@ dev.off()
 
 
 ### Summary supplemental tables
-tally_f <- function(dat) {
-  dat %>% 
-    group_by(region, area, month) %>% 
-    tally() %>% 
-    rename(pfma = area)
+tally_f <- function(dat, type, fishery) {
+  if (type == "catch") {
+    out <- dat %>% 
+      group_by(region, area, month, month_n) %>% 
+      tally() %>% 
+      rename(pfma = area) 
+  }
+  if (type == "comp") {
+    out <- dat %>% 
+      group_by(region, month, month_n) %>% 
+      tally() 
+  }
+  out %>% 
+    mutate(fishery = fishery) %>% 
+    ungroup()
 }
-tally_f(rec_catch)
-tally_f(comm_catch)
 
-unique(full_dat$comp_long[[1]]$year)
-unique(full_dat$comp_long[[2]]$year)
+pivot_f <- function(dat1, dat2, type) {
+  if (type == "catch") {
+    out <- rbind(dat1, dat2) %>% 
+      mutate(month = fct_reorder(month, month_n)) %>% 
+      arrange(fishery, region, pfma, month_n) %>% 
+      select(-month_n) %>% 
+      pivot_wider(names_from = "month", values_from = "n") %>% 
+      select(fishery, region, pfma, `1`:`12`)
+  }
+  if (type == "comp") {
+    out <- rbind(dat1, dat2) %>% 
+      mutate(month = fct_reorder(month, month_n)) %>% 
+      arrange(fishery, region, month_n) %>% 
+      select(-month_n) %>% 
+      pivot_wider(names_from = "month", values_from = "n") %>% 
+      select(fishery, region, `1`:`12`)
+  }
+  out 
+}
 
-t1 <- pred_dat$catch[[1]]
-t2 <- pred_dat$catch[[2]]
+# catch data (one observation equals a year-pfma-monthly catch estimate)
+rec_n_long <- rec_catch %>% 
+  tally_f(., type = "catch", fishery = "rec")
+comm_n_long <- comm_catch %>% 
+  tally_f(., type = "catch", fishery = "commercial")
+catch_n <- pivot_f(rec_n_long, comm_n_long, type = "catch")
 
-tally_f(t1)
-tally_f(t2)
+# composition data
+rec_n2_long <- rec %>% 
+  select(id, region, month, month_n) %>% 
+  distinct() %>% 
+  tally_f(., type = "comp", fishery = "rec")
+comm_n2_long <- comm %>% 
+  select(id, region, month, month_n) %>% 
+  distinct() %>% 
+  tally_f(., type = "comp", fishery = "comm")
+comp_n <- pivot_f(rec_n2_long, comm_n2_long, type = "comp")
+
