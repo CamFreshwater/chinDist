@@ -12,8 +12,18 @@ library(ggplot2)
 # comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
 #                            "reg3RollUpCatchProb.RDS")) 
 comp <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "cwt_recovery_clean.rds")) %>% 
-  rename(regName = pst_agg)
+                           "cwt_recovery_clean.rds"))
+
+tt <- comp$subset_data[[1]] %>% 
+  group_by(pst_agg) %>% 
+  tally()
+
+ttt <- full_dat$comp_long[[1]] %>% 
+  select(sample_id, agg, agg_prob) %>%
+  distinct() %>% 
+  group_by(agg) %>% 
+  summarize(n = sum(agg_prob))
+
 
 # month range dictated by ecological scale
 month_range = c(3, 10)

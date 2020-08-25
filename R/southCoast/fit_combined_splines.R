@@ -59,8 +59,9 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
          !region %in% c("NWVI", "SWVI")) %>% 
   #group by subarea to get rid of adipose and released legal duplicates
   group_by(month, month_n, year, area, subarea, region, legal) %>% 
-  mutate(subarea_catch = sum(mu_catch),
-         subarea_eff = mean(mu_boat_trips)) %>% 
+  summarize(subarea_catch = sum(mu_catch),
+            subarea_eff = mean(mu_boat_trips),
+            .groups = "drop") %>% 
   #group by area to be consistent with commercial data
   group_by(month, month_n, year, area, region, legal) %>% 
   summarize(catch = sum(subarea_catch),
@@ -97,13 +98,6 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   filter(!region %in% c("QnCS")) %>%
   droplevels()
 
-## Check CPUE 
-rec_catch %>% 
-  mutate(mu_eff = mean(eff),
-         cpue = catch / eff) %>% 
-  ggplot(., aes(month, cpue)) +
-  geom_boxplot() +
-  facet_wrap(~region, scales = "free_y")
 
 # export areas to make maps
 # areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
@@ -143,16 +137,6 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
                         "Queen Charlotte Sound")) %>%
   ungroup() %>% 
   droplevels()
-
-xx2 <- rec %>%
-  # filter(region %in% c("N. Strait of Georgia",
-  #                      "Juan de Fuca Strait")) %>%
-  select(id, month, area, region, year) %>%
-  distinct()
-
-table(xx2$month, xx2$region)
-table(xx2$month, xx2$year)
-
 
 # check which WCVI stocks are in Johnstone Strait
 # rec %>% 
@@ -240,9 +224,6 @@ clean_comp <- function(grouping_col, raw_data, ...) {
   }
 }
 
-# temp %>% select(region, year, month, nn) %>% distinct() %>% pull(nn) %>% sum()
-# temp %>% select(region, year, month) %>% distinct() %>% nrow()
-
 ## combine genetics in tibble 
 full_dat <- tibble(
   sample = rep("gsi", 4),
@@ -261,41 +242,11 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
-# Check coverage of recreational fishery
-# tt <- full_dat %>% 
-#   filter(dataset == "gsi_sport_pst")
-# gsi
-# tt$comp_long[[1]] %>% 
-#   select(year, month, region, nn) %>%
-#   distinct() %>% 
-#   group_by(year, month, region) %>%
-#   mutate(strata_n = sum(nn)) %>% 
-#   arrange(region, month, year) %>% 
-#   print(n = Inf)
-
-# catch 
-# tt$catch_data[[1]] %>%
-#   group_by(month, region) %>% 
-#   tally() %>% 
-#   arrange(region, month) %>% 
-#   print(n = Inf)
-
-# How many samples total?
-f <- function(x) {
-  x %>% 
-    select(month, year, region, nn) %>% 
-    distinct() %>% 
-    pull(nn) %>% 
-    sum()
-}
-f(full_dat$comp_long[[1]])
-f(full_dat$comp_long[[2]])
-
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-catch_dat <- full_dat$catch_data[[4]]
-comp_dat <- full_dat$comp_long[[4]]
+# catch_dat <- full_dat$catch_data[[4]]
+# comp_dat <- full_dat$comp_long[[4]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -480,7 +431,8 @@ dat <- full_dat %>%
     tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
-  ) 
+  ) %>% 
+  filter(fishery == "sport")
 
 
 ## FIT MODELS ------------------------------------------------------------------
@@ -490,7 +442,7 @@ dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, map = tmb_map,
-                   #dat$tmb_data[[4]], dat$tmb_pars[[4]], map = dat$tmb_map[[4]],
+                   # dat$tmb_data[[4]], dat$tmb_pars[[4]], map = dat$tmb_map[[4]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -505,29 +457,25 @@ fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
   # ssdr <- summary(sdr)
 }
 
-# dat_s <- dat %>% 
-#   mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
-#                            .f = fit_mod, nlminb_loops = 2),
-#          ssdr = purrr::map(sdr, summary))
-# dat_s$sdr[[1]] <- sdr1
-# dat_s2 <- dat_s %>% 
-#   mutate(ssdr = purrr::map(sdr, summary))
-
 # join all data into a tibble then generate model inputs
 dat2 <- dat %>%
   mutate(sdr = purrr::pmap(list(tmb_data, tmb_pars, tmb_map), 
                            .f = fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+dat_s <- dat2
+
+# saveRDS(dat2 %>% select(-sdr),
+#         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
 
-# dat2 <- dat2 %>% 
-#   filter(!fishery == "sport") %>% 
-#   rbind(., dat_s %>% select(-sdr))
+dat2 <- dat2 %>%
+  select(-comp_offsets) %>% 
+  filter(!fishery == "sport") %>%
+  rbind(., dat_s %>% select(-sdr)) %>% 
+  arrange(desc(grouping), desc(fishery))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
@@ -606,9 +554,9 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 }
 
 ## Function to generate composition and stock-specific abundance predictions
-pred_dat_comp <- dat$pred_dat_comp[[2]]
-comp_long <- dat$comp_long[[2]]
-ssdr <- dat2$ssdr[[2]]
+# pred_dat_comp <- dat$pred_dat_comp[[4]]
+# comp_long <- dat$comp_long[[4]]
+# ssdr <- dat2$ssdr[[2]]
 
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
   comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
@@ -806,13 +754,26 @@ ss_abund_plots_free[[4]] +
 dev.off()
 
 
+## Random summary data ---------------------------------------------------------
+
+# How many samples total?
+f <- function(x) {
+  x %>% 
+    select(month, year, region, nn) %>% 
+    distinct() %>% 
+    pull(nn) %>% 
+    sum()
+}
+f(full_dat$comp_long[[1]])
+f(full_dat$comp_long[[2]])
+
 ### Summary supplemental tables
 tally_f <- function(dat, type, fishery) {
   if (type == "catch") {
     out <- dat %>% 
-      group_by(region, area, month, month_n) %>% 
+      group_by(region_c, area, month, month_n) %>% 
       tally() %>% 
-      rename(pfma = area) 
+      rename(PFMA = area) 
   }
   if (type == "comp") {
     out <- dat %>% 
@@ -820,7 +781,7 @@ tally_f <- function(dat, type, fishery) {
       tally() 
   }
   out %>% 
-    mutate(fishery = fishery) %>% 
+    mutate(Fishery = fishery) %>% 
     ungroup()
 }
 
@@ -828,18 +789,18 @@ pivot_f <- function(dat1, dat2, type) {
   if (type == "catch") {
     out <- rbind(dat1, dat2) %>% 
       mutate(month = fct_reorder(month, month_n)) %>% 
-      arrange(fishery, region, pfma, month_n) %>% 
+      arrange(Fishery, region_c, PFMA, month_n) %>% 
       select(-month_n) %>% 
       pivot_wider(names_from = "month", values_from = "n") %>% 
-      select(fishery, region, pfma, `1`:`12`)
+      select(Fishery, Region = region_c, PFMA, `1`:`12`)
   }
   if (type == "comp") {
     out <- rbind(dat1, dat2) %>% 
       mutate(month = fct_reorder(month, month_n)) %>% 
-      arrange(fishery, region, month_n) %>% 
+      arrange(Fishery, region, month_n) %>% 
       select(-month_n) %>% 
       pivot_wider(names_from = "month", values_from = "n") %>% 
-      select(fishery, region, `1`:`12`)
+      select(Fishery, Region = region, `1`:`12`)
   }
   out 
 }
@@ -862,3 +823,34 @@ comm_n2_long <- comm %>%
   tally_f(., type = "comp", fishery = "comm")
 comp_n <- pivot_f(rec_n2_long, comm_n2_long, type = "comp")
 
+# export
+write.csv(catch_n, here::here("figs", "ms_figs", "tableS1_catch_samples.csv"),
+          row.names = FALSE)
+write.csv(comp_n, here::here("figs", "ms_figs", "tableS2_comp_samples.csv"),
+          row.names = FALSE)
+
+# CPUE figs
+plot_cpue <- function(dat) {
+  dat %>% 
+    mutate(cpue = catch / eff) %>% 
+    ggplot(., aes(x = month, y = cpue, 
+                  fill = fct_reorder(region_c, as.numeric(region)))) +
+    geom_point(shape = 21) +
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_colour_manual(name = "Region", values = pal) +
+    facet_wrap(~fct_reorder(area, as.numeric(region))) +
+    ggsidekick::theme_sleek() +
+    labs(x = "Month", 
+         y = "Catch Per Unit Effort (pieces per boat day)")
+}
+
+
+png(here::here("figs", "ms_figs", "rec_cpue.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+plot_cpue(rec_catch)
+dev.off()
+
+png(here::here("figs", "ms_figs", "comm_cpue.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+plot_cpue(comm_catch)
+dev.off()
