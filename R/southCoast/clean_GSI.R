@@ -144,9 +144,8 @@ comm_long <- dat_comm %>%
 
 saveRDS(comm_long, here::here("data", "gsiCatchData", "commTroll",
                          "wcviIndProbsLong.rds"))
-# comm_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-#                            "wcviIndProbsLong.rds"))
-
+comm_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                           "wcviIndProbsLong.rds"))
 
 ## Clean recreation GSI data ---------------------------------------------------
 
@@ -176,6 +175,11 @@ temp_prob <- rec_full %>%
                names_to = "rank_prob", values_to = "prob") %>%  
   select(BIOKEY, COLLECTION_DATE, rank_prob, prob)
 
+# rec_full %>% 
+#   filter(PFMA == "13") %>% 
+#   group_by(SUBAREA) %>% 
+#   tally()
+
 # data frame of stock IDs
 rec_long <- rec_full %>% 
   filter(!DNA_RESULTS_STOCK_1 == "",
@@ -201,15 +205,14 @@ rec_long <- rec_full %>%
   ungroup() %>% 
   mutate(
     region = case_when(
+      # separate northern areas of 13 (normally in JS) and add to NSoG
+      SUBAREA %in% c("13M", "13N") ~ "N. Strait of Georgia",
       PFMA > 124 ~ "NWVI",
       PFMA < 28 & PFMA > 24 ~ "NWVI",
       PFMA %in% c("20", "121", "21") ~ "Juan de Fuca Strait",
       is.na(PFMA) ~ "Juan de Fuca Strait",
       PFMA < 125 & PFMA > 120 ~ "SWVI",
       PFMA < 25 & PFMA > 20 ~ "SWVI",
-      # PFMA < 20 & PFMA > 12 ~ "Georgia Strait",
-      # PFMA %in% c("28", "29") ~ "Georgia Strait",
-      PFMA %in% c("10", "11", "12", "111") ~ "Johnstone Strait",
       PFMA %in% c("14", "15", "16") ~ "N. Strait of Georgia",
       PFMA %in% c("17", "18", "19", "28", "29") ~ "S. Strait of Georgia",
       PFMA %in% c("10", "11", "111") ~ "Queen Charlotte Sound",
@@ -258,21 +261,23 @@ saveRDS(rec_long, here::here("data", "gsiCatchData", "rec",
                             "recIndProbsLong.rds"))
 
 tt2 <- rec_long %>%
-  # filter(!region %in% c("Juan de Fuca Strait", "S. Strait of Georgia")) %>%
-  filter(area %in% c("11", "111", "12", "13")) %>%
+  filter(region %in% c("N. Strait of Georgia",
+                        "Queen Charlotte and\nJohnstone Straits")) %>%
   select(region, month, area, id) %>%
   distinct() %>%
   droplevels()
 table(tt2$area, tt2$month)
+table(tt2$region, tt2$month)
 
-ggplot(rec_long) + 
-  geom_histogram(aes(fl)) +
-  facet_wrap(~legal)
 
-rec_long %>% 
-  filter(is.na(legal)) %>% 
-  group_by(release) %>% 
-  tally()
+# quick check of CWT recoveries inshore (no inshore gsi) 
+# rec_full %>%
+#   filter(PFMA %in% c("23", "123", "124", "125", "126", "24", "25", "26"),
+#          RESOLVED_STOCK_SOURCE == "CWT",
+#          MONTH %in% c("Aug", "Sep")) %>%
+#   group_by(MONTH, PFMA, CWT_RESULT) %>%
+#   tally() %>% 
+#   print(n = Inf)
 
 
 ### FOLLOWING IS DEPRECATED ###

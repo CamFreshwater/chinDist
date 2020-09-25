@@ -1,9 +1,10 @@
 ## Combined model fits
-# July 20, 2020
-# Fit combined multionomial/tweedie or multinomial/nb model to 
-# stock composition and abundance data
+# Sep 25, 2020
+# Fit combined dirichlet/nb model to stock composition and abundance data
 # aggregate probability reflects summed probabilities of a given region of 
 # origin for a given individual
+# Constrain to relatively few months due to limited availability of rec C/E 
+# data
 # Modified from fit_combined.R to include splines
 
 library(tidyverse)
@@ -14,73 +15,25 @@ library(gridExtra)
 library(mgcv)
 library(scales)
 
-# CLEAN CATCH -----------------------------------------------------------------
-
-# clean function 
-clean_catch <- function(dat) {
-  dat %>% 
-    filter(!is.na(eff),
-           !eff == "0") %>% 
-    mutate(region_c = as.character(region),
-           region = factor(abbreviate(region, minlength = 4)),
-           area_n = as.numeric(area),
-           area = as.factor(area),
-           month = as.factor(month),
-           month_n = as.numeric(month),
-           month = as.factor(month_n),
-           year = as.factor(year),
-           eff_z = as.numeric(scale(eff)),
-           offset = log(eff)
-           ) %>% 
-    arrange(region, month) 
-}
+# IMPORT CATCH -----------------------------------------------------------------
 
 #commercial catch data
 comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.rds")) %>% 
-  # calculate monthly catch and effort 
-  group_by(catchReg, area, month, year) %>% 
-  summarize(catch = sum(catch), 
-            eff = sum(boatDays),
-            .groups = "drop") %>% 
-  rename(region = catchReg) %>% 
-  clean_catch(.) %>% 
-  # drop inside areas where seasonal catches not available
-  filter(!area_n < 100) %>% 
-  droplevels() %>% 
-  select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z, offset)
-  
+                                 "month_area_commCatch.rds")) 
+
 #recreational catch data - sampling unit is area-month-year catch estimate
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
-                                "monthlyCatch_rec.RDS")) %>% 
-  #drop sublegal fish and regions without genetics
-  filter(legal == "legal",
-         !region %in% c("NWVI", "SWVI")) %>% 
-  #group by subarea to get rid of adipose and released legal duplicates
-  group_by(month, month_n, year, area, subarea, region, legal) %>% 
-  summarize(subarea_catch = sum(mu_catch),
-            subarea_eff = mean(mu_boat_trips),
-            .groups = "drop") %>% 
-  #group by area to be consistent with commercial data
-  group_by(month, month_n, year, area, region, legal) %>% 
-  summarize(catch = sum(subarea_catch),
-            eff = sum(subarea_eff),
-            .groups = "drop") %>% 
-  clean_catch(.) %>% 
+                                "month_area_recCatch.rds")) %>% 
   # identify months to exclude based on minimal catch or comp estimates 
   #(make region specific)
   mutate(
     min_m = case_when(
-      region == "NSoG" ~ 5,
-      region %in% c("QnCS", "QCaJS") ~ 6,
-      region == "JdFS" ~ 4,
-      region == "SSoG" ~ 2
+      region %in% c("NSoG", "SSoG") ~ 5,
+      region %in% c("JdFS", "QCaJS") ~ 6
     ),
     max_m = case_when(
-      region %in% c("SSoG") ~ 10,
-      region == "QnCS" ~ 8, 
-      region %in% c("JdFS", "NSoG", "QCaJS")  ~ 9
+      region == "QCaJS" ~ 8, 
+      region %in% c("JdFS", "NSoG", "SSoG")  ~ 9
     ),
     region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS")
   ) %>% 
@@ -93,16 +46,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   filter(!n < 10) %>%
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z, offset) %>% 
-  # not enough years from Queen Charlotte Sound - drop for nwo
-  filter(!region %in% c("QnCS")) %>%
-  droplevels()
-
-
-# export areas to make maps
-# areas_retained <- c(unique(rec_catch$area_n), unique(comm_catch$area_n))
-# saveRDS(areas_retained,
-#         here::here("data", "gsiCatchData", "pfma", "areas_to_plot.RDS"))
+         eff_z, offset) 
 
 
 # CLEAN GENETICS  --------------------------------------------------------------
@@ -110,47 +54,32 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                            "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal") %>%
+  filter(legal == "legal",
+         !region %in% c("Queen Charlotte Sound")) %>%
   mutate(
     temp_strata = paste(month, region, sep = "_"),
     sample_id = paste(temp_strata, jDay, year, sep = "_"),
     min_m = case_when(
-      region == "N. Strait of Georgia" ~ 5,
-      region %in% c(#"N. Strait of Georgia", 
-        "Queen Charlotte Sound", 
-                    "Queen Charlotte and\nJohnstone Straits") ~ 6,
-      region == "Juan de Fuca Strait" ~ 4,
-      region == "S. Strait of Georgia" ~ 2
+      region %in% c("N. Strait of Georgia", "S. Strait of Georgia") ~ 5,
+      region %in% c("Juan de Fuca Strait",
+                    "Queen Charlotte and\nJohnstone Straits") ~ 6
     ),
     max_m = case_when(
-      region %in% c("S. Strait of Georgia") ~ 10,
-      region == "Queen Charlotte Sound" ~ 8, 
-      region %in% c("Juan de Fuca Strait", 
-                    "N. Strait of Georgia", 
-                    "Queen Charlotte and\nJohnstone Straits")  ~ 9
+      region %in% c("Juan de Fuca Strait", "N. Strait of Georgia",
+                    "S. Strait of Georgia") ~ 9,
+      region == "Queen Charlotte and\nJohnstone Straits" ~ 8
     )
   ) %>% 
   group_by(region) %>% 
   filter(!month_n < min_m,
-         !month_n > max_m) %>% 
-  filter(!region %in% c(#"Queen Charlotte and\nJohnstone Straits",
-                        "Queen Charlotte Sound")) %>%
+         !month_n > max_m) %>%
   ungroup() %>% 
   droplevels()
 
-# check which WCVI stocks are in Johnstone Strait
-# rec %>% 
-#   filter(region == "Johnstone Strait") %>% 
-#   group_by(sample_id, stock, Region1Name, area) %>% 
-#   summarize(lump_prob = sum(adj_prob)) %>% 
-#   filter(Region1Name == "WCVI",
-#          !lump_prob == 0) %>%
-#   group_by(stock) %>% 
-#   filter(!lump_prob < 4) %>% 
-#   ungroup() %>% 
-#   ggplot(.) +
-#   geom_boxplot(aes(x = stock, y = lump_prob)) +
-#   facet_wrap(~area)
+# tt <- rec %>% 
+#   select(region, id, month_n, year) %>% 
+#   distinct()
+# table(tt$region, tt$month_n)
 
 # GSI samples in commercial database associated with Taaq fishery
 taaq <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
@@ -431,8 +360,8 @@ dat <- full_dat %>%
     tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
-  ) %>% 
-  filter(fishery == "sport")
+  ) #%>% 
+  # filter(fishery == "sport")
 
 
 ## FIT MODELS ------------------------------------------------------------------
@@ -442,7 +371,7 @@ dyn.load(dynlib(here::here("src", "nb_dirichlet_1re")))
 
 fit_mod <- function(tmb_data, tmb_pars, tmb_map, nlminb_loops = 2) {
   obj <- MakeADFun(tmb_data, tmb_pars, map = tmb_map,
-                   # dat$tmb_data[[4]], dat$tmb_pars[[4]], map = dat$tmb_map[[4]],
+                   #dat$tmb_data[[4]], dat$tmb_pars[[4]], map = dat$tmb_map[[4]],
                    random = c("z1_k", "z2_k"), 
                    DLL = "nb_dirichlet_1re")
   
@@ -463,19 +392,13 @@ dat2 <- dat %>%
                            .f = fit_mod, nlminb_loops = 2),
          ssdr = purrr::map(sdr, summary)
          )
-dat_s <- dat2
 
-# saveRDS(dat2 %>% select(-sdr),
-#         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+saveRDS(dat2 %>% select(-sdr),
+        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
 
-dat2 <- dat2 %>%
-  select(-comp_offsets) %>% 
-  filter(!fishery == "sport") %>%
-  rbind(., dat_s %>% select(-sdr)) %>% 
-  arrange(desc(grouping), desc(fishery))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
