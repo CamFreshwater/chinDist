@@ -150,23 +150,8 @@ dailyCatch <- areaCatch %>%
          cpue = catch / boatDays) %>% 
   arrange(area, year, month, jDay)
 
-
 saveRDS(dailyCatch, here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.rds"))
-
-ggplot(data = dailyCatch %>% filter(!boatDays == 0)) +
-  geom_point(aes(x = jDay, y = sumCPUE)) +
-  facet_wrap(~catchReg) +
-  ggsidekick::theme_sleek()
-
-
-## Check anomalously large CPUE
-# dailyCatch %>% 
-#   filter(sumCPUE > 900)
-# 
-# areaCatch %>% 
-#   filter(AREA_NAME == "management area 123", FISHING.YEAR == "2013", 
-#          FISHING.MONTH == "5")
+                                 "day_area_commCatch.rds"))
 
 
 # CLEAN REC DATA ---------------------------------------------------------------
@@ -190,18 +175,25 @@ rec_catch %>%
   group_by(STATUS) %>% 
   tally()
 
-unpub_strata <- rec_catch %>% 
-  filter(STATUS != "Published Estimate - Full Month") %>% 
+unpub_strata <- rec_catch %>%
+  filter(STATUS != "Published Estimate - Full Month") %>%
   pull(strata)
 
-rec_catch %>% 
+rec_catch %>%
   filter(STATUS == "Published Estimate - Full Month",
-         strata %in% unpub_strata)
+         strata %in% unpub_strata) %>% 
+  pull(strata)
 #none seem to be cross referenced so retain both
 
 # clean
 rec_catch1 <- rec_catch %>% 
   mutate(
+    PFMA = case_when(
+      # separate northern areas of 13 (normally in JS) and add to NSoG; 
+      # note that 13M = 13A and 13N = 13B (changed in 2011)
+      CREEL_SUB_AREA %in% c("13M", "13N", "13A", "13B") ~ "PFMA 14",
+      TRUE ~ PFMA
+    ),
     pfma_n = as.numeric(str_remove_all(PFMA, "PFMA ")),
     region = case_when(
       pfma_n > 124 ~ "NWVI",
@@ -224,12 +216,6 @@ rec_catch1 <- rec_catch %>%
   select(strata, month, month_n, year = YEAR, area = pfma_n,
          subarea = CREEL_SUB_AREA, region, 
          DISPOSITION, ADIPOSE_MARK, ESTIMATE, STANDARD_ERROR)
-
-# tt <- rec_catch1 %>%
-#   filter(region == "Juan de Fuca Strait") %>%
-#   # filter(area %in% c("11", "111", "12", "13")) %>%
-#   droplevels()
-# table(tt$area, tt$month)
 
 # separate effort and catch data, reformat, then recombine  
 rec_eff <- rec_catch1 %>% 
@@ -276,6 +262,120 @@ rec_dat_out <- rec_catch2 %>%
   select(-strata)
 
 saveRDS(rec_list, here::here("data", "gsiCatchData", "rec",
-                             "monthlyCatchList_rec.RDS"))
+                             "month_subarea_recCatch_list.rds"))
 saveRDS(rec_dat_out, here::here("data", "gsiCatchData", "rec",
-                             "monthlyCatch_rec.RDS"))
+                             "month_subarea_recCatch.rds"))
+
+
+# CLEAN DATA FOR MODELING ------------------------------------------------------
+
+# clean function 
+clean_catch <- function(dat) {
+  dat %>% 
+    filter(!is.na(eff),
+           !eff == "0") %>% 
+    mutate(region_c = as.character(region),
+           region = factor(abbreviate(region, minlength = 4)),
+           area_n = as.numeric(area),
+           area = as.factor(area),
+           month = as.factor(month),
+           month_n = as.numeric(month),
+           month = as.factor(month_n),
+           year = as.factor(year),
+           eff_z = as.numeric(scale(eff)),
+           offset = log(eff)
+    ) %>% 
+    arrange(region, month) 
+}
+
+#commercial catch data
+comm_catch_area_month <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+                                 "day_area_commCatch.rds")) %>% 
+  # calculate monthly catch and effort 
+  group_by(catchReg, area, month, year) %>% 
+  summarize(catch = sum(catch), 
+            eff = sum(boatDays),
+            .groups = "drop") %>% 
+  rename(region = catchReg) %>% 
+  clean_catch(.) %>% 
+  # drop inside areas where seasonal catches not available
+  filter(!area_n < 100) %>% 
+  droplevels() %>% 
+  select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
+         eff_z, offset)
+saveRDS(comm_catch_area_month, here::here("data", "gsiCatchData", "commTroll",
+                             "month_area_commCatch.rds"))
+
+#recreational catch data - sampling unit is area-month-year catch estimate
+rec_catch_area_month <- readRDS(here::here("data", "gsiCatchData", "rec",
+                                "month_subarea_recCatch.RDS")) %>% 
+  #drop sublegal fish and regions without genetics
+  filter(legal == "legal",
+         !region %in% c("NWVI", "SWVI", "QnCS")) %>% 
+  #group by subarea to get rid of adipose and released legal duplicates
+  group_by(month, month_n, year, area, subarea, region, legal) %>% 
+  summarize(subarea_catch = sum(mu_catch, na.rm = T),
+            subarea_eff = mean(mu_boat_trips, na.rm = T),
+            .groups = "drop") %>% 
+  filter(!is.na(subarea_eff)) %>% 
+  #group by area to be consistent with commercial data
+  group_by(month, month_n, year, area, region, legal) %>% 
+  summarize(catch = sum(subarea_catch),
+            eff = sum(subarea_eff),
+            .groups = "drop") %>% 
+  clean_catch(.) 
+saveRDS(rec_catch_area_month, here::here("data", "gsiCatchData", "rec",
+                                          "month_area_recCatch.rds"))
+
+# export areas to make maps
+areas_retained <- c(unique(rec_catch_area_month$area_n), 
+                    unique(comm_catch_area_month$area_n))
+saveRDS(areas_retained,
+        here::here("data", "gsiCatchData", "pfma", "areas_to_plot.RDS"))
+
+
+# REC C/E CHECK ----------------------------------------------------------------
+
+# check breakdown among subareas to make sure no data gaps
+c_list <- rec_dat_out %>% 
+  #drop sublegal fish and regions without genetics
+  filter(
+    legal == "legal",
+    !is.na(mu_boat_trips),
+    # kept_legal == "y_legal",
+    !region %in% c("NWVI", "SWVI", "Queen Charlotte Sound")) %>% 
+  #group by subarea to get rid of adipose and released legal duplicates
+  group_by(month, month_n, year, area, subarea, region, legal) %>% 
+  summarize(subarea_catch = sum(mu_catch, na.rm = T),
+            subarea_eff = mean(mu_boat_trips, na.rm = T),
+            .groups = "drop") %>% 
+  mutate(region_c = as.character(region),
+         region = factor(abbreviate(region, minlength = 4)),
+         min_m = case_when(
+           region == "NSoG" ~ 5,
+           region %in% c("QCaJS") ~ 6,
+           region == "JdFS" ~ 6,
+           region == "SSoG" ~ 5
+         ),
+         max_m = case_when(
+           region %in% c("SSoG") ~ 9,
+           region %in% c("JdFS", "NSoG", "QCaJS")  ~ 9
+         ),
+         date = zoo::as.yearmon(paste(.$year, .$month_n), "%Y %m"),
+         subarea_cpue = subarea_catch / subarea_eff
+  ) %>%
+  group_by(area) %>% 
+  filter(!month_n < min_m,
+         !month_n > max_m) %>%
+  droplevels() %>% 
+  split(., .$region)
+
+pdf(here::here("figs", "hidden", "rec_sample_breakdown.pdf"))
+map(c_list, function (x) {
+  ggplot(x, aes(x = date, y = subarea, fill = subarea_cpue)) +
+    geom_point(shape = 21) +
+    scale_fill_viridis_c() +
+    ggtitle(label = unique(x$region))
+})
+dev.off()
+
