@@ -1,8 +1,8 @@
 ## Dirichlet model fit
-# July 17, 2020
-# Fit dirichlet model to stock composition data at various aggregate levels
-# Accounts for uncertain GSI and uses julian day within a strata as a sampling 
-# event
+# Sep 25, 2020
+# Fit combined dirichlet/nb model to stock composition data
+# Duplicates composition component of combined model. Ran independently to 
+# increase temporal range
 # Same as fit_dirichlet but adds splines 
 
 library(tidyverse)
@@ -13,49 +13,55 @@ library(mgcv)
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
                           "recIndProbsLong.rds")) %>% 
-  filter(legal == "legal") %>%
+  filter(legal == "legal",
+         !region %in% c("Queen Charlotte Sound")) %>%
   mutate(
     temp_strata = paste(month, region, sep = "_"),
     sample_id = paste(temp_strata, jDay, year, sep = "_"),
     min_m = case_when(
-      region == "N. Strait of Georgia" ~ 5,
-      region %in% c("Queen Charlotte Sound", 
-                    "Queen Charlotte and\nJohnstone Straits") ~ 6,
-      region == "Juan de Fuca Strait" ~ 3,
-      region == "S. Strait of Georgia" ~ 1
+      region %in% c("N. Strait of Georgia", "S. Strait of Georgia") ~ 1,
+      region == "Queen Charlotte and\nJohnstone Straits" ~ 6,
+      region == "Juan de Fuca Strait" ~ 3
     ),
     max_m = case_when(
-      region %in% c("Juan de Fuca Strait", "S. Strait of Georgia") ~ 10,
-      region == "Queen Charlotte Sound" ~ 8, 
-      region %in% c("N. Strait of Georgia", 
-                    "Queen Charlotte and\nJohnstone Straits")  ~ 9
-    ),
-    region = fct_relevel(as.factor(region), 
-                         "Queen Charlotte and\nJohnstone Straits",
-                         "N. Strait of Georgia", "S. Strait of Georgia", 
-                         "Juan de Fuca Strait")
+      region %in% c("Juan de Fuca Strait", #"S. Strait of Georgia", 
+                    "N. Strait of Georgia") ~ 9,
+      region == "S. Strait of Georgia" ~ 12,
+      region == "Queen Charlotte and\nJohnstone Straits" ~ 8
+    )
   ) %>% 
   group_by(region) %>% 
   filter(!month_n < min_m,
-         !month_n > max_m) %>% 
-  filter(!region %in% c("Queen Charlotte Sound")) %>%
+         !month_n > max_m) %>%
   ungroup() %>% 
   droplevels()
 
-table(rec$region, rec$month)
-table(rec$area, rec$month)
-table(rec$year, rec$month, rec$region)
+tt <- rec %>%
+  select(region, id, month_n, year) %>%
+  distinct()
+table(tt$region, tt$month_n)
 
+# GSI samples in commercial database associated with Taaq fishery
+taaq <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
+                            "taaq_summary.csv"), stringsAsFactors = F) %>% 
+  filter(drop == "y") %>% 
+  mutate(temp_strata2 = paste(month, region, year, sep = "_"))
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
-                           "wcviIndProbsLong.rds")) %>%
-  mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"))
-  
+                           "wcviIndProbsLong.rds")) %>% 
+  # drop month-region-years where catch data are missing or where samples came 
+  # from Taaq fishery, and no comm fishery was active in the same region
+  mutate(sample_id = paste(temp_strata, jDay, year, sep = "_"),
+         region_c = as.character(region), 
+         temp_strata2 = paste(month, region, year, sep = "_")) %>% 
+  filter(!temp_strata2 %in% taaq$temp_strata2) %>%
+  select(-temp_strata2) %>% 
+  droplevels()
 
 # helper function to calculate aggregate probs
 calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
-    summarize(agg_prob = sum(adj_prob), .groups = "drop") %>% 
+    summarize(agg_prob = sum(adj_prob), .groups = 'drop') %>% 
     arrange(sample_id, desc(agg_prob)) %>%
     distinct() %>% 
     left_join(.,
@@ -71,13 +77,6 @@ calc_agg_prob <- function(grouped_data, full_data) {
 pool_aggs <- function(full_data) {
   full_data %>% 
     mutate(
-      # pst_agg = case_when(
-      #   grepl("CR-", pst_agg) ~ "CR",
-      #   grepl("CST", pst_agg) ~ "CA/OR/WA",
-      #   pst_agg %in% c("NBC_SEAK", "WCVI") ~ "BC-coast",
-      #   pst_agg %in% c("PSD", "SOG") ~ "SalSea",
-      #   TRUE ~ pst_agg
-      # ),
       reg1 = case_when(
         Region1Name %in% c("Fraser_Fall", "ECVI", "Fraser_Summer_4.1", 
                            "Fraser_Spring_4.2", "Fraser_Spring_5.2", 
@@ -89,11 +88,28 @@ pool_aggs <- function(full_data) {
 
 # helper function to use above for gsi and cwt samples (cwt ignored for now)
 clean_comp <- function(grouping_col, raw_data, ...) {
-  raw_data %>% 
+  temp <- raw_data %>% 
     pool_aggs() %>% 
     rename(agg = grouping_col) %>%
     group_by(sample_id, agg) %>%
-    calc_agg_prob(., raw_data)
+    calc_agg_prob(., raw_data) %>% 
+    group_by(region, month, year) %>%
+    mutate(nn = sum(agg_prob)) %>%
+    #remove strata with less than 10 individuals total
+    filter(!nn < 10) %>%
+    ungroup() %>%
+    droplevels() %>%
+    mutate(region_c = as.character(region),
+           region = factor(abbreviate(region, minlength = 4))) %>% 
+    select(sample_id, gear, region, region_c, year, month, month_n, agg,
+           agg_prob, nn) %>%
+    distinct()
+  if (raw_data$gear[1] == "sport") {
+    temp %>%
+      mutate(region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS"))
+  } else {
+    temp
+  }
 }
 
 # combined tibble 
@@ -110,8 +126,8 @@ comp <- tibble(
       grouping == "pst" ~ "pst_agg",
       grouping == "can" ~ "reg1"
     ),
-    data = pmap(list(grouping_col, raw_data), .f = clean_comp)
-  )
+    comp_long = pmap(list(grouping_col, raw_data), .f = clean_comp)
+  ) 
 
 
 ## PREP INPUTS ----------------------------------------------------------------
@@ -127,7 +143,7 @@ prep_dir_inputs <- function(comp_in, data_type) {
     filter(!nn < 10) %>%
     ungroup() %>%
     droplevels() %>%
-    select(sample_id, region, year, month, month_n, agg, agg_prob) %>%
+    select(sample_id, region, region_c, year, month, month_n, agg, agg_prob) %>%
     distinct()
   
   gsi_wide <- gsi_trim %>% 
@@ -143,12 +159,11 @@ prep_dir_inputs <- function(comp_in, data_type) {
   #generate model matrix based on GAM
   months <- unique(gsi_wide$month_n)
   n_months <- length(months)
-  n_knots <- ifelse(max(months) == 12, 4, 3)
+  n_knots <- ifelse(max(months) > 8, 4, 3)
   spline_type <- ifelse(max(months) == 12, "cc", "tp")
   # response variable doesn't matter, since not fit
   m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
               region + s(month_n, bs = spline_type, k = n_knots, by = region),
-            # knots = list(month_n = c(min(months), max(months))),
             data = gsi_wide)
   fix_mm <- predict(m1, type = "lpmatrix")
   
@@ -194,8 +209,13 @@ prep_dir_inputs <- function(comp_in, data_type) {
 
 # add model parameters
 comp2 <- comp %>%
-  mutate(model_inputs = map2(data, dataset, .f = prep_dir_inputs))
-         
+  mutate(model_inputs = map2(comp_long, dataset, .f = prep_dir_inputs),
+         # reformat comp2 to match dat2 from fit_combined_splines to share 
+         # plotting functions
+         comp_wide = map(model_inputs, "wide_data"),
+         pred_dat_comp = map(model_inputs, "pred_dat")) 
+
+
 # FIT --------------------------------------------------------------------------
 
 compile(here::here("src", "dirichlet_randInt.cpp"))
@@ -203,7 +223,7 @@ dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
 
 fit_model <- function(x) {
   ## Make a function object
-  x <- comp2$model_inputs[[2]]
+  # x <- comp2$model_inputs[[2]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
@@ -232,85 +252,94 @@ comp2$ssdr <- map(comp2$model_inputs, function (x) {
   readRDS(here::here("generated_data", "model_fits", f_name))
 })
 
-pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
-plot_list <- map2(comp2$model_inputs, comp2$ssdr, function(x, ssdr) {
-  x <- comp2$model_inputs[[2]]
-  # ssdr <- comp2$ssdr[[2]]
-  y_obs <- x$data$y_obs
-  k <- ncol(y_obs) # number of stocks
-  stk_names <- colnames(y_obs)
-  N <- nrow(y_obs)
-  pred_dat <- x$pred_dat
+# source file for cleaning and plotting functions
+source(here::here("R", "functions", "plot_cleaning_functions.R"))
+source(here::here("R", "functions", "plot_predictions_splines.R"))
+
+
+# generate predictions for plotting (stripped down version of 
+# gen_comp_pred)
+gen_comp_only_pred <- function(comp_long, pred_dat_comp, ssdr) {
+  comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
+  beta_comp <- ssdr[rownames(ssdr) %in% "z_ints", ]
   
-  pred_dat2 <- purrr::map_dfr(seq_len(k), ~pred_dat)
-  pred_mat <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
-  pred_ci <- data.frame(
-    stock = as.character(rep(stk_names, each = nrow(pred_dat))),
-    link_prob_est = pred_mat[ , "Estimate"],
-    link_prob_se =  pred_mat[ , "Std. Error"]
+  stk_names <- unique(comp_long$agg)
+  n_preds <- nrow(pred_dat_comp)
+  
+  pred_dat <- pred_dat_comp %>% 
+    left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
+              by = "region") %>%
+    mutate(region_c = fct_reorder(region_c, as.numeric(region)))
+  dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
+  
+  data.frame(
+    stock = as.character(rep(stk_names, each = n_preds)),
+    link_prob_est = comp_pred[ , "Estimate"],
+    link_prob_se =  comp_pred[ , "Std. Error"]
   ) %>% 
-    cbind(pred_dat2, .) %>%
-    mutate(pred_prob_est = car::logit(link_prob_est),
-           pred_prob_low = pmax(0,
-                                car::logit(link_prob_est + (qnorm(0.025) * 
-                                                              link_prob_se))),
-           pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)) 
-           #region = abbreviate(region, minlength = 4)
-           ) 
+    cbind(dum, .) %>%
+    mutate(
+      pred_prob_est = car::logit(link_prob_est),
+      pred_prob_low = pmax(0,
+                           car::logit(link_prob_est + (qnorm(0.025) *
+                                                         link_prob_se))),
+      pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se))
+    )  
+}
 
-  
-  # calculate raw proportion data for comparison (wide necessary to 
-  # account for infilling)
-  n_stks <- length(stk_names)
-  raw_prop <- x$wide_data %>% 
-    pivot_longer((ncol(.) - n_stks + 1):ncol(.), 
-                 names_to = "agg", values_to = "agg_prob") %>% 
-    group_by(region, month, year, agg) %>%
-    summarize(samp_g = sum(agg_prob)) %>% 
-    group_by(region, month, year) %>%
-    mutate(samp_total = sum(samp_g)) %>% 
-    ungroup() %>% 
-    mutate(samp_g_ppn = samp_g / samp_total,
-           stock = fct_reorder(agg, desc(samp_g_ppn))#, 
-           # region = abbreviate(region, minlength = 4)
-           ) 
-  
-  # raw_prop %>%
-  #   filter(region == "JndF", stock == "SOG", month == "5") %>%
-  #   print(n = Inf)
-  # 
-  pred_plot <- ggplot(data = pred_ci, aes(x = month_n)) +
-    geom_line(aes(y = pred_prob_est, colour = region )) +
-    geom_ribbon(aes(ymin = pred_prob_low, ymax = pred_prob_up, fill = region), 
-                alpha = 0.5) +
-    # scale_fill_manual(name = "Region", values = pal) +
-    # scale_colour_manual(name = "Region", values = pal) +
-    labs(y = "Predicted Encounter Probability", x = "Month") +
-    scale_x_continuous(breaks = seq(1, 12, by = 1)) +
-    facet_wrap(~stock, scales = "free_y") +
-    ggsidekick::theme_sleek()
-  
-  # same as above but scales not fixed
-  pred_plot2 <- pred_plot +
-    facet_wrap(~stock)
-  
-  # same as above but with annual observations shown
-  pred_plot_raw <- pred_plot +
-    geom_point(data = raw_prop, 
-               aes(x = as.numeric(as.character(month)), 
-                   y = samp_g_ppn, fill = region),
-               shape = 21, alpha = 0.4, position = position_dodge(0.6)) +
-    facet_wrap(~stock)
-  
-  f_name <- paste(x$data_type, "dirichlet_spline_pred.pdf", sep = "_")
-  pdf(here::here("figs", "model_pred", "dirichlet_only", f_name))
-  print(pred_plot)
-  print(pred_plot2)
-  print(pred_plot_raw)
-  dev.off()
-  
-  f_name2 <- paste(x$data_type, "dirichlet_spline_pred.rds", sep = "_")
-  saveRDS(pred_plot,
-          here::here("figs", "model_pred", "dirichlet_only", f_name2))
-})
+pred_dat_comp <- comp2 %>% 
+  mutate(
+    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
+                                         .f = gen_comp_only_pred)),
+    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat)
+    ) %>%
+  select(dataset, grouping_col, comp_pred_ci, raw_prop) %>% 
+  mutate(
+    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+  ) 
+
+
+#color palette
+# pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
+pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
+
+
+comp_plots <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, plot_comp, 
+                   raw = TRUE)
+comp_plots_fix <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, 
+                       plot_comp, raw = TRUE, facet_scales = "fixed")
+comp_plots_fix2 <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, 
+                        plot_comp, raw = FALSE, facet_scales = "fixed")
+
+pdf(here::here("figs", "model_pred", "dirichlet_only", "composition_splines.pdf"))
+comp_plots
+dev.off()
+
+pdf(here::here("figs", "model_pred", "dirichlet_only", 
+               "composition_splines_fixed.pdf"))
+comp_plots_fix
+dev.off()
+
+
+# MS figs
+png(here::here("figs", "ms_figs", "comp_ext_pst_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+comp_plots_fix[[1]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_ext_pst_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7.5)
+comp_plots_fix[[2]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_ext_can_comm.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+comp_plots_fix[[3]]
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_ext_can_rec.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+comp_plots_fix[[4]]
+dev.off()

@@ -311,7 +311,7 @@ rec_catch_area_month <- readRDS(here::here("data", "gsiCatchData", "rec",
                                 "month_subarea_recCatch.RDS")) %>% 
   #drop sublegal fish and regions without genetics
   filter(legal == "legal",
-         !region %in% c("NWVI", "SWVI", "QnCS")) %>% 
+         !region %in% c("NWVI", "SWVI", "Queen Charlotte Sound")) %>% 
   #group by subarea to get rid of adipose and released legal duplicates
   group_by(month, month_n, year, area, subarea, region, legal) %>% 
   summarize(subarea_catch = sum(mu_catch, na.rm = T),
