@@ -1,7 +1,6 @@
 ## Map of PFMAs 
 # June 7, 2020
 
-library(tidyverse)
 library(ggplot2)
 library(maptools)
 library(here)
@@ -14,6 +13,7 @@ library(mapdata)
 library(rgeos)
 library(rgdal)
 library(ggsn)
+library(tidyverse)
 
 theme_set(ggsidekick::theme_sleek())
 
@@ -87,20 +87,20 @@ pfma_simp_df2 %>%
   arrange(region)
 
 # high res shapefile of BC coastline
-# n_am <- map_data("worldHires", region = c("usa", "canada")) %>%
+# coast <- map_data("worldHires", region = c("usa", "canada")) %>%
 #   filter(long < -110) %>%
 #   fortify(.)
-coast_shp <- readOGR(here("data", "coast_shapefiles", "COAST_TEST2.shp"))
-sBC_crop <- extent(-128.75, -122.2, 48.25, 51)
-coast2 <- crop(coast_shp, sBC_crop) %>% 
-  fortify(.)
-coast_shp_simp <- crop(coast_shp, sBC_crop) %>% 
-  ms_simplify(., sys = TRUE)
-coast2b <- fortify(coast_shp_simp)
-saveRDS(coast2, here("data", "gsiCatchData", "pfma", "trim_coastline_df.rds"))
+# coast_shp <- readOGR(here("data", "coast_shapefiles", "COAST_TEST2.shp"))
+# sBC_crop <- extent(-128.85, -122.1, 48.2, 51.2)
+# coast2 <- crop(coast_shp, sBC_crop) %>% 
+#   fortify(.)
+# coast_shp_simp <- crop(coast_shp, sBC_crop) %>% 
+#   ms_simplify(., sys = TRUE)
+# coast2b <- fortify(coast_shp_simp)
+# saveRDS(coast2b, here("data", "gsiCatchData", "pfma", "trim_coastline_df.rds"))
+coast2b <- readRDS(here::here("data", "gsiCatchData", "pfma", 
+                              "trim_coastline_df.rds"))
 
-object.size(coast2)
-object.size(coast2b)
 
 #color palette
 col.reg <- levels(pfma_simp_df2$region)
@@ -118,14 +118,14 @@ alpha_vals <- rep(seq(0.6, 1, length = (length(alpha_labs) / length(col.reg))),
 pfma_map <- ggplot() +
   coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
                  clip = "on") +
-  # geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
-  #                                        colour = region, 
-  #                                        fill = region, 
-  #                                        alpha = statArea),
-  #              lwd = 0.1) +
-  geom_polygon(data = coast2, aes(x=long, y = lat, group = group)) + 
+  geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
+                                         colour = region,
+                                         fill = region,
+                                         alpha = statArea),
+               lwd = 0.1) +
+  geom_polygon(data = coast2b, aes(x=long, y = lat, group = group)) + 
   scale_colour_manual(values = disco_pal, name = "", guide = FALSE) +
-  scale_fill_manual(name = "Region", labels = col.reg, values = pal) +
+  scale_fill_manual(name = "Region", labels = col.reg, values = disco_pal) +
   scale_alpha_manual(labels = alpha_labs, values = alpha_vals, guide = FALSE) +
   labs(x = "", y = "") +
   ggsidekick::theme_sleek() +
