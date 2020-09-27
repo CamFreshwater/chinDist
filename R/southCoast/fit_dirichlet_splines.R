@@ -128,7 +128,7 @@ comp <- tibble(
     ),
     comp_long = pmap(list(grouping_col, raw_data), .f = clean_comp)
   ) 
-
+# saveRDS(comp, here::here("generated_data", "composition_model_data.RDS"))
 
 ## PREP INPUTS ----------------------------------------------------------------
 

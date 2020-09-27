@@ -1,8 +1,8 @@
 "Fishery","Region","1","2","3","4","5","6","7","8","9","10","12"
 "comm","NWVI",421,685,1115,1911,2834,1198,397,1379,675,99,199
 "comm","SWVI",199,152,522,145,1713,1556,NA,1001,1895,301,82
-"rec","Juan de Fuca Strait",NA,NA,NA,NA,NA,385,897,1367,236,NA,NA
-"rec","N. Strait of Georgia",NA,NA,NA,NA,214,647,778,740,200,NA,NA
+"rec","Juan de Fuca Strait",NA,NA,67,65,100,385,897,1367,236,NA,NA
+"rec","N. Strait of Georgia",104,37,72,46,214,647,778,740,200,NA,NA
 "rec","Queen Charlotte and
 Johnstone Straits",NA,NA,NA,NA,NA,377,786,1139,NA,NA,NA
-"rec","S. Strait of Georgia",NA,NA,NA,NA,618,379,510,754,229,NA,NA
+"rec","S. Strait of Georgia",105,91,280,499,618,379,510,754,229,44,114

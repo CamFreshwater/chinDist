@@ -5,18 +5,18 @@ commercial,NWVI,126,6,8,7,9,9,5,2,7,7,4,3,3
 commercial,NWVI,127,4,6,6,9,9,5,2,7,7,3,NA,2
 commercial,SWVI,123,5,8,1,1,9,4,NA,7,8,5,6,4
 commercial,SWVI,124,3,4,1,1,9,5,NA,6,5,4,1,2
-rec,Juan de Fuca Strait,20,NA,NA,NA,11,11,10,10,10,10,NA,NA,NA
-rec,Juan de Fuca Strait,21,NA,NA,NA,NA,4,10,10,11,5,NA,NA,NA
-rec,Juan de Fuca Strait,121,NA,NA,NA,NA,4,10,10,10,9,NA,NA,NA
+rec,Juan de Fuca Strait,20,NA,NA,NA,NA,NA,11,11,11,11,NA,NA,NA
+rec,Juan de Fuca Strait,21,NA,NA,NA,NA,NA,10,10,11,5,NA,NA,NA
+rec,Juan de Fuca Strait,121,NA,NA,NA,NA,NA,11,11,11,10,NA,NA,NA
 rec,N. Strait of Georgia,14,NA,NA,NA,NA,11,11,11,11,11,NA,NA,NA
 rec,N. Strait of Georgia,15,NA,NA,NA,NA,11,11,11,10,10,NA,NA,NA
 rec,N. Strait of Georgia,16,NA,NA,NA,NA,11,11,11,10,10,NA,NA,NA
 rec,"Queen Charlotte and
-Johnstone Straits",12,NA,NA,NA,NA,NA,11,11,11,3,NA,NA,NA
+Johnstone Straits",12,NA,NA,NA,NA,NA,11,11,11,NA,NA,NA,NA
 rec,"Queen Charlotte and
-Johnstone Straits",13,NA,NA,NA,NA,NA,11,11,11,11,NA,NA,NA
-rec,S. Strait of Georgia,17,NA,1,1,NA,11,11,11,11,11,NA,NA,NA
-rec,S. Strait of Georgia,18,NA,1,2,NA,10,11,11,10,9,NA,NA,NA
-rec,S. Strait of Georgia,19,NA,6,10,11,11,11,10,11,11,8,NA,NA
-rec,S. Strait of Georgia,28,NA,NA,2,NA,11,7,10,11,10,2,NA,NA
-rec,S. Strait of Georgia,29,NA,NA,2,NA,11,11,11,11,10,1,NA,NA
+Johnstone Straits",13,NA,NA,NA,NA,NA,11,11,11,NA,NA,NA,NA
+rec,S. Strait of Georgia,17,NA,NA,NA,NA,11,11,11,11,11,NA,NA,NA
+rec,S. Strait of Georgia,18,NA,NA,NA,NA,10,11,11,11,9,NA,NA,NA
+rec,S. Strait of Georgia,19,NA,NA,NA,NA,11,11,11,11,11,NA,NA,NA
+rec,S. Strait of Georgia,28,NA,NA,NA,NA,11,7,10,11,11,NA,NA,NA
+rec,S. Strait of Georgia,29,NA,NA,NA,NA,11,11,11,11,11,NA,NA,NA
