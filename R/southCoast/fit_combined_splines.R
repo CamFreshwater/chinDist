@@ -545,6 +545,10 @@ dev.off()
 
 ## Random summary data ---------------------------------------------------------
 
+# Import composition data from fit_dirichlet_splines since extra samples used 
+# in recreational analysis
+comp_only <- readRDS(here::here("generated_data", "composition_model_data.RDS"))
+
 # How many samples total?
 f <- function(x) {
   x %>% 
@@ -553,8 +557,8 @@ f <- function(x) {
     pull(nn) %>% 
     sum()
 }
-f(full_dat$comp_long[[1]])
-f(full_dat$comp_long[[2]])
+f(comp_only$comp_long[[1]])
+f(comp_only$comp_long[[2]])
 
 ### Summary supplemental tables
 tally_f <- function(dat, type, fishery) {
@@ -602,11 +606,11 @@ comm_n_long <- comm_catch %>%
 catch_n <- pivot_f(rec_n_long, comm_n_long, type = "catch")
 
 # composition data
-rec_n2_long <- rec %>% 
+rec_n2_long <- comp_only$raw_data[[2]] %>% 
   select(id, region, month, month_n) %>% 
   distinct() %>% 
   tally_f(., type = "comp", fishery = "rec")
-comm_n2_long <- comm %>% 
+comm_n2_long <- comp_only$raw_data[[1]] %>% 
   select(id, region, month, month_n) %>% 
   distinct() %>% 
   tally_f(., type = "comp", fishery = "comm")
