@@ -21,6 +21,7 @@ knitr-cache
 !data/stockKeys/*.rds
 !data/gsiCatchData/commTroll/*.rds
 !data/gsiCatchData/rec/*.rds
+!data/gsiCatchData/pfma/*.rds
 data/gsiCatchData/pfma/shape_files/
 
 # History files

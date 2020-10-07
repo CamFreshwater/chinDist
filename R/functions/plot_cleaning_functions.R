@@ -50,6 +50,7 @@ make_raw_abund_dat <- function(catch, raw_prop, fishery) {
       ) 
   }
   dum  %>%
+    ungroup() %>% 
     mutate(agg_cpue = cum_catch / cum_effort,
            month = as.character(month_n)) %>%
     left_join(., raw_prop, by = c("region", "month_n", "year")) %>%

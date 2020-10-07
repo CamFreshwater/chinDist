@@ -174,8 +174,8 @@ full_dat <- tibble(
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-# catch_dat <- full_dat$catch_data[[4]]
-# comp_dat <- full_dat$comp_long[[4]]
+catch_dat <- full_dat$catch_data[[4]]
+comp_dat <- full_dat$comp_long[[4]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -248,7 +248,6 @@ gen_tmb <- function(catch_dat, comp_dat) {
   grouping_vec <- as.numeric(pred_dat_catch$reg_month_f) - 1
   grouping_key <- unique(grouping_vec)
 
-  
   ## composition data
   gsi_wide <- comp_dat %>% 
     pivot_wider(., names_from = agg, values_from = agg_prob) %>%
@@ -415,7 +414,8 @@ pred_dat <- dat2 %>%
                         .f = gen_comp_pred)),
     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
     raw_abund = pmap(list(catch_data, raw_prop, fishery), 
-                     .f = make_raw_abund_dat)) %>% 
+                     .f = make_raw_abund_dat)
+    ) %>% 
   select(dataset:catch_data, abund_pred_ci:raw_abund) %>% 
   mutate(
     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
@@ -432,6 +432,9 @@ pred_dat <- readRDS(here::here("generated_data",
 #color palette
 # pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
+pal <- brewer.pal(6, "Dark2")
+# names(pal) <- c(levels(pred_dat$abund_pred_ci[[1]]$region_c),
+                # levels(pred_dat$abund_pred_ci[[2]]$region_c))
 
 #pfma map (used to steal legend)
 pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
