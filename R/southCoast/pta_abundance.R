@@ -81,9 +81,9 @@ tp_keep <- which((pta[[3]]$pct * pta[[3]]$ssX / pta[[3]]$ssX[1]) %in%
 pta[[3]]$vsnam[tp_keep]
 
 # plot (mod refers dimensions, nb to the components)
-plot(pta, mod=c(2, 3), nb1 = 1, nb2 = 6, xpd=NA, lengthlabels = 4)
+plot(pta, mod=c(1, 2, 3), nb1 = 1, nb2 = 6, xpd=NA, lengthlabels = 4)
 plot(pta, mod=1, nb1 = 1, nb2 = 6, lengthlabels = 6)
-plot(pta, mod=c(2, 3), nb1 = 1, nb2 = 7, xpd=NA, lengthlabels = 4)
+plot(pta, mod=c(1, 2, 3), nb1 = 1, nb2 = 7, xpd=NA, lengthlabels = 4)
 plot(pta, mod=1, nb1 = 1, nb2 = 7, lengthlabels = 6)
 
 # Conduct clustering as before
