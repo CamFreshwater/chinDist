@@ -44,7 +44,12 @@ Type objective_function<Type>::operator() ()
 
   // Probability of random coefficients
   for(int k = 0; k < nk1; k++){
-    jnll -= dnorm(z1_k(k), Type(0.0), exp(log_sigma_zk1), true);
+    if (k == 0) {
+      jnll -= dnorm(z1_k(k), Type(0.0), exp(log_sigma_zk1), true);  
+    }
+    if (k > 0) {
+      jnll -= dnorm(z1_k(k), z1_k(k - 1), exp(log_sigma_zk1), true);
+    }
   }
 
   vector<Type> log_pred_abund(X1_pred_ij.rows());

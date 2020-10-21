@@ -22,40 +22,36 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
 
 ## Function to calculate raw stock-specific abundance observations
 # data_type necessary for monthly vs. daily predictions
-make_raw_abund_dat <- function(catch, raw_prop, fishery) {
-  if (fishery == "sport") {
-    dum <-  catch %>% 
-      group_by(region, region_c, month_n, year) %>%
-      summarize(
-        #sum rec because subareas each have one monthly value
-        #mean commercial because daily values for each area
-        cum_catch = as.numeric(sum(catch)),
-        cum_effort = as.numeric(sum(eff)),
-        .groups = "drop") 
-  }
-  if (fishery == "troll") {
-    dum <- catch %>% 
-      group_by(region, region_c, area, month_n, year) %>% 
-      # calculate daily catch within month first
-      summarize(
-        mu_catch = mean(catch),
-        mu_effort = mean(eff),
-        .groups = "drop"
-      ) %>% 
-      group_by(region, region_c, month_n, year) %>% 
-      summarize(
-        cum_catch = as.numeric(sum(mu_catch)),
-        cum_effort = as.numeric(sum(mu_effort)),
-        .groups = "drop"
-      ) 
-  }
-  dum  %>%
-    ungroup() %>% 
-    mutate(agg_cpue = cum_catch / cum_effort,
-           month = as.character(month_n)) %>%
-    left_join(., raw_prop, by = c("region", "month_n", "year")) %>%
-    mutate(catch_g = samp_g_ppn * cum_catch,
-           cpue_g = samp_g_ppn * agg_cpue,
+
+# catch <- dat2$catch_data[[1]]
+# raw_prop <- pred_dat$raw_prop[[1]]
+# fishery <- dat2$fishery[[1]]
+
+make_raw_abund_dat <- function(catch, raw_prop) {
+  # catch %>% 
+  #   group_by(region, region_c, month_n, year) %>%
+  #   summarize(
+  #     cum_catch = as.numeric(sum(catch)),
+  #     cum_effort = as.numeric(sum(eff)),
+  #     .groups = "drop") %>%
+  #   ungroup() %>% 
+  #   mutate(agg_cpue = cum_catch / cum_effort,
+  #          month = as.character(month_n)) %>%
+  #   left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
+  #   mutate(catch_g = samp_g_ppn * cum_catch,
+  #          cpue_g = samp_g_ppn * agg_cpue,
+  #          region = as.factor(region)) %>%
+  #   filter(!is.na(stock))
+  catch %>% 
+    mutate(area_cpue = catch / eff) %>% 
+    group_by(region, region_c, month_n, year) %>%
+    summarize(agg_cpue = sum(area_cpue), 
+              month = as.character(month_n),
+              .groups = "drop") %>%
+    ungroup() %>%
+    distinct() %>% 
+    left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
+    mutate(cpue_g = samp_g_ppn * agg_cpue,
            region = as.factor(region)) %>%
     filter(!is.na(stock))
 }
@@ -123,9 +119,9 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
 stock_reorder <- function(key, comp_data) {
   if (key == "pst_agg") {
     out <- comp_data %>% 
-      mutate(stock =  fct_relevel(stock, "CA_ORCST", "CR-sp&su", "CR-bright", 
-                                  "CR-tule", "WACST", "PSD", "SOG", "FR-early", 
-                                  "FR-late", "WCVI", "NBC_SEAK"),
+      mutate(stock =  fct_relevel(stock, "NBC_SEAK", "WCVI", "FR-early", 
+                                  "FR-late", "SOG", "PSD", "WACST", "CR-sp&su", 
+                                  "CR-bright", "CR-tule", "CA_ORCST"),
              stock = fct_recode(stock, "WA-coast" = "WACST", 
                                 "CA/OR-coast" = "CA_ORCST", 
                                 "NBC/SEAK" = "NBC_SEAK"))

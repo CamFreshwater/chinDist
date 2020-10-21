@@ -8,80 +8,23 @@ library(tidyverse)
 library(TMB)
 library(mgcv)
 
-# clean function 
-clean_catch <- function(dat) {
-  dat %>% 
-    filter(!is.na(eff),
-           !eff == "0") %>% 
-    mutate(region_c = as.character(region),
-           region = factor(abbreviate(region, minlength = 4)),
-           area_n = as.numeric(area),
-           area = as.factor(area),
-           month = as.factor(month),
-           month_n = as.numeric(month),
-           month = as.factor(month_n),
-           year = as.factor(year),
-           eff_z = as.numeric(scale(eff)),
-           offset = log(eff)
-    ) %>% 
-    arrange(region, month) 
-}
-
 #commercial catch data
 comm_catch <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                                 "dailyCatch_WCVI.rds")) %>% 
-  # calculate monthly catch and effort 
-  group_by(catchReg, area, month, year) %>% 
-  summarize(catch = sum(catch), 
-            eff = sum(boatDays), 
-            cpue = catch / eff,
-            .groups = "drop") %>% 
-  rename(region = catchReg) %>% 
-  clean_catch(.) %>% 
-  # drop inside areas where seasonal catches not available
-  filter(!area_n < 100) %>% 
-  droplevels() %>% 
-  select(region, region_c, area, area_n, month, month_n, year, catch, eff, cpue, 
-         eff_z, offset)
+                                 "month_area_commCatch.rds")) 
 
-# tally_f <- function(dat) {
-#   dat %>% 
-#     group_by(region, area) %>% 
-#     tally()
-# }
-# tally_f(comm_catch) %>% 
-#   print(n = Inf)
-# tally_f(comm_catch2) %>% 
-#   print(n = Inf)
-
-#recreational catch data
+#recreational catch data - sampling unit is area-month-year catch estimate
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
-                                "monthlyCatch_rec.RDS")) %>% 
-  #drop sublegal fish and regions without genetics
-  filter(legal == "legal",
-         !region %in% c("NWVI", "SWVI")) %>% 
-  #group by subarea to get rid of adipose and released legal duplicates
-  group_by(month, month_n, year, area, subarea, region, legal) %>% 
-  mutate(subarea_catch = sum(mu_catch),
-         subarea_eff = mean(mu_boat_trips)) %>% 
-  #group by area to be consistent with commercial data
-  group_by(month, month_n, year, area, region, legal) %>% 
-  summarize(catch = sum(subarea_catch),
-            eff = sum(subarea_eff),
-            cpue = catch / eff,
-            .groups = "drop") %>% 
-  clean_catch(.) %>% 
+                                "month_area_recCatch.rds")) %>% 
+  # identify months to exclude based on minimal catch or comp estimates 
+  #(make region specific)
   mutate(
     min_m = case_when(
-      region == "NSoG" ~ 5,
-      region %in% c("QnCS", "QCaJS") ~ 6,
-      region == "JdFS" ~ 3,
-      region == "SSoG" ~ 1
+      region %in% c("NSoG", "SSoG") ~ 5,
+      region %in% c("JdFS", "QCaJS") ~ 6
     ),
     max_m = case_when(
-      region %in% c("JdFS", "SSoG") ~ 10,
-      region == "QnCS" ~ 8, 
-      region %in% c("NSoG", "QCaJS")  ~ 9
+      region == "QCaJS" ~ 8, 
+      region %in% c("JdFS", "NSoG", "SSoG")  ~ 9
     ),
     region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS")
   ) %>% 
@@ -94,13 +37,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   filter(!n < 10) %>%
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
-         eff_z, offset) %>% 
-  # not enough years from Queen Charlotte Sound - drop for nwo
-  filter(!region %in% c("QnCS")) %>%
-  droplevels()
-
-table(rec_catch$month_n, rec_catch$area, rec_catch$region)
-
+         eff_z, offset) 
 
 # ggplot(rec_catch, aes(x = log(eff), y = catch, fill = region)) +
 #   geom_point(shape = 21) +
@@ -137,18 +74,15 @@ table(rec_catch$month_n, rec_catch$area, rec_catch$region)
 
 catch_dat <- rec_catch
 
-prep_catch <- function (catch_dat, data_type = NULL, n_knots = 4) {
+prep_catch <- function (catch_dat, data_type = NULL) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
   
   #generate model matrix based on GAM
   months <- unique(catch_dat$month_n)
   n_months <- length(months)
   spline_type <- ifelse(n_months == 12, "cc", "tp")
-  # m1 <- gam(catch ~ area + s(month_n, bs = spline_type, k = n_knots, by = area) +
-  #              s(eff_z, bs = "tp", k = 4),
-  #            knots = list(month_n = c(min(months), max(months))),
-  #            data = catch_dat,
-  #            family = nb)
+  n_knots <- ifelse(max(months) == 12, 4, 3)
+  
   m1 <- gam(catch ~ area + s(month_n, bs = spline_type, k = n_knots, by = area) +
               offset,
             knots = list(month_n = c(min(months), max(months))),
@@ -217,14 +151,14 @@ fishery_list <- list(comm_list, rec_list)
 # FIT --------------------------------------------------------------------------
 
 # Compile
-compile(here::here("src", "negbin_1re_cumsum.cpp"))
-dyn.load(dynlib(here::here("src", "negbin_1re_cumsum")))
+compile(here::here("src", "negbin_1re_cumsum_rw.cpp"))
+dyn.load(dynlib(here::here("src", "negbin_1re_cumsum_rw")))
 
 for (i in seq_along(fishery_list)) {
   dum <- fishery_list[[i]]
   obj <- MakeADFun(data = dum$data, parameters = dum$parameters, 
                    random = c("z1_k"), 
-                   DLL = "negbin_1re_cumsum", map = dum$tmb_map)
+                   DLL = "negbin_1re_cumsum_rw", map = dum$tmb_map)
   
   ## Call function minimizer
   opt <- nlminb(obj$par, obj$fn, obj$gr)
@@ -246,20 +180,30 @@ ssdr_list <- map(fishery_list, function(x) {
 pal <- readRDS(here::here("generated_data", "color_pal.RDS"))  
 
 pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
-  # in_list <- fishery_list[[1]]
-  # ssdr <- ssdr_list[[1]]
+  # in_list <- fishery_list[[2]]
+  # ssdr <- ssdr_list[[2]]
   ssdr <- in_ssdr
   catch <- in_list$input_data
   data_type <- in_list$data_type
-  
   pred_catch <- in_list$pred_data
-  agg_pred_catch <- pred_catch %>% 
-    select(-area) %>% 
-    distinct()
+  
+  # Check data fit
+  fit_dat <- in_list$input_data %>% 
+    select(region_c, area, month_n, year, catch, eff, offset) %>% 
+    mutate(log_catch = log(catch) - offset,
+           log_cpue = log(catch) / offset,
+           obs_cpue = exp(log_cpue),
+           mu_log_catch = as.numeric(ssdr[rownames(ssdr) %in% "s1", "Estimate"]),
+           mu_log_catch2 = mu_log_catch - offset,
+           mu_log_cpue = mu_log_catch / mean(offset))
+  fit_plot <- ggplot(fit_dat) +
+    geom_point(aes(x = month_n, y = mu_log_catch2), colour = "black") +
+    geom_point(aes(x = month_n, y = log_catch), colour = "red") +
+    facet_grid(area~year, scales = "free_y") +
+    ggsidekick::theme_sleek()
   
   # abundance across areas
-  ylab = ifelse(data_type == "rec", "Predicted Monthly Catch Rate", 
-                "Predicted Daily Catch Rate")
+  ylab = "Predicted Monthly Catch Rate"
   abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
   pred_ci <- data.frame(est_link = abund_pred[ , "Estimate"],
                         se_link =  abund_pred[ , "Std. Error"]) %>%
@@ -267,13 +211,19 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     mutate(
       pred_est = exp(est_link),
       pred_low = exp(est_link + (qnorm(0.025) * se_link)),
-      pred_up = exp(est_link + (qnorm(0.975) * se_link))
-    ) 
+      pred_up = exp(est_link + (qnorm(0.975) * se_link)),
+      pred_est_logcpue = est_link / offset,
+      pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) / offset,
+      pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / offset
+    )
 
-  area_preds <- ggplot(data = pred_ci, aes(x = month_n)) +
-    geom_line(aes(y = pred_est, colour = region_c)) +
-    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region_c), 
-                alpha = 0.5)  +
+  log_area_preds <- ggplot(data = pred_ci, aes(x = month_n)) +
+    geom_line(aes(y = pred_est_logcpue, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low_logcpue, ymax = pred_up_logcpue, 
+                    fill = region_c), 
+                alpha = 0.5) +
+    geom_point(data = fit_dat, aes(x = month_n, y = log_cpue, fill = region_c),
+               shape = 21) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
@@ -281,24 +231,104 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     labs(x = "Month", y = ylab) +
     ggsidekick::theme_sleek()
   
+  # random intercepts
+  rand_int <- ssdr[rownames(ssdr) %in% "z1_k", ] 
+  year_ints <- data.frame(year = levels(as.factor(as.character(catch$year))),
+                          z1_k = as.numeric(rand_int[, "Estimate"])) 
+  year_preds <- expand.grid(year = year_ints$year, 
+                            month = unique(pred_catch$month)) %>% 
+    left_join(pred_catch %>% select(area, month), ., by = "month") %>% 
+    left_join(., year_ints, by = "year")
+  
+  yr_pred_ci <- pred_ci %>% 
+    select(month_n:est_link) %>% 
+    left_join(., year_preds, by = c("area", "month")) %>% 
+    mutate(
+      year = as.factor(year),
+      est_link_yr = est_link + z1_k,
+      pred_est_logcpue = est_link_yr / offset
+    ) 
+  
+  yr_log_area_preds <- ggplot(data = yr_pred_ci, aes(x = month_n)) +
+    geom_line(aes(y = pred_est_logcpue, colour = year)) +
+    geom_point(data = fit_dat, aes(x = month_n, y = log_cpue, fill = year),
+               shape = 21) +
+    scale_fill_discrete(name = "Year") +
+    scale_colour_discrete(name = "Year") +
+    scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
+    facet_wrap(~area, scales = "free_y") +
+    labs(x = "Month", y = ylab) +
+    ggsidekick::theme_sleek()
+    
   # cumulative abundance across regions
+  agg_pred_catch <- pred_catch %>% 
+    select(-area) %>% 
+    distinct()
+  n_reg <- fit_dat %>% 
+    group_by(region_c) %>% 
+    summarize(n_areas = length(unique(area)),
+              .groups = "drop") %>% 
+    ungroup()
   agg_abund_pred <- ssdr[rownames(ssdr) %in% "log_agg_pred_abund", ] 
   agg_pred_ci <- data.frame(est_link = agg_abund_pred[ , "Estimate"],
                             se_link =  agg_abund_pred[ , "Std. Error"]) %>%
     cbind(agg_pred_catch, .) %>% 
+    left_join(., n_reg, by = "region_c") %>% 
     mutate(
       pred_est = exp(est_link),
       pred_low = exp(est_link + (qnorm(0.025) * se_link)),
-      pred_up = exp(est_link + (qnorm(0.975) * se_link))
+      pred_up = exp(est_link + (qnorm(0.975) * se_link)),
+      pred_est_logcpue = est_link / log(n_areas*exp(offset)),
+      pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) / log(n_areas*exp(offset)),
+      pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / log(n_areas*exp(offset))
     ) 
   
-  agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
-    geom_line(aes(y = pred_est, colour = region_c)) +
-    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region_c), 
+  agg_obs_dat <- fit_dat %>% 
+    group_by(region_c, month_n, year) %>% 
+    summarize(sum_catch = sum(catch),
+              sum_eff = sum(eff),
+              .groups = "drop") %>% 
+    ungroup() %>% 
+    mutate(log_agg_cpue = log(sum_catch) / log(mean(sum_eff)))
+  
+  log_agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
+    geom_line(aes(y = pred_est_logcpue, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low_logcpue, ymax = pred_up_logcpue, 
+                    fill = region_c), 
                 alpha = 0.5) +
+    geom_point(data = agg_obs_dat, aes(x = month_n, y = log_agg_cpue,
+                                       fill = region_c),
+               shape = 21) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
     scale_colour_manual(name = "Region", values = pal) +
+    labs(x = "Month", y = ylab) +
+    ggsidekick::theme_sleek()
+  
+  # aggregate year-specific effects
+  agg_year_preds <- expand.grid(year = year_ints$year, 
+                            month = unique(pred_catch$month)) %>% 
+    left_join(agg_pred_catch %>% select(region, month), ., 
+              by = "month") %>% 
+    left_join(., year_ints, by = "year")
+  
+  yr_agg_pred_ci <- agg_pred_ci %>% 
+    select(month_n:est_link) %>% 
+    left_join(., agg_year_preds, by = c("region", "month")) %>% 
+    mutate(
+      year = as.factor(year),
+      est_link_yr = est_link + z1_k,
+      pred_est_logcpue = est_link_yr / offset
+    ) 
+  
+  yr_log_agg_preds <- ggplot(data = yr_agg_pred_ci, aes(x = month_n)) +
+    geom_line(aes(y = pred_est_logcpue, colour = year)) +
+    geom_point(data = agg_fit_dat, aes(x = month_n, y = log_agg_cpue2, fill = year),
+               shape = 21) +
+    scale_fill_discrete(name = "Year") +
+    scale_colour_discrete(name = "Year") +
+    scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
+    facet_wrap(~region_c, scales = "free_y") +
     labs(x = "Month", y = ylab) +
     ggsidekick::theme_sleek()
   
