@@ -76,11 +76,6 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
   ungroup() %>% 
   droplevels()
 
-# tt <- rec %>% 
-#   select(region, id, month_n, year) %>% 
-#   distinct()
-# table(tt$region, tt$month_n)
-
 # GSI samples in commercial database associated with Taaq fishery
 taaq <- read.csv(here::here("data", "gsiCatchData", "commTroll", 
                             "taaq_summary.csv"), stringsAsFactors = F) %>% 
@@ -174,8 +169,8 @@ full_dat <- tibble(
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
-catch_dat <- full_dat$catch_data[[4]]
-comp_dat <- full_dat$comp_long[[4]]
+# catch_dat <- full_dat$catch_data[[4]]
+# comp_dat <- full_dat$comp_long[[4]]
 
 # function to generate TMB data inputs from wide dataframes
 gen_tmb <- function(catch_dat, comp_dat) {
@@ -359,8 +354,7 @@ dat <- full_dat %>%
     tmb_map = purrr::map(tmb_list, "tmb_map"),
     pred_dat_catch = purrr::map(tmb_list, ~ .$pred_dat_catch),
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
-  ) #%>% 
-  # filter(fishery == "sport")
+  ) 
 
 
 ## FIT MODELS ------------------------------------------------------------------
@@ -413,8 +407,7 @@ pred_dat <- dat2 %>%
     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
                         .f = gen_comp_pred)),
     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
-    raw_abund = pmap(list(catch_data, raw_prop, fishery), 
-                     .f = make_raw_abund_dat)
+    raw_abund = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat)
     ) %>% 
   select(dataset:catch_data, abund_pred_ci:raw_abund) %>% 
   mutate(
@@ -430,11 +423,7 @@ pred_dat <- readRDS(here::here("generated_data",
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
 #color palette
-# pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
-pal <- brewer.pal(6, "Dark2")
-# names(pal) <- c(levels(pred_dat$abund_pred_ci[[1]]$region_c),
-                # levels(pred_dat$abund_pred_ci[[2]]$region_c))
 
 #pfma map (used to steal legend)
 pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))

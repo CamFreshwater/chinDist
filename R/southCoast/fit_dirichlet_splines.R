@@ -218,16 +218,16 @@ comp2 <- comp %>%
 
 # FIT --------------------------------------------------------------------------
 
-compile(here::here("src", "dirichlet_randInt.cpp"))
-dyn.load(dynlib(here::here("src", "dirichlet_randInt")))
+compile(here::here("src", "dirichlet_1re_rw.cpp"))
+dyn.load(dynlib(here::here("src", "dirichlet_1re_rw")))
 
 fit_model <- function(x) {
   ## Make a function object
-  # x <- comp2$model_inputs[[2]]
+  # x <- comp2$model_inputs[[3]]
   obj <- MakeADFun(data = x$data, 
                    parameters = x$parameters, 
                    random = c("z_rfac"),
-                   DLL = "dirichlet_randInt"
+                   DLL = "dirichlet_1re_rw"
   )
   
   ## Call function minimizer
@@ -257,6 +257,20 @@ comp2$ssdr <- map(comp2$model_inputs, function (x) {
 source(here::here("R", "functions", "plot_cleaning_functions.R"))
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
+# plot random ints
+get_random_ints <- function(dataset, comp_wide, ssdr) {
+  rand_int <- ssdr[rownames(ssdr) %in% "z_rfac", ]
+  data.frame(year = levels(as.factor(as.character(comp_wide$year))),
+             z1_k = as.numeric(rand_int[, "Estimate"]),
+             dataset = dataset)
+}
+
+old_ints <- pmap(list(comp2$dataset, comp2$comp_wide, comp2$ssdr), 
+                 .f = get_random_ints) %>% 
+  bind_rows() %>% 
+  ggplot(.) +
+  geom_point(aes(x = year, y = z1_k)) +
+  facet_wrap(~dataset)
 
 # generate predictions for plotting (stripped down version of 
 # gen_comp_pred)
