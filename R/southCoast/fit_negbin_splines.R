@@ -72,8 +72,6 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
 
 # PREP DATA --------------------------------------------------------------------
 
-catch_dat <- rec_catch
-
 prep_catch <- function (catch_dat, data_type = NULL) {
   yr_vec <- as.numeric(as.factor(as.character(catch_dat$year))) - 1
   
@@ -177,7 +175,7 @@ ssdr_list <- map(fishery_list, function(x) {
 })
 
 # color pallette
-pal <- readRDS(here::here("generated_data", "color_pal.RDS"))  
+pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 
 pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   # in_list <- fishery_list[[2]]
@@ -189,6 +187,7 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   
   # Check data fit
   fit_dat <- in_list$input_data %>% 
+    #offset is equal to log(effort)
     select(region_c, area, month_n, year, catch, eff, offset) %>% 
     mutate(log_catch = log(catch) - offset,
            log_cpue = log(catch) / offset,
@@ -203,7 +202,6 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     ggsidekick::theme_sleek()
   
   # abundance across areas
-  ylab = "Predicted Monthly Catch Rate"
   abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
   pred_ci <- data.frame(est_link = abund_pred[ , "Estimate"],
                         se_link =  abund_pred[ , "Std. Error"]) %>%
@@ -221,14 +219,15 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     geom_line(aes(y = pred_est_logcpue, colour = region_c)) +
     geom_ribbon(aes(ymin = pred_low_logcpue, ymax = pred_up_logcpue, 
                     fill = region_c), 
-                alpha = 0.5) +
+                alpha = 0.75) +
     geom_point(data = fit_dat, aes(x = month_n, y = log_cpue, fill = region_c),
-               shape = 21) +
+               shape = 21, alpha = 0.5) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
-    facet_wrap(~area, scales = "free_y") +
-    labs(x = "Month", y = ylab) +
+    facet_wrap(~area#, scales = "free_y"
+               ) +
+    labs(x = "Month", y = "ln(CPUE)") +
     ggsidekick::theme_sleek()
   
   # random intercepts
@@ -256,8 +255,8 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
     scale_fill_discrete(name = "Year") +
     scale_colour_discrete(name = "Year") +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
-    facet_wrap(~area, scales = "free_y") +
-    labs(x = "Month", y = ylab) +
+    facet_wrap(~area) +
+    labs(x = "Month", y = "ln(CPUE)") +
     ggsidekick::theme_sleek()
     
   # cumulative abundance across regions
@@ -278,6 +277,8 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
       pred_est = exp(est_link),
       pred_low = exp(est_link + (qnorm(0.025) * se_link)),
       pred_up = exp(est_link + (qnorm(0.975) * se_link)),
+      #multiply by n_areas to account for same level of effort being applied at 
+      #each area
       pred_est_logcpue = est_link / log(n_areas*exp(offset)),
       pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) / log(n_areas*exp(offset)),
       pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / log(n_areas*exp(offset))
@@ -289,7 +290,17 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
               sum_eff = sum(eff),
               .groups = "drop") %>% 
     ungroup() %>% 
-    mutate(log_agg_cpue = log(sum_catch) / log(mean(sum_eff)))
+    mutate(log_agg_cpue = log(sum_catch) / log(sum_eff))
+  
+  catch_agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
+    geom_line(aes(y = pred_est, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low, ymax = pred_up, fill = region_c), 
+                alpha = 0.5) +
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
+    scale_colour_manual(name = "Region", values = pal) +
+    labs(x = "Month", y = "Predicted Catch Index") +
+    ggsidekick::theme_sleek()
   
   log_agg_preds <- ggplot(data = agg_pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_est_logcpue, colour = region_c)) +
@@ -298,11 +309,11 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
                 alpha = 0.5) +
     geom_point(data = agg_obs_dat, aes(x = month_n, y = log_agg_cpue,
                                        fill = region_c),
-               shape = 21) +
+               shape = 21, alpha =  0.5) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
     scale_colour_manual(name = "Region", values = pal) +
-    labs(x = "Month", y = ylab) +
+    labs(x = "Month", y = "ln(CPUE)") +
     ggsidekick::theme_sleek()
   
   # aggregate year-specific effects
@@ -315,32 +326,36 @@ pred_plot_list <- map2(ssdr_list, fishery_list, function(in_ssdr, in_list) {
   yr_agg_pred_ci <- agg_pred_ci %>% 
     select(month_n:est_link) %>% 
     left_join(., agg_year_preds, by = c("region", "month")) %>% 
+    left_join(., n_reg, by = "region_c") %>% 
     mutate(
       year = as.factor(year),
       est_link_yr = est_link + z1_k,
-      pred_est_logcpue = est_link_yr / offset
+      pred_est_logcpue = est_link_yr / log(n_areas*exp(offset))
     ) 
   
   yr_log_agg_preds <- ggplot(data = yr_agg_pred_ci, aes(x = month_n)) +
     geom_line(aes(y = pred_est_logcpue, colour = year)) +
-    geom_point(data = agg_fit_dat, aes(x = month_n, y = log_agg_cpue2, fill = year),
+    geom_point(data = agg_obs_dat, aes(x = month_n, y = log_agg_cpue, fill = year),
                shape = 21) +
     scale_fill_discrete(name = "Year") +
     scale_colour_discrete(name = "Year") +
     scale_x_continuous(breaks = seq(1, 12, by = 1), limits = c(1, 12)) +
     facet_wrap(~region_c, scales = "free_y") +
-    labs(x = "Month", y = ylab) +
+    labs(x = "Month", y = "ln(CPUE)") +
     ggsidekick::theme_sleek()
+  
+  #list of plots to export
+  out_plot_list <- list(fit_plot, log_area_preds, yr_log_area_preds, 
+                        catch_agg_preds, log_agg_preds, yr_log_agg_preds)
   
   f_name <- paste(data_type, "negbin_spline_prediction.pdf", sep = "_")
   pdf(here::here("figs", "model_pred", "neg_bin_only", f_name))
-  print(area_preds)
-  print(agg_preds)
+  map(out_plot_list, print)
   dev.off()
   
-  f_name2 <- paste(data_type, "negbin_spline_predictions.RDS", sep = "_")
-  plot_list_out <- list(area_preds, agg_preds, pred_ci, agg_pred_ci)
-  saveRDS(plot_list_out, 
-          here::here("figs", "model_pred", "neg_bin_only", f_name2))
+  # f_name2 <- paste(data_type, "negbin_spline_predictions.RDS", sep = "_")
+  # plot_list_out <- list(area_preds, agg_preds, pred_ci, agg_pred_ci)
+  # saveRDS(plot_list_out, 
+  #         here::here("figs", "model_pred", "neg_bin_only", f_name2))
 })
 
