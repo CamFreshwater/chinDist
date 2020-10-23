@@ -25,6 +25,24 @@ plot_abund <- function(dat, ylab = NULL) {
     coord_cartesian(expand = FALSE, ylim = c(0, NA))
 }
 
+# Plot area CPUE data with observations
+plot_cpue_area <- function(dat, obs_dat) {
+  ggplot(data = dat, aes(x = month_n)) +
+    geom_line(aes(y = pred_est_logcpue, colour = region_c)) +
+    geom_ribbon(aes(ymin = pred_low_logcpue, ymax = pred_up_logcpue, 
+                    fill = region_c), 
+                alpha = 0.75) +
+    geom_point(data = obs_dat, aes(x = month_n, y = log_area_cpue,
+                                   fill = region_c),
+               shape = 21, alpha = 0.5) +
+    scale_fill_manual(name = "Region", values = pal) +
+    scale_colour_manual(name = "Region", values = pal) +
+    scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
+                       labels = month_labs, expand = c(0, 0)) +
+    facet_wrap(~fct_reorder(area, as.numeric(region))) +
+    labs(x = "Month", y = "ln(catch) / ln(effort)") +
+    ggsidekick::theme_sleek()
+}
 
 # Plot composition data 
 plot_comp <- function(comp_pred, raw_prop, raw = TRUE, 
@@ -62,10 +80,28 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
     coord_cartesian(expand = FALSE, ylim = c(0, NA))
 }
 
-# Plot stock specific abundance data
-# raw_abund <- pred_dat$raw_abund[[1]]
-# comp_pred <- pred_dat$comp_pred_ci[[1]]
-# raw_catch <- dat2$catch_data[[1]]
+# Plot stacked composition data 
+plot_comp_stacked <- function(comp_pred, grouping_col) {
+  palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
+  stock_pal <- disco::disco(palette_name, n = length(unique(comp_pred$stock)))
+  p <- ggplot(data = comp_pred, aes(x = month_n)) +
+    geom_area(aes(y = pred_prob_est, colour = stock, fill = stock), 
+              stat = "identity") +
+    scale_fill_manual(name = "Stock", values = stock_pal) +
+    scale_colour_manual(name = "Stock", values = stock_pal) +
+    labs(y = "Predicted Stock Composition", x = "Month") +
+    ggsidekick::theme_sleek() +
+    theme(legend.position = "top",
+          axis.text=element_text(size=9),
+          plot.margin = unit(c(2.5, 11.5, 5.5, 5.5), "points")
+          ) +
+    scale_x_continuous(breaks = seq(2, 12, by = 2), 
+                       limits = c(1, 12),
+                       labels = month_labs) +
+    facet_wrap(~region_c) +
+    coord_cartesian(expand = FALSE, ylim = c(0, NA))
+}
+
 
 plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {

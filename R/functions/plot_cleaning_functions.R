@@ -27,33 +27,29 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
 # raw_prop <- pred_dat$raw_prop[[1]]
 # fishery <- dat2$fishery[[1]]
 
-make_raw_abund_dat <- function(catch, raw_prop) {
-  # catch %>% 
-  #   group_by(region, region_c, month_n, year) %>%
-  #   summarize(
-  #     cum_catch = as.numeric(sum(catch)),
-  #     cum_effort = as.numeric(sum(eff)),
-  #     .groups = "drop") %>%
-  #   ungroup() %>% 
-  #   mutate(agg_cpue = cum_catch / cum_effort,
-  #          month = as.character(month_n)) %>%
-  #   left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
-  #   mutate(catch_g = samp_g_ppn * cum_catch,
-  #          cpue_g = samp_g_ppn * agg_cpue,
-  #          region = as.factor(region)) %>%
-  #   filter(!is.na(stock))
-  catch %>% 
-    mutate(area_cpue = catch / eff) %>% 
-    group_by(region, region_c, month_n, year) %>%
-    summarize(agg_cpue = sum(area_cpue), 
-              month = as.character(month_n),
-              .groups = "drop") %>%
-    ungroup() %>%
-    distinct() %>% 
-    left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
-    mutate(cpue_g = samp_g_ppn * agg_cpue,
-           region = as.factor(region)) %>%
-    filter(!is.na(stock))
+make_raw_abund_dat <- function(catch, raw_prop, 
+                               scale = c("area", "region")) {
+  if (scale == "area") {
+    out <- catch %>% 
+      mutate(area_cpue = catch / eff,
+             log_area_cpue = log(catch) / offset)  
+  }
+  if (scale == "region") {
+    out <- out %>% 
+      group_by(region, region_c, month_n, year) %>%
+      summarize(reg_catch = sum(catch),
+                reg_eff = sum(eff),
+                log_cpue = log(reg_catch) / log(reg_eff),
+                month = as.character(month_n),
+                .groups = "drop") %>%
+      ungroup() %>%
+      distinct() %>% 
+      left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
+      mutate(log_cpue_g = samp_g_ppn * log_cpue,
+             region = as.factor(region)) %>%
+      filter(!is.na(stock)) 
+  }
+  return(out)
 }
 # ------------------------------------------------------------------------------
 
@@ -75,8 +71,36 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
       pred_up = exp(est_link + (qnorm(0.975) * se_link))
     )
 }
-# ------------------------------------------------------------------------------
 
+# like above but for areas (hence pred_dat_catch) and includes cpue instead of 
+# stock-specific est
+
+# pred_dat_catch <- dat2$pred_dat_catch[[1]] %>% glimpse()
+# ssdr <- dat2$ssdr[[1]]
+# comp_long <- dat2$comp_long[[1]]
+
+gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
+  abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
+  pred_dat <- pred_dat_catch %>% 
+    left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
+              by = "region") %>% 
+    mutate(region_c = fct_reorder(region_c, as.numeric(region)),
+           offset = unique(pred_dat_catch$offset))
+  
+  data.frame(est_link = abund_pred[ , "Estimate"],
+             se_link =  abund_pred[ , "Std. Error"]) %>%
+    cbind(pred_dat, .) %>% 
+    mutate(
+      pred_est = exp(est_link),
+      pred_low = exp(est_link + (qnorm(0.025) * se_link)),
+      pred_up = exp(est_link + (qnorm(0.975) * se_link)),
+      pred_est_logcpue = est_link / offset,
+      pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) / offset,
+      pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / offset
+    )
+}
+
+# ------------------------------------------------------------------------------
 
 ## Function to generate composition and stock-specific abundance predictions
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
@@ -113,7 +137,6 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
     )  
 }
 #-------------------------------------------------------------------------------
-
 
 ## Function to reorder stocks for plotting
 stock_reorder <- function(key, comp_data) {
