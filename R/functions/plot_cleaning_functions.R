@@ -24,18 +24,18 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
 # data_type necessary for monthly vs. daily predictions
 
 # catch <- dat2$catch_data[[1]]
-# raw_prop <- pred_dat$raw_prop[[1]]
-# fishery <- dat2$fishery[[1]]
+# raw_prop <- make_raw_prop_dat(dat2$comp_long[[1]], dat2$comp_wide[[1]])
+
 
 make_raw_abund_dat <- function(catch, raw_prop, 
-                               scale = c("area", "region")) {
-  if (scale == "area") {
+                               spatial_scale = c("area", "region")) {
+  if (spatial_scale == "area") {
     out <- catch %>% 
       mutate(area_cpue = catch / eff,
              log_area_cpue = log(catch) / offset)  
   }
-  if (scale == "region") {
-    out <- out %>% 
+  if (spatial_scale == "region") {
+    out <- catch %>% 
       group_by(region, region_c, month_n, year) %>%
       summarize(reg_catch = sum(catch),
                 reg_eff = sum(eff),

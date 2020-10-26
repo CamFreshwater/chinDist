@@ -81,24 +81,24 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
 }
 
 # Plot stacked composition data 
-plot_comp_stacked <- function(comp_pred, grouping_col) {
+plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2) {
   palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
   stock_pal <- disco::disco(palette_name, n = length(unique(comp_pred$stock)))
-  p <- ggplot(data = comp_pred, aes(x = month_n)) +
+  ggplot(data = comp_pred, aes(x = month_n)) +
     geom_area(aes(y = pred_prob_est, colour = stock, fill = stock), 
               stat = "identity") +
     scale_fill_manual(name = "Stock", values = stock_pal) +
     scale_colour_manual(name = "Stock", values = stock_pal) +
     labs(y = "Predicted Stock Composition", x = "Month") +
     ggsidekick::theme_sleek() +
-    theme(legend.position = "top",
+    theme(legend.position = "right",
           axis.text=element_text(size=9),
           plot.margin = unit(c(2.5, 11.5, 5.5, 5.5), "points")
           ) +
     scale_x_continuous(breaks = seq(2, 12, by = 2), 
                        limits = c(1, 12),
                        labels = month_labs) +
-    facet_wrap(~region_c) +
+    facet_wrap(~region_c, ncol = ncol) +
     coord_cartesian(expand = FALSE, ylim = c(0, NA))
 }
 
