@@ -23,6 +23,7 @@ knitr-cache
 !data/gsiCatchData/rec/*.rds
 !data/gsiCatchData/pfma/*.rds
 data/gsiCatchData/pfma/shape_files/
+R/southCoast/defunct/
 
 # History files
 .Rhistory
