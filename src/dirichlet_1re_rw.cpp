@@ -3,47 +3,49 @@ template<class Type>
 Type objective_function<Type>::operator() () 
 {
   // data inputs
-  DATA_MATRIX(y_obs);    // response matrix (a n-by-k matrix)
-  DATA_MATRIX(fx_cov);   // covariate matrix (a n-by-j matrix, first column is 1 to account for intercept)
-  DATA_IVECTOR(rfac);    // vector of random factor levels
-  DATA_INTEGER(n_rfac);  // number of random factor levels
-  DATA_MATRIX(pred_cov);    // model matrix for predictions
+  DATA_MATRIX(y2_ig);   // matrix of observed distribuons for g 
+  DATA_MATRIX(X2_ij);       // model matrix for fixed effects
+  DATA_IVECTOR(factor2k_i); // vector of random factor levels
+  DATA_INTEGER(nk2);    // number of factor levels
+  DATA_MATRIX(X2_pred_ij);    // prediction matrix for compositon
 
   // parameter inputs
-  PARAMETER_MATRIX(z_ints); // parameter matrix
-  PARAMETER_VECTOR(z_rfac);  // vector of random intercepts
-  PARAMETER(log_sigma_rfac); // among random intercept SD
+  PARAMETER_MATRIX(b2_jg);   // matrix of fixed int. (rows = fixed cov, cols = g)
+  PARAMETER_VECTOR(z2_k);    // vector of random int.
+  PARAMETER(log_sigma_zk2);  // among random int SD
 
   // The dimensions of data
-  int n_obs = y_obs.rows();         // number of observations
-  int n_cat = y_obs.cols();         // number of categories
-  int n_levels = pred_cov.rows();   // number of covariates to make predictions on
-
+  int n2 = y2_ig.rows();              // number of observations
+  int n_cat = y2_ig.cols();           // number of categories
+ 
   // Matrix for intermediate objects
-  matrix<Type> total_eff(n_obs, n_cat); // matrix of combined fixed/random eff
+  matrix<Type> total_eff(n2, n_cat); // matrix of combined fixed/random eff
 
   // calculate effects
-  matrix<Type> fx_eff = fx_cov * z_ints;
+  matrix<Type> fx_eff = X2_ij * b2_jg;
 
-  for (int i = 0; i < n_obs; ++i) {
+  for (int i = 0; i < n2; ++i) {
     for(int k = 0; k < n_cat; k++) {
-      total_eff(i, k) = fx_eff(i, k) + z_rfac(rfac(i));
+      total_eff(i, k) = fx_eff(i, k) + z2_k(factor2k_i(i));
     }
   }
 
   matrix<Type> gamma = exp(total_eff.array()); // add random effect
-  vector<Type> n_plus = y_obs.rowwise().sum(); // row sum of response
+  vector<Type> n_plus = y2_ig.rowwise().sum(); // row sum of response
   vector<Type> gamma_plus = gamma.rowwise().sum(); // row sum of gamma
   
+
+  // LOG-LIKELIHOOD
   Type jll = 0; // initialize joint log-likelihood
-  for(int i = 0; i <= (n_obs - 1); i++){
+  // Composition ll
+  for(int i = 0; i <= (n2 - 1); i++){
     jll = jll + lgamma((n_plus(i) + 1));
     jll = jll + lgamma(gamma_plus(i));
     jll = jll - lgamma((n_plus(i) + gamma_plus(i)));
     for(int k = 0; k <= (n_cat - 1); k++){
-      jll += lgamma((y_obs(i, k) + gamma(i, k)));
+      jll += lgamma((y2_ig(i, k) + gamma(i, k)));
       jll -= lgamma(gamma(i, k));
-      jll -= lgamma((y_obs(i, k) + 1));
+      jll -= lgamma((y2_ig(i, k) + 1));
     }
   }
 
@@ -51,39 +53,36 @@ Type objective_function<Type>::operator() ()
   jnll = -jll;
 
   // Probability of random intercepts
-  for (int h = 0; h < n_rfac; h++) {
-    if (h == 0) {
-      jnll -= dnorm(z_rfac(h), Type(0.0), exp(log_sigma_rfac), true);  
+  for (int k = 0; k < nk2; k++) {
+    if (k == 0) {
+      jnll -= dnorm(z2_k(k), Type(0.0), exp(log_sigma_zk2), true);  
     }
-    if (h > 0) {
-      jnll -= dnorm(z_rfac(h), z_rfac(h - 1), exp(log_sigma_rfac), true);
+    if (k > 0) {
+      jnll -= dnorm(z2_k(k), z2_k(k - 1), exp(log_sigma_zk2), true);
     }
   }
   
-  Type sigma_rfac = exp(log_sigma_rfac);
-  ADREPORT(sigma_rfac);
-  
   // calculate predictions
-  matrix<Type> pred_eff(n_levels, n_cat);    //pred effects on log scale
-  matrix<Type> pred_gamma(n_levels, n_cat);  //transformed pred effects 
-  vector<Type> pred_gamma_plus(n_levels);        
-  vector<Type> pred_theta(n_levels); 
-  matrix<Type> pred_pi(n_levels, n_cat);      // predicted counts in real 
-  vector<Type> pred_n_plus(n_levels); 
-  matrix<Type> pred_pi_prop(n_levels, n_cat); // predicted counts as ppn.
-  matrix<Type> inv_logit_pred_pi_prop(n_levels, n_cat); // pred. ppn link
-
-  pred_eff = pred_cov * z_ints; 
+  matrix<Type> pred_eff(n_pred_levels, n_cat);    //pred effects on log scale
+  matrix<Type> pred_gamma(n_pred_levels, n_cat);  //transformed pred effects 
+  vector<Type> pred_gamma_plus(n_pred_levels);        
+  vector<Type> pred_theta(n_pred_levels); 
+  matrix<Type> pred_pi(n_pred_levels, n_cat);      // predicted counts in real 
+  vector<Type> pred_n_plus(n_pred_levels); 
+  matrix<Type> pred_pi_prop(n_pred_levels, n_cat); // predicted counts as ppn.
+  matrix<Type> inv_logit_pred_pi_prop(n_pred_levels, n_cat); // pred. ppn link
+  
+  pred_eff = X2_pred_ij * b2_jg; 
   pred_gamma = exp(pred_eff.array());
   pred_gamma_plus = pred_gamma.rowwise().sum();
   pred_theta = 1 / (pred_gamma_plus + 1);
-  for(int m = 0; m < n_levels; m++) {
+  for(int m = 0; m < n_pred_levels; m++) {
     for(int k = 0; k < n_cat; k++) {
       pred_pi(m, k) = pred_gamma(m, k) / pred_theta(m);
     }
   }
   pred_n_plus = pred_pi.rowwise().sum();
-  for(int m = 0; m < n_levels; m++) {
+  for(int m = 0; m < n_pred_levels; m++) {
     for(int k = 0; k < n_cat; k++) {
       pred_pi_prop(m, k) = pred_pi(m, k) / pred_n_plus(m);
       inv_logit_pred_pi_prop(m, k) = invlogit(pred_pi_prop(m, k));
