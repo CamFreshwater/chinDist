@@ -102,13 +102,14 @@ tag_recov1 <- tag_recov %>%
     region = case_when(
       pfma_n > 124 ~ "NWVI",
       pfma_n < 28 & pfma_n > 24 ~ "NWVI",
-      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca",
-      # is.na(pfma_n) ~ "Juan de Fuca",
+      pfma_n %in% c("20", "121", "21") ~ "Juan de Fuca Strait",
+      is.na(pfma_n) ~ "Juan de Fuca Strait",
       pfma_n < 125 & pfma_n > 120 ~ "SWVI",
       pfma_n < 25 & pfma_n > 20 ~ "SWVI",
-      pfma_n < 20 & pfma_n > 13 ~ "Georgia Strait",
-      pfma_n %in% c("28", "29") ~ "Georgia Strait",
-      pfma_n %in% c("10", "11", "12", "13", "111") ~ "Johnstone Strait",
+      pfma_n %in% c("14", "15", "16") ~ "N. Strait of Georgia",
+      pfma_n %in% c("17", "18", "19", "28", "29") ~ "S. Strait of Georgia",
+      pfma_n %in% c("10", "11", "111") ~ "Queen Charlotte Sound",
+      pfma_n %in% c("12", "13") ~ "Queen Charlotte and\nJohnstone Straits",
       grepl("SoG", pfma) ~ "Georgia Strait",
       grepl("SWVI", pfma) ~ "SWVI",
       grepl("NWVI", pfma) ~ "NWVI",
@@ -162,7 +163,8 @@ tag_recov_out <- tag_recov1 %>%
     x %>% 
       mutate(year = as.factor(year)) %>% 
       select(id = tag_code, temp_strata, region, area = pfma, year, month,
-             date, gear, pres, season, month_n, area_n = pfma_n, 
+             date, #gear, 
+             pres, season, month_n, area_n = pfma_n, 
              stock:pst_agg)
   })) 
 
@@ -175,3 +177,10 @@ tag_recov_out <- tag_recov1 %>%
 saveRDS(tag_recov_out, here::here("data", "gsiCatchData", "commTroll",
                              "cwt_recovery_clean.rds"))
 
+
+tag_recov_out %>% 
+  select(-data) %>% 
+  unnest(cols = c(subset_data)) %>% 
+  group_by(region, pst_agg) %>% 
+  tally() %>% 
+  print(n = Inf)

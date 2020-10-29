@@ -193,16 +193,20 @@ dat <- full_dat %>%
   ) 
 
 ## FIT MODELS ------------------------------------------------------------------
+
+#use fix optim inits except rec_pst (convergence issues)
+optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
+
 dat2 <- dat %>%
   mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data, 
-                                comp_dat = full_dat$comp_long), 
+                                comp_dat = full_dat$comp_long,
+                                optim_fix_inits = optim_fix_inits_vec), 
                            .f = stockseasonr::fit_stockseason, 
                            random_walk = TRUE,
                            model_type = "integrated",
-                           nlminb_loops = 2, 
+                           # nlminb_loops = 2, 
                            silent = FALSE))
 dat2$ssdr <- purrr::map(dat2$sdr, summary)
-
 
 saveRDS(dat2 %>% select(-sdr),
         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))

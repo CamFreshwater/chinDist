@@ -265,9 +265,14 @@ get_random_ints <- function(dataset, comp_wide, ssdr) {
              dataset = dataset)
 }
 
-old_ints <- pmap(list(comp2$dataset, comp2$comp_wide, comp2$ssdr), 
+pmap(list(comp2$dataset, comp2$comp_wide, comp2$ssdr), 
                  .f = get_random_ints) %>% 
   bind_rows() %>% 
+  ggplot(.) +
+  geom_point(aes(x = year, y = z1_k)) +
+  facet_wrap(~dataset)
+
+old_ints %>% 
   ggplot(.) +
   geom_point(aes(x = year, y = z1_k)) +
   facet_wrap(~dataset)
@@ -334,6 +339,15 @@ dev.off()
 pdf(here::here("figs", "model_pred", "dirichlet_only", 
                "composition_splines_fixed.pdf"))
 comp_plots_fix
+dev.off()
+
+
+#stacked_plots
+comp_area_plots <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$grouping_col, 
+                        plot_comp_stacked)
+pdf(paste("figs", "model_pred", "dirichlet_only",
+          "composition_stacked.pdf", sep = "/"))
+comp_area_plots
 dev.off()
 
 
