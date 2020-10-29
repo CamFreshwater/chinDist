@@ -1,9 +1,8 @@
 ## Dirichlet model fit
-# Sep 25, 2020
-# Fit combined dirichlet/nb model to stock composition data
-# Duplicates composition component of combined model. Ran independently to 
-# increase temporal range
-# Same as fit_dirichlet but adds splines 
+# Oct 29, 2020
+# Fit dirichlet model to stock composition data
+# Duplicates composition component of combined model (fit_combined_splines.R)
+# Ran independently to increase monthly span
 
 library(tidyverse)
 library(TMB)
@@ -106,7 +105,7 @@ clean_comp <- function(grouping_col, raw_data, ...) {
     distinct()
   if (raw_data$gear[1] == "sport") {
     temp %>%
-      mutate(region = fct_relevel(region, "QCaJS", "NSoG", "SSoG", "JdFS"))
+      mutate(region = fct_relevel(region, "QCaJS", "JdFS", "NSoG", "SSoG"))
   } else {
     temp
   }
@@ -128,230 +127,130 @@ comp <- tibble(
     ),
     comp_long = pmap(list(grouping_col, raw_data), .f = clean_comp)
   ) 
-# saveRDS(comp, here::here("generated_data", "composition_model_data.RDS"))
+
 
 ## PREP INPUTS ----------------------------------------------------------------
 
-# comp_in <- comp$data[[2]]
-# data_type <- comp$dataset[[2]]
+# add tmb data assuming average effort predictions
+# note that these outputs are generated automatically in fit_stockseason
+# but aren't retained and are necessary for the current suite of plotting 
+# functions
+tmb_list <- purrr::map(comp$comp_long, 
+                       .f = stockseasonr::gen_tmb,
+                       random_walk = TRUE,
+                       model_type = "composition")
 
-prep_dir_inputs <- function(comp_in, data_type) {
-  gsi_trim <- comp_in %>% 
-    group_by(region, month, year) %>%
-    mutate(nn = sum(agg_prob)) %>%
-    #remove strata with less than 10 individuals total 
-    filter(!nn < 10) %>%
-    ungroup() %>%
-    droplevels() %>%
-    select(sample_id, region, region_c, year, month, month_n, agg, agg_prob) %>%
-    distinct()
-  
-  gsi_wide <- gsi_trim %>% 
-    pivot_wider(., names_from = agg, values_from = agg_prob) %>%
-    mutate_if(is.numeric, ~replace_na(., 0.000001))
-  
-  y_obs <- gsi_wide %>% 
-    select(-c(sample_id:month_n)) %>% 
-    as.matrix() 
-
-  yr_vec <- as.numeric(gsi_wide$year) - 1
-  
-  #generate model matrix based on GAM
-  months <- unique(gsi_wide$month_n)
-  n_months <- length(months)
-  n_knots <- ifelse(max(months) > 8, 4, 3)
-  spline_type <- ifelse(max(months) == 12, "cc", "tp")
-  # response variable doesn't matter, since not fit
-  m1 <- gam(rep(0, length.out = nrow(gsi_wide)) ~ 
-              region + s(month_n, bs = spline_type, k = n_knots, by = region),
-            data = gsi_wide)
-  fix_mm <- predict(m1, type = "lpmatrix")
-  
-  # data frame for predictions
-  # account for strong differences in sampling months for sport fishery
-  if (comp_in$gear[1] == "sport") {
-    pred_dat <- split(gsi_wide, gsi_wide$region) %>% 
-      map(., function (x) {
-        expand.grid(
-          month_n = seq(min(x$month_n), 
-                        max(x$month_n),
-                        by = 0.1),
-          region = unique(x$region)
-        )
-      }) %>% 
-      bind_rows()
-  } else {
-    pred_dat <- expand.grid(
-      month_n = seq(min(gsi_wide$month_n), 
-                    max(gsi_wide$month_n),
-                    by = 0.1),
-      region = unique(gsi_wide$region)
-    )
-  }
-  pred_mm <- predict(m1, pred_dat, type = "lpmatrix")
-  
-  data <- list(y_obs = y_obs, #obs
-               rfac = yr_vec, #random intercepts
-               fx_cov = fix_mm, #fixed cov model matrix
-               n_rfac = length(unique(yr_vec)), #number of random intercepts
-               pred_cov = pred_mm
+# join all data into a tibble then generate model inputs
+dat <- comp %>% 
+  mutate(
+    comp_wide = purrr::map(tmb_list, "comp_wide"),
+    tmb_data = purrr::map(tmb_list, "data"),
+    tmb_pars = purrr::map(tmb_list, "pars"),
+    tmb_map = purrr::map(tmb_list, "tmb_map"),
+    pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   ) 
-  parameters <- list(z_ints = matrix(0, nrow = ncol(fix_mm), 
-                                     ncol = ncol(y_obs)),
-                     z_rfac = rep(0, times = length(unique(yr_vec))),
-                     log_sigma_rfac = 0
-                     )
-  
-  list("fix_mm" = fix_mm, "pred_dat" = pred_dat, 
-       "data" = data, "parameters" = parameters, "data_type" = data_type,
-       "long_data" = gsi_trim, "wide_data" = gsi_wide)
-}
-
-# add model parameters
-comp2 <- comp %>%
-  mutate(model_inputs = map2(comp_long, dataset, .f = prep_dir_inputs),
-         # reformat comp2 to match dat2 from fit_combined_splines to share 
-         # plotting functions
-         comp_wide = map(model_inputs, "wide_data"),
-         pred_dat_comp = map(model_inputs, "pred_dat")) 
 
 
 # FIT --------------------------------------------------------------------------
 
-compile(here::here("src", "dirichlet_1re_rw.cpp"))
-dyn.load(dynlib(here::here("src", "dirichlet_1re_rw")))
+#use fix optim inits except rec_pst (convergence issues)
+optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
 
-fit_model <- function(x) {
-  ## Make a function object
-  # x <- comp2$model_inputs[[3]]
-  obj <- MakeADFun(data = x$data, 
-                   parameters = x$parameters, 
-                   random = c("z_rfac"),
-                   DLL = "dirichlet_1re_rw"
+dat2 <- dat %>%
+  mutate(sdr = purrr::pmap(list(comp_dat = dat$comp_long,
+                                optim_fix_inits = optim_fix_inits_vec),
+                           .f = stockseasonr::fit_stockseason,
+                           random_walk = TRUE,
+                           model_type = "composition",
+                           silent = FALSE))
+dat2$ssdr <- purrr::map(dat2$sdr, summary)
+
+saveRDS(dat2 %>% select(-sdr),
+        here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
+dat2 <- readRDS(here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
+
+
+## GENERATE OBS AND PREDICTIONS ------------------------------------------------
+
+source(here::here("R", "functions", "plot_cleaning_functions.R"))
+
+comp_pred_dat <- dat2 %>%
+  mutate(
+    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+                                         .f = gen_comp_pred,
+                                         comp_only = TRUE)),
+    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat)
+  ) %>%
+  select(dataset:comp_wide, comp_pred_ci, raw_prop) %>%
+  mutate(
+    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
   )
-  
-  ## Call function minimizer
-  opt <- nlminb(obj$par, obj$fn, obj$gr)
-  
-  ## Get parameter uncertainties and convergence diagnostics
-  sdr <- sdreport(obj)
-  ssdr <- summary(sdr)
-  
-  f_name <- paste(x$data_type, "dirichlet_spline_ssdr.RDS", sep = "_")
-  saveRDS(ssdr, here::here("generated_data", "model_fits", f_name))
-}
-
-# fit
-map(comp2$model_inputs, .f = fit_model)
+saveRDS(comp_pred_dat, here::here("generated_data",
+                             "composition_model_predictions.RDS"))
+comp_pred_dat <- readRDS(here::here("generated_data",
+                               "composition_model_predictions.RDS"))
 
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
-comp2$ssdr <- map(comp2$model_inputs, function (x) {
-  f_name <- paste(x$data_type, "dirichlet_spline_ssdr.RDS", sep = "_")
-  readRDS(here::here("generated_data", "model_fits", f_name))
-})
-
-
-# source file for cleaning and plotting functions
-source(here::here("R", "functions", "plot_cleaning_functions.R"))
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
-# plot random ints
-get_random_ints <- function(dataset, comp_wide, ssdr) {
-  rand_int <- ssdr[rownames(ssdr) %in% "z_rfac", ]
-  data.frame(year = levels(as.factor(as.character(comp_wide$year))),
-             z1_k = as.numeric(rand_int[, "Estimate"]),
-             dataset = dataset)
-}
-
-pmap(list(comp2$dataset, comp2$comp_wide, comp2$ssdr), 
-                 .f = get_random_ints) %>% 
-  bind_rows() %>% 
-  ggplot(.) +
-  geom_point(aes(x = year, y = z1_k)) +
-  facet_wrap(~dataset)
-
-old_ints %>% 
-  ggplot(.) +
-  geom_point(aes(x = year, y = z1_k)) +
-  facet_wrap(~dataset)
-
-# generate predictions for plotting (stripped down version of 
-# gen_comp_pred)
-gen_comp_only_pred <- function(comp_long, pred_dat_comp, ssdr) {
-  comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
-  beta_comp <- ssdr[rownames(ssdr) %in% "z_ints", ]
-  
-  stk_names <- unique(comp_long$agg)
-  n_preds <- nrow(pred_dat_comp)
-  
-  pred_dat <- pred_dat_comp %>% 
-    left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
-              by = "region") %>%
-    mutate(region_c = fct_reorder(region_c, as.numeric(region)))
-  dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
-  
-  data.frame(
-    stock = as.character(rep(stk_names, each = n_preds)),
-    link_prob_est = comp_pred[ , "Estimate"],
-    link_prob_se =  comp_pred[ , "Std. Error"]
-  ) %>% 
-    cbind(dum, .) %>%
-    mutate(
-      pred_prob_est = car::logit(link_prob_est),
-      pred_prob_low = pmax(0,
-                           car::logit(link_prob_est + (qnorm(0.025) *
-                                                         link_prob_se))),
-      pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se))
-    )  
-}
-
-pred_dat_comp <- comp2 %>% 
-  mutate(
-    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
-                                         .f = gen_comp_only_pred)),
-    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat)
-    ) %>%
-  select(dataset, grouping_col, comp_pred_ci, raw_prop) %>% 
-  mutate(
-    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
-    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
-  ) 
-
-
 #color palette
-# pal <- readRDS(here::here("generated_data", "color_pal.RDS"))
 pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
 
+#pfma map (used to steal legend)
+pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
 
-comp_plots <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, plot_comp, 
+# generic settings
+file_path <- here::here("figs", "model_pred", "dirichlet_only")
+
+# Composition spline prediction
+comp_plots <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, plot_comp,
                    raw = TRUE)
-comp_plots_fix <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, 
-                       plot_comp, raw = TRUE, facet_scales = "fixed")
-comp_plots_fix2 <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$raw_prop, 
-                        plot_comp, raw = FALSE, facet_scales = "fixed")
+comp_plots_fix <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, plot_comp,
+                       raw = TRUE, facet_scales = "fixed")
 
-pdf(here::here("figs", "model_pred", "dirichlet_only", "composition_splines.pdf"))
+pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
 comp_plots
-dev.off()
-
-pdf(here::here("figs", "model_pred", "dirichlet_only", 
-               "composition_splines_fixed.pdf"))
 comp_plots_fix
 dev.off()
 
 
-#stacked_plots
-comp_area_plots <- map2(pred_dat_comp$comp_pred_ci, pred_dat_comp$grouping_col, 
-                        plot_comp_stacked)
-pdf(paste("figs", "model_pred", "dirichlet_only",
-          "composition_stacked.pdf", sep = "/"))
-comp_area_plots
+## Composition stacked ribbon prediction
+combine_data <- function(in_col = c("pst_agg", "reg1")) {
+  comp_pred_dat %>%
+    filter(grouping_col == in_col) %>%
+    select(dataset, grouping_col, comp_pred_ci) %>%
+    unnest(., cols = c(comp_pred_ci)) %>% 
+    mutate(region_c = fct_relevel(region_c, "NWVI", "SWVI", 
+                                  "Queen Charlotte and\nJohnstone Straits", 
+                                  "Juan de Fuca Strait", 
+                                  "N. Strait of Georgia", "S. Strait of Georgia"))
+}
+pst_comp_pred <- combine_data(in_col = "pst_agg") 
+pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg")
+can_comp_pred <- combine_data(in_col = "reg1") 
+can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1")
+
+pdf(paste(file_path, "composition_stacked.pdf", sep = "/"))
+pst_area
+can_area
 dev.off()
 
 
 # MS figs
+png(here::here("figs", "ms_figs", "comp_pst_stacked.png"), res = 400, units = "in",
+    height = 6, width = 7.5)
+pst_area
+dev.off()
+
+png(here::here("figs", "ms_figs", "comp_can_stacked.png"), res = 400, units = "in",
+    height = 6, width = 7.5)
+can_area
+dev.off()
+
+# Supplementary figs
 png(here::here("figs", "ms_figs", "comp_ext_pst_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
 comp_plots_fix[[1]]

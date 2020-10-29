@@ -197,19 +197,19 @@ dat <- full_dat %>%
 #use fix optim inits except rec_pst (convergence issues)
 optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
 
-dat2 <- dat %>%
-  mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data, 
-                                comp_dat = full_dat$comp_long,
-                                optim_fix_inits = optim_fix_inits_vec), 
-                           .f = stockseasonr::fit_stockseason, 
-                           random_walk = TRUE,
-                           model_type = "integrated",
-                           # nlminb_loops = 2, 
-                           silent = FALSE))
-dat2$ssdr <- purrr::map(dat2$sdr, summary)
-
-saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
+# dat2 <- dat %>%
+#   mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data, 
+#                                 comp_dat = full_dat$comp_long,
+#                                 optim_fix_inits = optim_fix_inits_vec), 
+#                            .f = stockseasonr::fit_stockseason, 
+#                            random_walk = TRUE,
+#                            model_type = "integrated",
+#                            # nlminb_loops = 2, 
+#                            silent = FALSE))
+# dat2$ssdr <- purrr::map(dat2$sdr, summary)
+# 
+# saveRDS(dat2 %>% select(-sdr),
+#         here::here("generated_data", "model_fits", "combined_model_dir.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits",
                            "combined_model_dir.RDS"))
@@ -217,9 +217,7 @@ dat2 <- readRDS(here::here("generated_data", "model_fits",
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
-# source file for cleaning and plotting functions
 source(here::here("R", "functions", "plot_cleaning_functions.R"))
-source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 pred_dat <- dat2 %>% 
   mutate(
@@ -228,6 +226,8 @@ pred_dat <- dat2 %>%
                                           .f = gen_abund_pred)),
     cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr), 
                         gen_abund_pred_area),
+    abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
+                         gen_rand_int_pred),
     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
                         .f = gen_comp_pred)),
     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
@@ -248,6 +248,8 @@ pred_dat <- readRDS(here::here("generated_data",
 
 ## PLOT PREDICTIONS ------------------------------------------------------------
 
+source(here::here("R", "functions", "plot_predictions_splines.R"))
+
 #color palette
 pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
 
@@ -258,7 +260,7 @@ pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
 file_path <- here::here("figs", "model_pred", "combined")
 
 
-## Plot abundance
+## Plot abundance - fixed effects only
 comm1 <- pred_dat %>% 
   filter(dataset == "gsi_troll_pst") 
 comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
@@ -287,6 +289,18 @@ combo_abund2
 dev.off()
 
 
+## Plot abundance - include random effects
+# combine data 
+comm_yr_catch <- comm1$abund_year_ci[[1]] %>% 
+  group_by(month_n, region_c, year) %>% 
+  summarize(pred_catch_yr = sum(pred_catch_yr))  %>% 
+  plot_catch_yr(., facet_scale = "region_c") 
+rec_yr_catch <- rec1$abund_year_ci[[1]] %>% 
+  group_by(month_n, region_c, year) %>% 
+  summarize(pred_catch_yr = sum(pred_catch_yr)) %>% 
+  plot_catch_yr(., facet_scale = "region_c")
+
+
 ## Plot area abundance with observations
 # combine similar groupings to plot together
 comm_area_cpue <- plot_cpue_area(pred_dat$cpue_pred_ci[[1]], 
@@ -295,39 +309,42 @@ rec_area_cpue <- plot_cpue_area(pred_dat$cpue_pred_ci[[2]],
                        pred_dat$raw_abund_area[[2]])
 
 
-## Composition spline prediction
-comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
-                   raw = TRUE)
-comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
-                       raw = TRUE, facet_scales = "fixed")
+## Composition spline prediction (now occurs in fit_dirichlet_splines to maximize
+# monthly coverage)
+# comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+#                    raw = TRUE)
+# comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+#                        raw = TRUE, facet_scales = "fixed")
+# 
+# pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
+# comp_plots
+# comp_plots_fix
+# dev.off()
 
-pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
-comp_plots
-comp_plots_fix
-dev.off()
 
-
-## Composition area prediction
-combine_data <- function(in_col = c("pst_agg", "reg1")) {
-  pred_dat %>% 
-    filter(grouping_col == in_col) %>% 
-    select(dataset, grouping_col, comp_pred_ci) %>% 
-    unnest(., cols = c(comp_pred_ci))
-}  
-pst_comp_pred <- combine_data(in_col = "pst_agg")
-plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg")
-
-comp_area_plots <- map2(pred_dat$comp_pred_ci, pred_dat$grouping_col, 
-                        plot_comp_stacked)
-pdf(paste(file_path, "composition_stacked.pdf", sep = "/"))
-comp_area_plots
-dev.off()
+## Composition area prediction (now occurs in fit_dirichlet_splines to maximize
+# monthly coverage)
+# combine_data <- function(in_col = c("pst_agg", "reg1")) {
+#   pred_dat %>% 
+#     filter(grouping_col == in_col) %>% 
+#     select(dataset, grouping_col, comp_pred_ci) %>% 
+#     unnest(., cols = c(comp_pred_ci))
+# }  
+# pst_comp_pred <- combine_data(in_col = "pst_agg")
+# pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg")
+# can_comp_pred <- combine_data(in_col = "reg1")
+# can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1")
+# 
+# pdf(paste(file_path, "composition_stacked.pdf", sep = "/"))
+# pst_area
+# can_area
+# dev.off()
 
 
 ## Stock-specific catch predictions
-ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
+ss_abund_plots_free <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund_reg, 
                             plot_ss_abund, raw = FALSE)
-ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund, 
+ss_abund_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_abund_reg, 
                            plot_ss_abund, raw = FALSE, facet_scales = "fixed")
 
 pdf(paste(file_path, "stock-specific_abund_splines.pdf", sep = "/"))
@@ -342,25 +359,26 @@ png(here::here("figs", "ms_figs", "abund_pred.png"), res = 400, units = "in",
 combo_abund2
 dev.off()
 
-png(here::here("figs", "ms_figs", "comp_pst_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
-comp_plots_fix[[1]]
-dev.off()
-
-png(here::here("figs", "ms_figs", "comp_pst_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
-comp_plots_fix[[2]]
-dev.off()
-
-png(here::here("figs", "ms_figs", "comp_can_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
-comp_plots_fix[[3]]
-dev.off()
-
-png(here::here("figs", "ms_figs", "comp_can_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
-comp_plots_fix[[4]]
-dev.off()
+## REPLACED WITH ESTIMATES FROM COMPOSITION ONLY MODEL
+# png(here::here("figs", "ms_figs", "comp_pst_comm.png"), res = 400, units = "in",
+#     height = 5.5, width = 7.5)
+# comp_plots_fix[[1]]
+# dev.off()
+# 
+# png(here::here("figs", "ms_figs", "comp_pst_rec.png"), res = 400, units = "in",
+#     height = 5.5, width = 7.5)
+# comp_plots_fix[[2]]
+# dev.off()
+# 
+# png(here::here("figs", "ms_figs", "comp_can_comm.png"), res = 400, units = "in",
+#     height = 5.5, width = 7)
+# comp_plots_fix[[3]]
+# dev.off()
+# 
+# png(here::here("figs", "ms_figs", "comp_can_rec.png"), res = 400, units = "in",
+#     height = 5.5, width = 7)
+# comp_plots_fix[[4]]
+# dev.off()
 
 png(here::here("figs", "ms_figs", "abund_pst_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
@@ -396,6 +414,18 @@ png(here::here("figs", "ms_figs", "rec_cpue_fits.png"), res = 400, units = "in",
     height = 5.5, width = 7)
 rec_area_cpue
 dev.off()
+
+png(here::here("figs", "ms_figs", "comm_yr_catch.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+comm_yr_catch
+dev.off()
+
+png(here::here("figs", "ms_figs", "rec_yr_catch.png"), res = 400, units = "in",
+    height = 5.5, width = 7)
+rec_yr_catch
+dev.off()
+
+
 
 ## Random summary data ---------------------------------------------------------
 

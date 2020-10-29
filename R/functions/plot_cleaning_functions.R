@@ -22,11 +22,6 @@ make_raw_prop_dat <- function(comp_long, comp_wide) {
 
 ## Function to calculate raw stock-specific abundance observations
 # data_type necessary for monthly vs. daily predictions
-
-# catch <- dat2$catch_data[[1]]
-# raw_prop <- make_raw_prop_dat(dat2$comp_long[[1]], dat2$comp_wide[[1]])
-
-
 make_raw_abund_dat <- function(catch, raw_prop, 
                                spatial_scale = c("area", "region")) {
   if (spatial_scale == "area") {
@@ -74,11 +69,6 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 
 # like above but for areas (hence pred_dat_catch) and includes cpue instead of 
 # stock-specific est
-
-# pred_dat_catch <- dat2$pred_dat_catch[[1]] %>% glimpse()
-# ssdr <- dat2$ssdr[[1]]
-# comp_long <- dat2$comp_long[[1]]
-
 gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
   pred_dat <- pred_dat_catch %>% 
@@ -99,11 +89,42 @@ gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
       pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / offset
     )
 }
-
 # ------------------------------------------------------------------------------
 
+## Function to incorporate random intercepts in area-specific abundance 
+# estimates
+gen_rand_int_pred <- function(ssdr, catch_dat, pred_dat_catch, cpue_pred) {
+  # save random intercept parameters and bind to vector of years based on input
+  # data
+  rand_int <- ssdr[rownames(ssdr) %in% "z1_k", ] 
+  year_ints <- data.frame(year = levels(as.factor(as.character(catch_dat$year))),
+                          z1_k = as.numeric(rand_int[, "Estimate"])) 
+  # generate predictions
+  year_preds <- expand.grid(year = year_ints$year, 
+                            month = unique(pred_dat_catch$month)) %>% 
+    left_join(pred_dat_catch %>% select(area, month), ., by = "month") %>% 
+    left_join(., year_ints, by = "year")
+  
+  cpue_pred %>% 
+    select(month_n:est_link) %>% 
+    left_join(., year_preds, by = c("area", "month")) %>% 
+    mutate(
+      year = as.factor(year),
+      est_link_yr = est_link + z1_k,
+      pred_est_logcpue = est_link_yr / offset,
+      pred_catch_yr = exp(est_link_yr)
+    ) 
+}
+
+
+#-------------------------------------------------------------------------------
+
+pred_dat_comp <- dat2$pred_dat_comp[[1]]
+comp_long <- dat2$comp_long[[1]]
+ssdr <- dat2$ssdr[[1]]
+
 ## Function to generate composition and stock-specific abundance predictions
-gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
+gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {
   comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
   beta_comp <- ssdr[rownames(ssdr) %in% "b2_jg", ]
@@ -117,24 +138,41 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr) {
     mutate(region_c = fct_reorder(region_c, as.numeric(region)))
   dum <- purrr::map_dfr(seq_along(stk_names), ~ pred_dat)
   
-  data.frame(
-    stock = as.character(rep(stk_names, each = n_preds)),
-    link_prob_est = comp_pred[ , "Estimate"],
-    link_prob_se =  comp_pred[ , "Std. Error"],
-    link_abund_est = comp_abund_pred[ , "Estimate"],
-    link_abund_se =  comp_abund_pred[ , "Std. Error"]
-  ) %>% 
-    cbind(dum, .) %>%
-    mutate(
-      pred_prob_est = car::logit(link_prob_est),
-      pred_prob_low = pmax(0,
-                           car::logit(link_prob_est + (qnorm(0.025) *
-                                                         link_prob_se))),
-      pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)),
-      comp_abund_est = exp(link_abund_est) / 1000,
-      comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)) / 1000,
-      comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se)) / 1000
-    )  
+  if (comp_only) {
+    data.frame(
+      stock = as.character(rep(stk_names, each = n_preds)),
+      link_prob_est = comp_pred[ , "Estimate"],
+      link_prob_se =  comp_pred[ , "Std. Error"]
+    ) %>% 
+      cbind(dum, .) %>%
+      mutate(
+        pred_prob_est = car::logit(link_prob_est),
+        pred_prob_low = pmax(0,
+                             car::logit(link_prob_est + (qnorm(0.025) *
+                                                           link_prob_se))),
+        pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se))
+      ) 
+  } else {
+    data.frame(
+      stock = as.character(rep(stk_names, each = n_preds)),
+      link_prob_est = comp_pred[ , "Estimate"],
+      link_prob_se =  comp_pred[ , "Std. Error"],
+      link_abund_est = comp_abund_pred[ , "Estimate"],
+      link_abund_se =  comp_abund_pred[ , "Std. Error"]
+    ) %>% 
+      cbind(dum, .) %>%
+      mutate(
+        pred_prob_est = car::logit(link_prob_est),
+        pred_prob_low = pmax(0,
+                             car::logit(link_prob_est + (qnorm(0.025) *
+                                                           link_prob_se))),
+        pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)),
+        comp_abund_est = exp(link_abund_est) / 1000,
+        comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)) / 1000,
+        comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se)) / 1000
+      ) 
+  }
+  
 }
 #-------------------------------------------------------------------------------
 

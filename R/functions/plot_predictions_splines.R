@@ -25,6 +25,7 @@ plot_abund <- function(dat, ylab = NULL) {
     coord_cartesian(expand = FALSE, ylim = c(0, NA))
 }
 
+
 # Plot area CPUE data with observations
 plot_cpue_area <- function(dat, obs_dat) {
   ggplot(data = dat, aes(x = month_n)) +
@@ -44,10 +45,28 @@ plot_cpue_area <- function(dat, obs_dat) {
     ggsidekick::theme_sleek()
 }
 
+
+# Plot area catch with random intercepts
+plot_catch_yr <- function(dat, facet_scale = "area") {
+  ggplot(data = dat, aes(x = month_n)) +
+    geom_line(aes(y = pred_catch_yr / 1000, colour = year)) +
+    scale_fill_discrete(name = "Year") +
+    scale_colour_discrete(name = "Year") +
+    scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
+                       labels = month_labs, expand = c(0, 0)) +
+    facet_wrap(facet_scale, scales = "free_y") +
+    labs(x = "Month", y = "Predicted Catch Index") +
+    ggsidekick::theme_sleek()
+}
+
+
 # Plot composition data 
+# comp_pred <- comp_pred_dat$comp_pred_ci[[1]]
+# raw_prop <- comp_pred_dat$raw_prop[[1]]
 plot_comp <- function(comp_pred, raw_prop, raw = TRUE, 
-                      ncol = NULL, facet_scales = "free_y") {
-  p <- ggplot(data = comp_pred, aes(x = month_n)) +
+                      ncol = NULL, facet_scales = "fixed") {
+  p <- ggplot(data = comp_pred %>% filter(!is.na(pred_prob_est)), 
+              aes(x = month_n)) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
     labs(y = "Predicted Stock Composition", x = "Month") +
@@ -55,18 +74,17 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
     ggsidekick::theme_sleek() +
     theme(legend.position = "top",
           axis.text=element_text(size=9),
-          # axis.text.y = element_text(angle = 90),
           plot.margin = unit(c(5.5, 10.5, 5.5, 5.5), "points"),
           panel.spacing = unit(0.75, "lines")) +
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
-                       labels = month_labs, expand = FALSE)
+                       labels = month_labs, expand = c(0, 0))
     
   if (raw == TRUE) {
     p2 <- p +
       geom_line(aes(y = pred_prob_est, colour = region_c)) +
       geom_ribbon(aes(ymin = pred_prob_low, ymax = pred_prob_up, fill = region_c), 
                   alpha = 0.5) +
-      geom_point(data = raw_prop,
+      geom_point(data = raw_prop %>% filter(!is.na(samp_g_ppn)),
                  aes(x = month_n, y = samp_g_ppn, fill = region_c),
                  shape = 21, alpha = 0.4, position = position_dodge(0.6))
   } else {
@@ -80,10 +98,12 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
     coord_cartesian(expand = FALSE, ylim = c(0, NA))
 }
 
+
 # Plot stacked composition data 
 plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2) {
   palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
   stock_pal <- disco::disco(palette_name, n = length(unique(comp_pred$stock)))
+  
   ggplot(data = comp_pred, aes(x = month_n)) +
     geom_area(aes(y = pred_prob_est, colour = stock, fill = stock), 
               stat = "identity") +
@@ -103,6 +123,7 @@ plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2) {
 }
 
 
+# Plot stock-specific abundance
 plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
   #adjustment to account for massive CIs on certain stocks in NSoG
