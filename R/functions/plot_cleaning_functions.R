@@ -27,14 +27,14 @@ make_raw_abund_dat <- function(catch, raw_prop,
   if (spatial_scale == "area") {
     out <- catch %>% 
       mutate(area_cpue = catch / eff,
-             log_area_cpue = log(catch) / offset)  
+             log_area_cpue = log(catch) - offset)  
   }
   if (spatial_scale == "region") {
     out <- catch %>% 
       group_by(region, region_c, month_n, year) %>%
       summarize(reg_catch = sum(catch),
                 reg_eff = sum(eff),
-                log_cpue = log(reg_catch) / log(reg_eff),
+                log_cpue = log(reg_catch) - log(reg_eff),
                 month = as.character(month_n),
                 .groups = "drop") %>%
       ungroup() %>%
@@ -69,9 +69,12 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 
 # like above but for areas (hence pred_dat_catch) and includes cpue instead of 
 # stock-specific est
+# pred_dat_catch <- dat2$pred_dat_catch[[1]]
+# comp_long <- dat2$comp_long[[1]]
+# ssdr <- dat2$ssdr[[1]]
 gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
-  pred_dat <- pred_dat_catch %>% 
+  pred_dat2 <- pred_dat_catch %>% 
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
               by = "region") %>% 
     mutate(region_c = fct_reorder(region_c, as.numeric(region)),
@@ -79,14 +82,14 @@ gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
   
   data.frame(est_link = abund_pred[ , "Estimate"],
              se_link =  abund_pred[ , "Std. Error"]) %>%
-    cbind(pred_dat, .) %>% 
+    cbind(pred_dat2, .) %>%
     mutate(
       pred_est = exp(est_link),
       pred_low = exp(est_link + (qnorm(0.025) * se_link)),
       pred_up = exp(est_link + (qnorm(0.975) * se_link)),
-      pred_est_logcpue = est_link / offset,
-      pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) / offset,
-      pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) / offset
+      pred_est_logcpue = est_link - offset,
+      pred_low_logcpue = (est_link + (qnorm(0.025) * se_link)) - offset,
+      pred_up_logcpue = (est_link + (qnorm(0.975) * se_link)) - offset
     )
 }
 # ------------------------------------------------------------------------------
@@ -119,9 +122,6 @@ gen_rand_int_pred <- function(ssdr, catch_dat, pred_dat_catch, cpue_pred) {
 
 #-------------------------------------------------------------------------------
 
-pred_dat_comp <- dat2$pred_dat_comp[[1]]
-comp_long <- dat2$comp_long[[1]]
-ssdr <- dat2$ssdr[[1]]
 
 ## Function to generate composition and stock-specific abundance predictions
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {

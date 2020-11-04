@@ -241,6 +241,7 @@ pred_dat <- dat2 %>%
     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
   )
+
 saveRDS(pred_dat, here::here("generated_data", 
                              "combined_model_predictions.RDS"))
 pred_dat <- readRDS(here::here("generated_data",

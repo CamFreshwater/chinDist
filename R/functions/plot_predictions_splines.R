@@ -41,8 +41,9 @@ plot_cpue_area <- function(dat, obs_dat) {
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
                        labels = month_labs, expand = c(0, 0)) +
     facet_wrap(~fct_reorder(area, as.numeric(region))) +
-    labs(x = "Month", y = "ln(catch) / ln(effort)") +
-    ggsidekick::theme_sleek()
+    labs(x = "Month", y = "log(catch) - log(effort)") +
+    ggsidekick::theme_sleek() +
+    theme(axis.text = element_text(size = 7))
 }
 
 
