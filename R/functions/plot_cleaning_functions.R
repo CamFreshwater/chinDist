@@ -51,7 +51,7 @@ make_raw_abund_dat <- function(catch, raw_prop,
 ## Function to generate aggregate abundance predictions (use comp predictions
 # because aggregate)
 gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
-  abund_pred <- ssdr[rownames(ssdr) %in% "log_agg_pred_abund", ] 
+  abund_pred <- ssdr[rownames(ssdr) %in% "log_reg_pred_abund", ] 
   pred_dat <- pred_dat_comp %>% 
     left_join(., comp_long %>% select(region, region_c) %>% distinct(), 
               by = "region") %>% 
@@ -127,8 +127,7 @@ gen_rand_int_pred <- function(ssdr, catch_dat, pred_dat_catch, cpue_pred) {
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {
   comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
-  beta_comp <- ssdr[rownames(ssdr) %in% "b2_jg", ]
-  
+
   stk_names <- unique(comp_long$agg)
   n_preds <- nrow(pred_dat_comp)
   
