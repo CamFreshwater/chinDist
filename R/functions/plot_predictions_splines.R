@@ -16,7 +16,6 @@ plot_abund <- function(dat, ylab = NULL) {
     labs(x = "", y = ylab) +
     ggsidekick::theme_sleek() +
     theme(axis.text=element_text(size=9),
-          # axis.text.y = element_text(angle = 90),
           plot.margin=unit(c(5.5, 10.5, 5.5, 5.5), "points")) +
     scale_fill_manual(name = "Region", values = pal, guide = FALSE) +
     scale_colour_manual(name = "Region", values = pal, guide = FALSE) +
@@ -41,7 +40,7 @@ plot_cpue_area <- function(dat, obs_dat) {
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
                        labels = month_labs, expand = c(0, 0)) +
     facet_wrap(~fct_reorder(area, as.numeric(region))) +
-    labs(x = "Month", y = "log(catch) - log(effort)") +
+    labs(x = "Month", y = "log(catch / effort)") +
     ggsidekick::theme_sleek() +
     theme(axis.text = element_text(size = 7))
 }
@@ -56,7 +55,7 @@ plot_catch_yr <- function(dat, facet_scale = "area") {
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
                        labels = month_labs, expand = c(0, 0)) +
     facet_wrap(facet_scale, scales = "free_y") +
-    labs(x = "Month", y = "Predicted Catch Index") +
+    labs(x = "Month", y = "Predicted Standardized CPUE") +
     ggsidekick::theme_sleek()
 }
 
@@ -142,7 +141,7 @@ plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                 alpha = 0.5) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
-    labs(y = "Predicted Catch", x = "Month") +
+    labs(y = "Predicted Standardized CPUE", x = "Month") +
     facet_wrap(~ stock, ncol = ncol, scales = facet_scales) +
     ggsidekick::theme_sleek() +
     theme(legend.position = "top",

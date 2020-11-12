@@ -154,43 +154,42 @@ dat <- comp %>%
 # 
 # #use fix optim inits except rec_pst (convergence issues)
 optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
-# optim_fix_inits_vec = c(FALSE, TRUE)
+# optim_fix_inits_vec = c(TRUE, TRUE)
 
-dat3 <- dat %>%
-  filter(fishery == "sport") %>% 
+dat2 <- dat %>%
+  # filter(!fishery == "sport") %>%
   mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
                                 optim_fix_inits = optim_fix_inits_vec),
                            .f = stockseasonr::fit_stockseason,
                            random_walk = TRUE,
                            model_type = "composition",
                            silent = FALSE))
-dat3$ssdr <- purrr::map(dat3$sdr, summary)
+dat2$ssdr <- purrr::map(dat2$sdr, summary)
 
-# dat2[2, ] <- dat3[1, ] %>% select(-sdr)
+# dat2 <- rbind(dat4[1,], dat3[1,], dat4[2,], dat3[2, ])
 
 saveRDS(dat2 %>% select(-sdr),
         here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 dat2 <- readRDS(here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 
-
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
-source(here::here("R", "functions", "plot_cleaning_functions.R"))
-
-comp_pred_dat <- dat2 %>%
-  mutate(
-    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
-                                         .f = gen_comp_pred,
-                                         comp_only = TRUE)),
-    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat)
-  ) %>%
-  select(dataset:comp_wide, comp_pred_ci, raw_prop) %>%
-  mutate(
-    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
-    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
-  )
-saveRDS(comp_pred_dat, here::here("generated_data",
-                             "composition_model_predictions.RDS"))
+# source(here::here("R", "functions", "plot_cleaning_functions.R"))
+# 
+# comp_pred_dat <- dat2 %>%
+#   mutate(
+#     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+#                                          .f = gen_comp_pred,
+#                                          comp_only = TRUE)),
+#     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat)
+#   ) %>%
+#   select(dataset:comp_wide, comp_pred_ci, raw_prop) %>%
+#   mutate(
+#     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+#     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+#   )
+# saveRDS(comp_pred_dat, here::here("generated_data",
+#                              "composition_model_predictions.RDS"))
 comp_pred_dat <- readRDS(here::here("generated_data",
                                "composition_model_predictions.RDS"))
 

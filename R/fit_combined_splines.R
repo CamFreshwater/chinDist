@@ -217,33 +217,33 @@ dat2 <- readRDS(here::here("generated_data", "model_fits",
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
-source(here::here("R", "functions", "plot_cleaning_functions.R"))
-
-pred_dat <- dat2 %>% 
-  mutate(
-    #predictions assuming mean effort
-    abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
-                                          .f = gen_abund_pred)),
-    cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr), 
-                        gen_abund_pred_area),
-    abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
-                         gen_rand_int_pred),
-    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
-                        .f = gen_comp_pred)),
-    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
-    raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-                          spatial_scale = "area"),
-    raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-                         spatial_scale = "region")
-    ) %>% 
-  select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>% 
-  mutate(
-    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
-    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
-  )
-
-saveRDS(pred_dat, here::here("generated_data", 
-                             "combined_model_predictions.RDS"))
+# source(here::here("R", "functions", "plot_cleaning_functions.R"))
+# 
+# pred_dat <- dat2 %>% 
+#   mutate(
+#     #predictions assuming mean effort
+#     abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
+#                                           .f = gen_abund_pred)),
+#     cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr), 
+#                         gen_abund_pred_area),
+#     abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
+#                          gen_rand_int_pred),
+#     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
+#                         .f = gen_comp_pred)),
+#     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
+#     raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+#                           spatial_scale = "area"),
+#     raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+#                          spatial_scale = "region")
+#     ) %>% 
+#   select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>% 
+#   mutate(
+#     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+#     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+#   )
+# 
+# saveRDS(pred_dat, here::here("generated_data", 
+#                              "combined_model_predictions.RDS"))
 pred_dat <- readRDS(here::here("generated_data",
                                "combined_model_predictions.RDS"))
 
@@ -265,12 +265,12 @@ file_path <- here::here("figs", "model_pred", "combined")
 comm1 <- pred_dat %>% 
   filter(dataset == "gsi_troll_pst") 
 comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
-                         ylab = "Commercial Catch Index") +
+                         ylab = "Commercial Predicted\nStandardized CPUE") +
   annotate("text", x = -Inf, y = Inf, label = "a)", hjust = -1, vjust = 2)
 rec1 <- pred_dat %>% 
   filter(dataset == "gsi_sport_pst") 
 rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
-                        ylab = "Recreational Catch Index") +
+                        ylab = "Recreational Predicted\nStandardized CPUE") +
   annotate("text", x = -Inf, y = Inf, label = "b)", hjust = -1, vjust = 2)
 
 combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2, 
