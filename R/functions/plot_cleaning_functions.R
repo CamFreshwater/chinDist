@@ -50,6 +50,12 @@ make_raw_abund_dat <- function(catch, raw_prop,
 
 ## Function to generate aggregate abundance predictions (use comp predictions
 # because aggregate)
+
+# pred_dat_comp <- dat2$pred_dat_comp[[1]]
+# pred_dat_catch <- dat2$pred_dat_catch[[1]]
+# comp_long <- dat2$comp_long[[1]]
+# ssdr <- dat2$ssdr[[1]]
+
 gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "log_reg_pred_abund", ] 
   pred_dat <- pred_dat_comp %>% 
@@ -69,9 +75,6 @@ gen_abund_pred <- function(comp_long, pred_dat_comp, ssdr) {
 
 # like above but for areas (hence pred_dat_catch) and includes cpue instead of 
 # stock-specific est
-# pred_dat_catch <- dat2$pred_dat_catch[[1]]
-# comp_long <- dat2$comp_long[[1]]
-# ssdr <- dat2$ssdr[[1]]
 gen_abund_pred_area <- function(pred_dat_catch, comp_long, ssdr) {
   abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund", ] 
   pred_dat2 <- pred_dat_catch %>% 
@@ -125,7 +128,7 @@ gen_rand_int_pred <- function(ssdr, catch_dat, pred_dat_catch, cpue_pred) {
 
 ## Function to generate composition and stock-specific abundance predictions
 gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {
-  comp_pred <- ssdr[rownames(ssdr) %in% "inv_logit_pred_pi_prop", ]
+  comp_pred <- ssdr[rownames(ssdr) %in% "logit_pred_pi_prop", ]
   comp_abund_pred <- ssdr[rownames(ssdr) %in% "log_pred_abund_mg", ]
 
   stk_names <- unique(comp_long$agg)
@@ -145,11 +148,9 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {
     ) %>% 
       cbind(dum, .) %>%
       mutate(
-        pred_prob_est = car::logit(link_prob_est),
-        pred_prob_low = pmax(0,
-                             car::logit(link_prob_est + (qnorm(0.025) *
-                                                           link_prob_se))),
-        pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se))
+        pred_prob_est = plogis(link_prob_est),
+        pred_prob_low = plogis(link_prob_est + (qnorm(0.025) * link_prob_se)),
+        pred_prob_up = plogis(link_prob_est + (qnorm(0.975) * link_prob_se))
       ) 
   } else {
     data.frame(
@@ -161,11 +162,9 @@ gen_comp_pred <- function(comp_long, pred_dat_comp, ssdr, comp_only = FALSE) {
     ) %>% 
       cbind(dum, .) %>%
       mutate(
-        pred_prob_est = car::logit(link_prob_est),
-        pred_prob_low = pmax(0,
-                             car::logit(link_prob_est + (qnorm(0.025) *
-                                                           link_prob_se))),
-        pred_prob_up = car::logit(link_prob_est + (qnorm(0.975) * link_prob_se)),
+        pred_prob_est = plogis(link_prob_est),
+        pred_prob_low = plogis(link_prob_est + (qnorm(0.025) * link_prob_se)),
+        pred_prob_up = plogis(link_prob_est + (qnorm(0.975) * link_prob_se)),
         comp_abund_est = exp(link_abund_est) / 1000,
         comp_abund_low = exp(link_abund_est + (qnorm(0.025) * link_abund_se)) / 1000,
         comp_abund_up = exp(link_abund_est + (qnorm(0.975) * link_abund_se)) / 1000

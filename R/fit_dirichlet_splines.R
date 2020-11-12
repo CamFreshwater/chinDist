@@ -150,20 +150,23 @@ dat <- comp %>%
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   ) 
 
-
 # FIT --------------------------------------------------------------------------
-
-#use fix optim inits except rec_pst (convergence issues)
+# 
+# #use fix optim inits except rec_pst (convergence issues)
 optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
+# optim_fix_inits_vec = c(FALSE, TRUE)
 
-dat2 <- dat %>%
-  mutate(sdr = purrr::pmap(list(comp_dat = dat$comp_long,
+dat3 <- dat %>%
+  filter(fishery == "sport") %>% 
+  mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
                                 optim_fix_inits = optim_fix_inits_vec),
                            .f = stockseasonr::fit_stockseason,
                            random_walk = TRUE,
                            model_type = "composition",
                            silent = FALSE))
-dat2$ssdr <- purrr::map(dat2$sdr, summary)
+dat3$ssdr <- purrr::map(dat3$sdr, summary)
+
+# dat2[2, ] <- dat3[1, ] %>% select(-sdr)
 
 saveRDS(dat2 %>% select(-sdr),
         here::here("generated_data", "model_fits", "composition_model_dir.RDS"))

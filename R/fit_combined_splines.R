@@ -195,16 +195,16 @@ dat <- full_dat %>%
 ## FIT MODELS ------------------------------------------------------------------
 
 #use fix optim inits except rec_pst (convergence issues)
-optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
+# optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
 
 # dat2 <- dat %>%
-#   mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data, 
+#   mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data,
 #                                 comp_dat = full_dat$comp_long,
-#                                 optim_fix_inits = optim_fix_inits_vec), 
-#                            .f = stockseasonr::fit_stockseason, 
+#                                 optim_fix_inits = optim_fix_inits_vec),
+#                            .f = stockseasonr::fit_stockseason,
 #                            random_walk = TRUE,
 #                            model_type = "integrated",
-#                            # nlminb_loops = 2, 
+#                            # nlminb_loops = 2,
 #                            silent = FALSE))
 # dat2$ssdr <- purrr::map(dat2$sdr, summary)
 # 
@@ -294,11 +294,11 @@ dev.off()
 # combine data 
 comm_yr_catch <- comm1$abund_year_ci[[1]] %>% 
   group_by(month_n, region_c, year) %>% 
-  summarize(pred_catch_yr = sum(pred_catch_yr))  %>% 
+  summarize(pred_catch_yr = sum(pred_catch_yr), .groups = "drop")  %>% 
   plot_catch_yr(., facet_scale = "region_c") 
 rec_yr_catch <- rec1$abund_year_ci[[1]] %>% 
   group_by(month_n, region_c, year) %>% 
-  summarize(pred_catch_yr = sum(pred_catch_yr)) %>% 
+  summarize(pred_catch_yr = sum(pred_catch_yr), .groups = "drop") %>% 
   plot_catch_yr(., facet_scale = "region_c")
 
 
@@ -312,7 +312,7 @@ rec_area_cpue <- plot_cpue_area(pred_dat$cpue_pred_ci[[2]],
 
 ## Composition spline prediction (now occurs in fit_dirichlet_splines to maximize
 # monthly coverage)
-# comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
+# comp_plots <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp,
 #                    raw = TRUE)
 # comp_plots_fix <- map2(pred_dat$comp_pred_ci, pred_dat$raw_prop, plot_comp, 
 #                        raw = TRUE, facet_scales = "fixed")
