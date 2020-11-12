@@ -273,7 +273,8 @@ rec_abund <- plot_abund(rec1$abund_pred_ci[[1]],
                         ylab = "Recreational Catch Index") +
   annotate("text", x = -Inf, y = Inf, label = "b)", hjust = -1, vjust = 2)
 
-combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2) %>% 
+combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2, 
+                                  align = "v") %>% 
   arrangeGrob(., 
               bottom = textGrob("Month", 
                                 gp = gpar(col = "grey30", fontsize=10))) %>% 
