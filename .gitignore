@@ -39,9 +39,10 @@ scripts/*cache*
 
 R/defunct/
 data/gsiCatchData/commTroll/defunct/
+data/gsiCatchData/rec/defunct/
 data/stockKeys/old/
-data/hargreaves/
 R/hargreaves/
-Rmd/old/
+#Rmd/old/
+Rmd/
 figs/hidden/
 data/coast_shapefiles/
