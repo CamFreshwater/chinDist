@@ -385,25 +385,25 @@ dev.off()
 png(here::here("figs", "ms_figs", "abund_pst_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
 ss_abund_plots_free[[1]] +
-  labs(y = "Predicted Commercial Catch Index")
+  labs(y = "Commercial Predicted Standardized CPUE")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_pst_rec.png"), res = 400, units = "in",
     height = 5.5, width = 7.5)
 ss_abund_plots_free[[2]] +
-  labs(y = "Predicted Recreational Catch Index")
+  labs(y = "Recreational Predicted Standardized CPUE")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_can_comm.png"), res = 400, units = "in",
     height = 5.5, width = 7)
 ss_abund_plots_free[[3]] +
-  labs(y = "Predicted Commercial Catch Index")
+  labs(y = "Commercial Predicted Standardized CPUE")
 dev.off()
 
 png(here::here("figs", "ms_figs", "abund_can_rec.png"), res = 400, units = "in",
     height = 5.5, width = 7)
 ss_abund_plots_free[[4]] +
-  labs(y = "Predicted Recreational Catch Index")
+  labs(y = "Recreational Predicted Standardized CPUE")
 dev.off()
 
 # supplemental figures
@@ -429,7 +429,7 @@ dev.off()
 
 
 
-## Random summary data ---------------------------------------------------------
+## Supplementary summary data --------------------------------------------------
 
 # Import composition data from fit_dirichlet_splines since extra samples used 
 # in recreational analysis
