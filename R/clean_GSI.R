@@ -248,12 +248,17 @@ rec_long <- rec_full %>%
     ),
     area =  as.factor(area),
     temp_strata = paste(month_n, region, sep = "_"),
-    gear = "sport"
+    gear = "sport",
+    ad_clip = case_when(
+      ADIPOSE_FIN_CLIPPED == "Y" ~ "Y",
+      TRUE ~ "N"
+    )
   ) %>% 
   select(id = BIOKEY, fish_num = FISH_NO, temp_strata, region, area, 
          subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = gear, 
-         fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, pres, season, 
+         fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, 
+         ad_clip, pres, season, 
          month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
 
