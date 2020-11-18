@@ -433,7 +433,8 @@ dev.off()
 
 # Import composition data from fit_dirichlet_splines since extra samples used 
 # in recreational analysis
-comp_only <- readRDS(here::here("generated_data", "composition_model_data.RDS"))
+comp_only <- readRDS(here::here("generated_data", 
+                                "composition_model_predictions.RDS"))
 
 # How many samples total?
 f <- function(x) {
@@ -443,8 +444,6 @@ f <- function(x) {
     pull(nn) %>% 
     sum()
 }
-f(comp_only$comp_long[[1]])
-f(comp_only$comp_long[[2]])
 
 ### Summary supplemental tables
 tally_f <- function(dat, type, fishery) {
@@ -491,6 +490,50 @@ comm_n_long <- comm_catch %>%
   tally_f(., type = "catch", fishery = "commercial")
 catch_n <- pivot_f(rec_n_long, comm_n_long, type = "catch")
 
+catch_n_list <- rbind(rec_n_long, comm_n_long) %>% 
+  split(., .$region_c) 
+plot_f <- function(dat) {
+  alpha_labs <- unique(dat$PFMA)
+  alpha_vals <- seq(0.4, 1, length = length(alpha_labs))
+  ggplot(dat) +
+    geom_bar(aes(x = month_n, y = n, fill = region_c, alpha = PFMA), 
+             position = position_dodge(0.9),
+             stat = "identity") +
+    scale_fill_manual(name = "Region", values = pal, guide = FALSE) +
+    scale_alpha_manual(labels = alpha_labs, values = alpha_vals) +
+    scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12)) +
+    scale_y_continuous(breaks = seq(0, 12, by = 2), limits = c(0, 11)) +
+    ggsidekick::theme_sleek() +
+    theme(plot.margin=unit(c(1.5, 1.5, 1.5, 1.5), "points"),
+          axis.title = element_blank())
+}
+
+catch_n_plots <- map(catch_n_list, plot_f)
+catch_n_plot <- cowplot::plot_grid(
+  catch_n_plots[["NWVI"]], catch_n_plots[["SWVI"]],
+  catch_n_plots[["Queen Charlotte and\nJohnstone Straits"]], 
+  catch_n_plots[["N. Strait of Georgia"]], 
+  catch_n_plots[["S. Strait of Georgia"]],
+  catch_n_plots[["Juan de Fuca Strait"]],
+  nrow = 3, 
+  align = "v"
+) %>% 
+  arrangeGrob(., 
+              bottom = textGrob("Month", 
+                                gp = gpar(col = "grey30", fontsize=11)),
+              left = textGrob("Years with Samples", 
+                              gp = gpar(col = "grey30", fontsize=11), 
+                              rot = 90)) %>% 
+  grid.arrange()
+# add legend from PFMA map
+catch_n_plot2 <- cowplot::plot_grid(
+  cowplot::get_legend(pfma_map),
+  catch_n_plot,
+  ncol=1, rel_heights=c(.1, .9)
+)
+
+
+
 # composition data
 rec_n2_long <- comp_only$raw_data[[2]] %>% 
   select(id, region, month, month_n) %>% 
@@ -507,6 +550,60 @@ write.csv(catch_n, here::here("figs", "ms_figs", "tableS1_catch_samples.csv"),
           row.names = FALSE)
 write.csv(comp_n, here::here("figs", "ms_figs", "tableS2_comp_samples.csv"),
           row.names = FALSE)
+
+# composition samples 
+tally_gsi <- function(dat) {
+  gear <- dat$gear
+  if (any(gear == "troll")) {
+    out <- dat %>% 
+      mutate(release = "Kept")
+  } else {
+    out <- dat
+  }
+  out %>%
+    group_by(gear, region, month_n, year, release) %>% 
+    summarize(count = sum(adj_prob), .groups = "drop")
+} 
+
+tally_dat <- map(comp_only$raw_data, tally_gsi) %>% 
+  bind_rows()  %>%
+  filter(gear == "sport",
+         #constrain to months when management measures to protect spring
+         #runs are in place
+         month_n > 3, 
+         month_n < 8) %>% 
+  group_by(region, month_n, release, year) %>% 
+  summarize(sampled_ind = sum(count), .groups = "drop") %>% 
+  mutate(release = fct_recode(release, Released = "Rel"),
+         region = fct_relevel(region, 
+                              "Queen Charlotte and\nJohnstone Straits", 
+                              after = 0))
+
+kept_released_tally <- expand.grid(region = unique(tally_dat$region),
+                                   year = unique(tally_dat$year),
+                                   release = unique(tally_dat$release),
+                                   month_n = unique(tally_dat$month_n)) %>% 
+  arrange(region, year, release, month_n) %>% 
+  left_join(., tally_dat, by = c("region", "year", "release", "month_n")) %>% 
+  mutate(month = as.factor(month_n))
+
+kept_released <- ggplot(kept_released_tally) +
+  geom_bar(aes(x = year, y = sampled_ind, fill = release), 
+               position = position_dodge(0.9),
+           stat = "identity"
+           ) +
+  labs(x = "Year", y = "Number of Individuals") +
+  scale_fill_manual(values = c("#999999", "#E69F00"),
+                    name = "") +
+  facet_wrap(~region) +
+  ggsidekick::theme_sleek()
+
+png(here::here("figs", "ms_figs", "kept_retained_samples.png"), res = 400, 
+    units = "in",
+    height = 5.5, width = 7)
+kept_released
+dev.off()
+
 
 # CPUE figs
 plot_cpue <- function(dat) {
