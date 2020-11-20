@@ -164,6 +164,7 @@ rec_full <- read.csv(here::here("data", "gsiCatchData", "rec",
 #   distinct()
 # saveRDS(stk_out, here::here("data", "stockKeys", "rec_gsi_stocks.rds"))
 
+
 stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_June2020.rds"))
 
 # data frame of probabilities
@@ -258,7 +259,7 @@ rec_long <- rec_full %>%
          subarea = SUBAREA, 
          year, month, week, jDay = DAYOFYEAR, date, gear = gear, 
          fl = LENGTH_MM, release = KEPTREL, legal, sex = SEX, 
-         ad_clip, pres, season, 
+         ad_clip, pres, season, sampler = SAMPLER_TYPE,
          month_n, area_n, adj_prob, stock, Region1Name:pst_agg) %>% 
   arrange(year, region, id, desc(adj_prob))
 

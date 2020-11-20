@@ -463,32 +463,11 @@ tally_f <- function(dat, type, fishery) {
     ungroup()
 }
 
-pivot_f <- function(dat1, dat2, type) {
-  if (type == "catch") {
-    out <- rbind(dat1, dat2) %>% 
-      mutate(month = fct_reorder(month, month_n)) %>% 
-      arrange(Fishery, region_c, PFMA, month_n) %>% 
-      select(-month_n) %>% 
-      pivot_wider(names_from = "month", values_from = "n") %>% 
-      select(Fishery, Region = region_c, PFMA, `1`:`12`)
-  }
-  if (type == "comp") {
-    out <- rbind(dat1, dat2) %>% 
-      mutate(month = fct_reorder(month, month_n)) %>% 
-      arrange(Fishery, region, month_n) %>% 
-      select(-month_n) %>% 
-      pivot_wider(names_from = "month", values_from = "n") %>% 
-      select(Fishery, Region = region, `1`:`12`)
-  }
-  out 
-}
-
 # catch data (one observation equals a year-pfma-monthly catch estimate)
 rec_n_long <- rec_catch %>% 
   tally_f(., type = "catch", fishery = "rec")
 comm_n_long <- comm_catch %>% 
   tally_f(., type = "catch", fishery = "commercial")
-catch_n <- pivot_f(rec_n_long, comm_n_long, type = "catch")
 
 catch_n_list <- rbind(rec_n_long, comm_n_long) %>% 
   split(., .$region_c) 
@@ -515,8 +494,7 @@ catch_n_plot <- cowplot::plot_grid(
   catch_n_plots[["N. Strait of Georgia"]], 
   catch_n_plots[["S. Strait of Georgia"]],
   catch_n_plots[["Juan de Fuca Strait"]],
-  nrow = 3, 
-  align = "v"
+  nrow = 3, align = "v"
 ) %>% 
   arrangeGrob(., 
               bottom = textGrob("Month", 
@@ -532,6 +510,11 @@ catch_n_plot2 <- cowplot::plot_grid(
   ncol=1, rel_heights=c(.1, .9)
 )
 
+png(here::here("figs", "ms_figs", "catch_sample_sizes.png"), res = 400, 
+    units = "in",
+    height = 5.5, width = 7)
+catch_n_plot2
+dev.off()
 
 
 # composition data
@@ -543,15 +526,28 @@ comm_n2_long <- comp_only$raw_data[[1]] %>%
   select(id, region, month, month_n) %>% 
   distinct() %>% 
   tally_f(., type = "comp", fishery = "comm")
-comp_n <- pivot_f(rec_n2_long, comm_n2_long, type = "comp")
+comp_n_dat <- rbind(rec_n2_long, comm_n2_long) %>% 
+  mutate(region = fct_relevel(region, "NWVI", "SWVI", 
+                              "Queen Charlotte and\nJohnstone Straits",
+                              "Juan de Fuca Strait", "N. Strait of Georgia",
+                              "S. Strait of Georgia"))
+comp_n_plot <- ggplot(comp_n_dat) +
+  geom_bar(aes(x = month, y = n, fill = region), 
+           stat = "identity") +
+  scale_fill_manual(name = "Region", values = pal) +
+  ggsidekick::theme_sleek() +
+  theme(legend.position = "top") +
+  labs(y = "Number of Sampled Individuals", x = "Month") +
+  facet_wrap(~region)
 
-# export
-write.csv(catch_n, here::here("figs", "ms_figs", "tableS1_catch_samples.csv"),
-          row.names = FALSE)
-write.csv(comp_n, here::here("figs", "ms_figs", "tableS2_comp_samples.csv"),
-          row.names = FALSE)
+png(here::here("figs", "ms_figs", "comp_sample_sizes.png"), res = 400, 
+    units = "in",
+    height = 5.5, width = 7)
+comp_n_plot
+dev.off()
 
-# composition samples 
+
+# composition samples by year, divided among kept and retained
 tally_gsi <- function(dat) {
   gear <- dat$gear
   if (any(gear == "troll")) {
