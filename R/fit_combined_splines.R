@@ -599,32 +599,3 @@ png(here::here("figs", "ms_figs", "kept_retained_samples.png"), res = 400,
     height = 5.5, width = 7)
 kept_released
 dev.off()
-
-
-# CPUE figs
-plot_cpue <- function(dat) {
-  dat %>% 
-    mutate(cpue = catch / eff,
-           log_cpue = log(catch) / log(eff),
-           log_cpue2 = log(cpue)) %>% 
-    ggplot(., aes(x = month, y = log_cpue2, 
-                  fill = fct_reorder(region_c, as.numeric(region)))) +
-    geom_point(shape = 21) +
-    scale_fill_manual(name = "Region", values = pal) +
-    scale_colour_manual(name = "Region", values = pal) +
-    facet_wrap(~fct_reorder(area, as.numeric(region))) +
-    ggsidekick::theme_sleek() +
-    labs(x = "Month", 
-         y = "Catch Per Unit Effort (pieces per boat day)")
-}
-
-
-png(here::here("figs", "ms_figs", "rec_cpue.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
-plot_cpue(rec_catch)
-dev.off()
-
-png(here::here("figs", "ms_figs", "comm_cpue.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
-plot_cpue(comm_catch)
-dev.off()

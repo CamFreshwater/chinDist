@@ -106,10 +106,10 @@ dat_comm <- cbind(id_vec, dat_raw_comm) %>%
 # stks_out <- dat_comm %>%
 #   select(stock, Region1Name) %>%
 #   distinct()
-# saveRDS(stks_out, here::here("data", "stockKeys", "wcviTrollStocks.rds"))
+# saveRDS(stks_out, here::here("data", "stockKeys", "comm_gsi_stocks.rds"))
 
 # stock key generated in stockKey repo
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_May2020.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Nov2020.rds"))
 
 comm_long <- dat_comm %>%
   select(-Region1Name) %>%
@@ -144,8 +144,8 @@ comm_long <- dat_comm %>%
 
 saveRDS(comm_long, here::here("data", "gsiCatchData", "commTroll",
                          "wcviIndProbsLong.rds"))
-comm_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
-                           "wcviIndProbsLong.rds"))
+# comm_long <- readRDS(here::here("data", "gsiCatchData", "commTroll",
+#                            "wcviIndProbsLong.rds"))
 
 ## Clean recreation GSI data ---------------------------------------------------
 
@@ -153,19 +153,19 @@ rec_full <- read.csv(here::here("data", "gsiCatchData", "rec",
                                 "rec_gsi_may2020.txt"), stringsAsFactors = F)
 
 # pull stocks to add to stockkey repo
-# stk_out <- rec_full %>% 
+# stk_out <- rec_full %>%
 #   filter(!DNA_RESULTS_STOCK_1 == "",
-#          !is.na(PROB_1)) %>% 
-#   select(s1 = DNA_RESULTS_STOCK_1, s2 = DNA_STOCK_2, s3 = DNA_STOCK_3, 
-#          s4 = DNA_STOCK_4, s5 = DNA_STOCK_5, REGION_1_ROLLUP) %>% 
+#          !is.na(PROB_1)) %>%
+#   select(s1 = DNA_RESULTS_STOCK_1, s2 = DNA_STOCK_2, s3 = DNA_STOCK_3,
+#          s4 = DNA_STOCK_4, s5 = DNA_STOCK_5, REGION_1_ROLLUP) %>%
 #   pivot_longer(., cols = s1:s5, names_to = "rank", values_to = "stock") %>%
-#   select(stock, sc_reg1 = REGION_1_ROLLUP) %>% 
-#   filter(!stock == "") %>% 
+#   select(stock, sc_reg1 = REGION_1_ROLLUP) %>%
+#   filter(!stock == "") %>%
 #   distinct()
 # saveRDS(stk_out, here::here("data", "stockKeys", "rec_gsi_stocks.rds"))
 
 
-stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_June2020.rds"))
+stockKey <- readRDS(here::here("data", "stockKeys", "finalStockList_Nov2020.rds"))
 
 # data frame of probabilities
 temp_prob <- rec_full %>% 

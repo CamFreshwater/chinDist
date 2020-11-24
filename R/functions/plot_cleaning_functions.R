@@ -179,9 +179,10 @@ stock_reorder <- function(key, comp_data) {
   if (key == "pst_agg") {
     out <- comp_data %>% 
       mutate(stock =  fct_relevel(stock, "NBC_SEAK", "WCVI", "FR-early", 
-                                  "FR-late", "SOG", "PSD", "WACST", "CR-sp&su", 
+                                  "FR-late", "SOG", "PSD", "WACST", "CR-sp", 
                                   "CR-bright", "CR-tule", "CA_ORCST"),
              stock = fct_recode(stock, "WA-coast" = "WACST", 
+                                "CR-spring "= "CR-sp",
                                 "CA/OR-coast" = "CA_ORCST", 
                                 "NBC/SEAK" = "NBC_SEAK"))
   }
