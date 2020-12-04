@@ -100,8 +100,10 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
 
 
 # Plot stacked composition data 
-plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2) {
-  palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
+plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2, 
+                              palette_name = c("sunset", "midnight", 
+                                               "rainbow")) {
+  # palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
   stock_pal <- disco::disco(palette_name, n = length(unique(comp_pred$stock)))
   
   ggplot(data = comp_pred, aes(x = month_n)) +

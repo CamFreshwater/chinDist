@@ -5,9 +5,7 @@
 # Ran independently to increase monthly span
 
 library(tidyverse)
-library(TMB)
 library(ggplot2)
-library(mgcv)
 
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 

@@ -39,7 +39,8 @@ make_raw_abund_dat <- function(catch, raw_prop,
                 .groups = "drop") %>%
       ungroup() %>%
       distinct() %>% 
-      left_join(., raw_prop, by = c("region", "region_c", "month_n", "year")) %>%
+      left_join(., raw_prop, 
+                by = c("region", "region_c", "month_n", "year")) %>%
       mutate(log_cpue_g = samp_g_ppn * log_cpue,
              region = as.factor(region)) %>%
       filter(!is.na(stock)) 
@@ -179,12 +180,19 @@ stock_reorder <- function(key, comp_data) {
   if (key == "pst_agg") {
     out <- comp_data %>% 
       mutate(stock =  fct_relevel(stock, "NBC_SEAK", "WCVI", "FR-early", 
-                                  "FR-late", "SOG", "PSD", "WACST", "CR-sp", 
-                                  "CR-bright", "CR-tule", "CA_ORCST"),
+                                  "FR-late", "SOG", "PSD", "WACST", 
+                                  "CR-upper_sp", "CR-lower_sp", 
+                                  "CR-upper_su/fa", "CR-lower_fa", "CA_ORCST"),
              stock = fct_recode(stock, "WA-coast" = "WACST", 
-                                "CR-spring "= "CR-sp",
                                 "CA/OR-coast" = "CA_ORCST", 
                                 "NBC/SEAK" = "NBC_SEAK"))
+    # mutate(stock =  fct_relevel(stock, "NBC_SEAK", "WCVI", "FR-early", 
+      #                             "FR-late", "SOG", "PSD", "WACST", "CR-sp", 
+      #                             "CR-bright", "CR-tule", "CA_ORCST"),
+      #        stock = fct_recode(stock, "WA-coast" = "WACST", 
+      #                           "CR-spring "= "CR-sp",
+      #                           "CA/OR-coast" = "CA_ORCST", 
+      #                           "NBC/SEAK" = "NBC_SEAK"))
   }
   if (key == "reg1") {
     out <- comp_data %>% 

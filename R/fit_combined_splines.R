@@ -8,12 +8,10 @@
 # Modified from fit_combined.R to include splines
 
 library(tidyverse)
-library(TMB)
 library(ggplot2)
 library(grid)
 library(gridExtra)
-library(mgcv)
-library(scales)
+
 
 # IMPORT CATCH -----------------------------------------------------------------
 
@@ -47,7 +45,7 @@ rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
   droplevels() %>% 
   select(region, region_c, area, area_n, month, month_n, year, catch, eff, 
          eff_z, offset) 
-
+  
 
 # CLEAN GENETICS  --------------------------------------------------------------
 
@@ -81,6 +79,7 @@ taaq <- read.csv(here::here("data", "gsiCatchData", "commTroll",
                             "taaq_summary.csv"), stringsAsFactors = F) %>% 
   filter(drop == "y") %>% 
   mutate(temp_strata2 = paste(month, region, year, sep = "_"))
+
 # commercial data
 comm <- readRDS(here::here("data", "gsiCatchData", "commTroll", 
                            "wcviIndProbsLong.rds")) %>% 
@@ -98,7 +97,6 @@ calc_agg_prob <- function(grouped_data, full_data) {
   grouped_data %>% 
     summarize(agg_prob = sum(adj_prob), .groups = 'drop') %>% 
     arrange(sample_id, desc(agg_prob)) %>%
-    # ungroup() %>% 
     distinct() %>% 
     left_join(.,
               full_data %>% 
@@ -166,8 +164,6 @@ full_dat <- tibble(
     catch_data = list(comm_catch, rec_catch, comm_catch, rec_catch)
   )
 
-# saveRDS(full_dat, here::here("data-raw", "combined_model_inputs.RDS"))
-
 
 ## PREP MODEL INPUTS -----------------------------------------------------------
 
@@ -196,7 +192,7 @@ dat <- full_dat %>%
 
 #use fix optim inits except rec_pst (convergence issues)
 # optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
-
+# 
 # dat2 <- dat %>%
 #   mutate(sdr = purrr::pmap(list(catch_dat = full_dat$catch_data,
 #                                 comp_dat = full_dat$comp_long,
@@ -217,33 +213,33 @@ dat2 <- readRDS(here::here("generated_data", "model_fits",
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
-# source(here::here("R", "functions", "plot_cleaning_functions.R"))
-# 
-# pred_dat <- dat2 %>% 
-#   mutate(
-#     #predictions assuming mean effort
-#     abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
-#                                           .f = gen_abund_pred)),
-#     cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr), 
-#                         gen_abund_pred_area),
-#     abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
-#                          gen_rand_int_pred),
-#     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr), 
-#                         .f = gen_comp_pred)),
-#     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
-#     raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-#                           spatial_scale = "area"),
-#     raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-#                          spatial_scale = "region")
-#     ) %>% 
-#   select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>% 
-#   mutate(
-#     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
-#     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
-#   )
-# 
-# saveRDS(pred_dat, here::here("generated_data", 
-#                              "combined_model_predictions.RDS"))
+source(here::here("R", "functions", "plot_cleaning_functions.R"))
+
+pred_dat <- dat2 %>%
+  mutate(
+    #predictions assuming mean effort
+    abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+                                          .f = gen_abund_pred)),
+    cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr),
+                        gen_abund_pred_area),
+    abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
+                         gen_rand_int_pred),
+    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+                        .f = gen_comp_pred)),
+    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
+    raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+                          spatial_scale = "area"),
+    raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+                         spatial_scale = "region")
+    ) %>%
+  select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>%
+  mutate(
+    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+  )
+
+saveRDS(pred_dat, here::here("generated_data",
+                             "combined_model_predictions.RDS"))
 pred_dat <- readRDS(here::here("generated_data",
                                "combined_model_predictions.RDS"))
 
@@ -327,13 +323,14 @@ rec_area_cpue <- plot_cpue_area(pred_dat$cpue_pred_ci[[2]],
 ## Composition area prediction (now occurs in fit_dirichlet_splines to maximize
 # monthly coverage)
 # combine_data <- function(in_col = c("pst_agg", "reg1")) {
-#   pred_dat %>% 
-#     filter(grouping_col == in_col) %>% 
-#     select(dataset, grouping_col, comp_pred_ci) %>% 
+#   pred_dat %>%
+#     filter(grouping_col == in_col) %>%
+#     select(dataset, grouping_col, comp_pred_ci) %>%
 #     unnest(., cols = c(comp_pred_ci))
-# }  
+# }
 # pst_comp_pred <- combine_data(in_col = "pst_agg")
-# pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg")
+# pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg", 
+#                               palette_name = "rainbow")
 # can_comp_pred <- combine_data(in_col = "reg1")
 # can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1")
 # 
