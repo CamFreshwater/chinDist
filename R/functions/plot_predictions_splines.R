@@ -61,8 +61,6 @@ plot_catch_yr <- function(dat, facet_scale = "area") {
 
 
 # Plot composition data 
-# comp_pred <- comp_pred_dat$comp_pred_ci[[1]]
-# raw_prop <- comp_pred_dat$raw_prop[[1]]
 plot_comp <- function(comp_pred, raw_prop, raw = TRUE, 
                       ncol = NULL, facet_scales = "fixed") {
   p <- ggplot(data = comp_pred %>% filter(!is.na(pred_prob_est)), 

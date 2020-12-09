@@ -3,6 +3,7 @@
 # Fit dirichlet model to stock composition data
 # Duplicates composition component of combined model (fit_combined_splines.R)
 # Ran independently to increase monthly span
+# Most recent update: Dec. 5 2020
 
 library(tidyverse)
 library(ggplot2)
@@ -16,9 +17,9 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
     temp_strata = paste(month, region, sep = "_"),
     sample_id = paste(temp_strata, jDay, year, sep = "_"),
     min_m = case_when(
-      region %in% c("N. Strait of Georgia", "S. Strait of Georgia") ~ 1,
+      region %in% c("S. Strait of Georgia") ~ 1,
       region == "Queen Charlotte and\nJohnstone Straits" ~ 6,
-      region == "Juan de Fuca Strait" ~ 3
+      region == c("N. Strait of Georgia", "Juan de Fuca Strait") ~ 3
     ),
     max_m = case_when(
       region %in% c("Juan de Fuca Strait", #"S. Strait of Georgia", 
@@ -144,25 +145,21 @@ dat <- comp %>%
   ) 
 
 # FIT --------------------------------------------------------------------------
-# 
+ 
 # #use fix optim inits except rec_pst (convergence issues)
-optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
-# optim_fix_inits_vec = c(TRUE, TRUE)
+# optim_fix_inits_vec = c(TRUE, FALSE, TRUE, TRUE)
+# 
+# dat2 <- dat %>%
+#   mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
+#                                 optim_fix_inits = optim_fix_inits_vec),
+#                            .f = stockseasonr::fit_stockseason,
+#                            random_walk = TRUE,
+#                            model_type = "composition",
+#                            silent = FALSE))
+# dat2$ssdr <- purrr::map(dat2$sdr, summary)
+# saveRDS(dat2 %>% select(-sdr),
+#         here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 
-dat2 <- dat %>%
-  # filter(!fishery == "sport") %>%
-  mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
-                                optim_fix_inits = optim_fix_inits_vec),
-                           .f = stockseasonr::fit_stockseason,
-                           random_walk = TRUE,
-                           model_type = "composition",
-                           silent = FALSE))
-dat2$ssdr <- purrr::map(dat2$sdr, summary)
-
-# dat2 <- rbind(dat4[1,], dat3[1,], dat4[2,], dat3[2, ])
-
-saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 dat2 <- readRDS(here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
@@ -183,6 +180,7 @@ dat2 <- readRDS(here::here("generated_data", "model_fits", "composition_model_di
 #   )
 # saveRDS(comp_pred_dat, here::here("generated_data",
 #                              "composition_model_predictions.RDS"))
+
 comp_pred_dat <- readRDS(here::here("generated_data",
                                "composition_model_predictions.RDS"))
 
@@ -214,19 +212,39 @@ dev.off()
 
 ## Composition stacked ribbon prediction
 combine_data <- function(in_col = c("pst_agg", "reg1")) {
-  comp_pred_dat %>%
+  dum <- comp_pred_dat %>%
     filter(grouping_col == in_col) %>%
     select(dataset, grouping_col, comp_pred_ci) %>%
     unnest(., cols = c(comp_pred_ci)) %>% 
-    mutate(region_c = fct_relevel(region_c, "NWVI", "SWVI", 
-                                  "Queen Charlotte and\nJohnstone Straits", 
-                                  "Juan de Fuca Strait", 
-                                  "N. Strait of Georgia", "S. Strait of Georgia"))
+    mutate(
+      region_c = fct_relevel(region_c, "NWVI", "SWVI", 
+                             "Queen Charlotte and\nJohnstone Straits", 
+                             "Juan de Fuca Strait", 
+                             "N. Strait of Georgia", 
+                             "S. Strait of Georgia")
+    ) 
+  
+  # consolidate Col Spring to reduce total number of categories and improve 
+  # readability
+  if (in_col == "pst_agg") {
+    dum <- dum %>% 
+      mutate(
+        stock = fct_recode(stock, "CR-spring" = "CR-lower_sp", 
+                           "CR-spring" = "CR-upper_sp")) %>% 
+      group_by(stock, region, region_c, month_n) %>% 
+      summarize(pred_prob_est = sum(pred_prob_est), .groups = "drop")
+  }
+  
+  return(dum)
 }
+
 pst_comp_pred <- combine_data(in_col = "pst_agg") 
-pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg")
+pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg", 
+                              palette_name = "sunset")
+
 can_comp_pred <- combine_data(in_col = "reg1") 
-can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1")
+can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1",
+                              palette_name = "midnight")
 
 pdf(paste(file_path, "composition_stacked.pdf", sep = "/"))
 pst_area
@@ -235,45 +253,48 @@ dev.off()
 
 
 # MS figs
-png(here::here("figs", "ms_figs", "comp_pst_stacked.png"), res = 400, units = "in",
-    height = 6, width = 7.5)
+png(here::here("figs", "ms_figs", "main", "comp_pst_stacked.png"), res = 400, 
+    units = "in", height = 6, width = 7.5)
 pst_area
 dev.off()
 
-png(here::here("figs", "ms_figs", "comp_can_stacked.png"), res = 400, units = "in",
-    height = 6, width = 7.5)
-can_area
-dev.off()
-
 # Supplementary figs
-png(here::here("figs", "ms_figs", "comp_ext_pst_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
+supp_file_path <- paste("figs", "ms_figs", "supp", sep = "/")
+
+png(here::here(supp_file_path, "comp_ext_pst_comm.png"), 
+    res = 400, units = "in", height = 5.5, width = 7.5)
 comp_plots_fix[[1]]
 dev.off()
 
-png(here::here("figs", "ms_figs", "comp_ext_pst_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
+png(here::here(supp_file_path, "comp_ext_pst_rec.png"), 
+    res = 400, units = "in", height = 5.5, width = 7.5)
 comp_plots_fix[[2]]
 dev.off()
 
-png(here::here("figs", "ms_figs", "comp_ext_can_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here(supp_file_path, "comp_ext_can_comm.png"), res = 400, 
+    units = "in", height = 5.5, width = 7)
 comp_plots_fix[[3]]
 dev.off()
 
-png(here::here("figs", "ms_figs", "comp_ext_can_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here(supp_file_path, "comp_ext_can_rec.png"), res = 400, 
+    units = "in", height = 5.5, width = 7)
 comp_plots_fix[[4]]
 dev.off()
+
+png(here::here(supp_file_path, "comp_can_stacked.png"), res = 400, 
+    units = "in", height = 6, width = 7.5)
+can_area
+dev.off()
+
 
 # supplementary composition analysis from fit_dirichlet_splines_supp.R
 comp_stacked_supp_list <- readRDS(here::here("generated_data", 
                                              "comp_stacked_supp_list.RDS"))
-png(here::here("figs", "ms_figs", "comp_pst_stacked_supp.png"), res = 400, units = "in",
-    height = 6.5, width = 7)
+png(here::here(supp_file_path, "comp_pst_stacked_supp.png"), 
+    res = 400, units = "in", height = 6.5, width = 7)
 comp_stacked_supp_list[[1]]
 dev.off()
-png(here::here("figs", "ms_figs", "comp_can_stacked_supp.png"), res = 400, units = "in",
-    height = 6.5, width = 7)
+png(here::here(supp_file_path, "comp_can_stacked_supp.png"), 
+    res = 400, units = "in", height = 6.5, width = 7)
 comp_stacked_supp_list[[2]]
 dev.off()

@@ -3,6 +3,7 @@
 # Fit dirichlet model to subset of stock composition data collected only by
 # observers in rec fishery; used to evaluate impacts of using citizen scientists
 # Otherwise duplicates fit_dirichlet_splines.R
+# Most recent update: Dec. 9 2020
 
 library(tidyverse)
 library(TMB)
@@ -35,7 +36,7 @@ rec <- readRDS(here::here("data", "gsiCatchData", "rec",
   ungroup() %>% 
   droplevels()
 
-# subset fit inlcuding only data collected by creel observers
+# subset fit including only data collected by creel observers
 rec_obs <- rec %>% 
   filter(sampler == "Observer")
 
@@ -129,22 +130,23 @@ dat <- comp %>%
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   ) 
 
+
 # FIT --------------------------------------------------------------------------
 
-optim_fix_inits_vec = c(FALSE, FALSE)
-
-dat2 <- dat %>%
-  mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
-                                optim_fix_inits = FALSE),
-                           .f = stockseasonr::fit_stockseason,
-                           random_walk = TRUE,
-                           model_type = "composition",
-                           silent = FALSE))
-dat2$ssdr <- purrr::map(dat2$sdr, summary)
-
-saveRDS(dat2 %>% select(-sdr),
-        here::here("generated_data", "model_fits", 
-                   "composition_model_dir_supp.RDS"))
+# optim_fix_inits_vec = c(FALSE, FALSE)
+# 
+# dat2 <- dat %>%
+#   mutate(sdr = purrr::pmap(list(comp_dat = .$comp_long,
+#                                 optim_fix_inits = FALSE),
+#                            .f = stockseasonr::fit_stockseason,
+#                            random_walk = TRUE,
+#                            model_type = "composition",
+#                            silent = FALSE))
+# dat2$ssdr <- purrr::map(dat2$sdr, summary)
+# 
+# saveRDS(dat2 %>% select(-sdr),
+#         here::here("generated_data", "model_fits", 
+#                    "composition_model_dir_supp.RDS"))
 
 dat2 <- readRDS(here::here("generated_data", "model_fits", 
                            "composition_model_dir_supp.RDS"))
@@ -194,7 +196,7 @@ dev.off()
 
 ## Composition stacked ribbon prediction
 combine_data <- function(in_col = c("pst_agg", "reg1")) {
-  comp_pred_dat %>%
+  dum <- comp_pred_dat %>%
     filter(grouping_col == in_col) %>%
     select(dataset, grouping_col, comp_pred_ci) %>%
     unnest(., cols = c(comp_pred_ci)) %>% 
@@ -206,14 +208,29 @@ combine_data <- function(in_col = c("pst_agg", "reg1")) {
            dataset_label = case_when(
              grepl("obs", dataset) ~ "Observers Only",
              TRUE ~ "Observers\nand Volunteers")
-           )
+           ) 
+  
+  # consolidate Col Spring to reduce total number of categories and improve 
+  # readability
+  if (in_col == "pst_agg") {
+    dum <- dum %>% 
+      mutate(
+        stock = fct_recode(stock, "CR-spring" = "CR-lower_sp", 
+                           "CR-spring" = "CR-upper_sp")) %>% 
+      group_by(stock, region, region_c, month_n, dataset_label) %>% 
+      summarize(pred_prob_est = sum(pred_prob_est), .groups = "drop")
+  }
+  
+  return(dum)
 }
 
 pst_comp_pred <- combine_data(in_col = "pst_agg") 
-pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg") +
+pst_area <- plot_comp_stacked(pst_comp_pred, grouping_col = "pst_agg", 
+                              palette_name = "sunset") +
   facet_grid(region_c ~ dataset_label)
 can_comp_pred <- combine_data(in_col = "reg1") 
-can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1") +
+can_area <- plot_comp_stacked(can_comp_pred, grouping_col = "reg1", 
+                              palette_name = "midnight") +
   facet_grid(region_c ~ dataset_label)
 
 pdf(paste(file_path, "composition_stacked_supp.pdf", sep = "/"))

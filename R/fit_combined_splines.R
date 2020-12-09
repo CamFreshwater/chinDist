@@ -6,6 +6,7 @@
 # Constrain to relatively few months due to limited availability of rec C/E 
 # data
 # Modified from fit_combined.R to include splines
+# Most recent update: Dec. 5 2020
 
 library(tidyverse)
 library(ggplot2)
@@ -544,55 +545,56 @@ comp_n_plot
 dev.off()
 
 
-# composition samples by year, divided among kept and retained
-tally_gsi <- function(dat) {
-  gear <- dat$gear
-  if (any(gear == "troll")) {
-    out <- dat %>% 
-      mutate(release = "Kept")
-  } else {
-    out <- dat
-  }
-  out %>%
-    group_by(gear, region, month_n, year, release) %>% 
-    summarize(count = sum(adj_prob), .groups = "drop")
-} 
-
-tally_dat <- map(comp_only$raw_data, tally_gsi) %>% 
-  bind_rows()  %>%
-  filter(gear == "sport",
-         #constrain to months when management measures to protect spring
-         #runs are in place
-         month_n > 3, 
-         month_n < 8) %>% 
-  group_by(region, month_n, release, year) %>% 
-  summarize(sampled_ind = sum(count), .groups = "drop") %>% 
-  mutate(release = fct_recode(release, Released = "Rel"),
-         region = fct_relevel(region, 
-                              "Queen Charlotte and\nJohnstone Straits", 
-                              after = 0))
-
-kept_released_tally <- expand.grid(region = unique(tally_dat$region),
-                                   year = unique(tally_dat$year),
-                                   release = unique(tally_dat$release),
-                                   month_n = unique(tally_dat$month_n)) %>% 
-  arrange(region, year, release, month_n) %>% 
-  left_join(., tally_dat, by = c("region", "year", "release", "month_n")) %>% 
-  mutate(month = as.factor(month_n))
-
-kept_released <- ggplot(kept_released_tally) +
-  geom_bar(aes(x = year, y = sampled_ind, fill = release), 
-               position = position_dodge(0.9),
-           stat = "identity"
-           ) +
-  labs(x = "Year", y = "Number of Individuals") +
-  scale_fill_manual(values = c("#999999", "#E69F00"),
-                    name = "") +
-  facet_wrap(~region) +
-  ggsidekick::theme_sleek()
-
-png(here::here("figs", "ms_figs", "kept_retained_samples.png"), res = 400, 
-    units = "in",
-    height = 5.5, width = 7)
-kept_released
-dev.off()
+# REPLACED BY ANALYSIS IN MANAGEMENT_RESTRICTIONS_SUPP>.Rmd
+# # composition samples by year, divided among kept and retained
+# tally_gsi <- function(dat) {
+#   gear <- dat$gear
+#   if (any(gear == "troll")) {
+#     out <- dat %>% 
+#       mutate(release = "Kept")
+#   } else {
+#     out <- dat
+#   }
+#   out %>%
+#     group_by(gear, region, month_n, year, release) %>% 
+#     summarize(count = sum(adj_prob), .groups = "drop")
+# } 
+# 
+# tally_dat <- map(comp_only$raw_data, tally_gsi) %>% 
+#   bind_rows()  %>%
+#   filter(gear == "sport",
+#          #constrain to months when management measures to protect spring
+#          #runs are in place
+#          month_n > 3, 
+#          month_n < 8) %>% 
+#   group_by(region, month_n, release, year) %>% 
+#   summarize(sampled_ind = sum(count), .groups = "drop") %>% 
+#   mutate(release = fct_recode(release, Released = "Rel"),
+#          region = fct_relevel(region, 
+#                               "Queen Charlotte and\nJohnstone Straits", 
+#                               after = 0))
+# 
+# kept_released_tally <- expand.grid(region = unique(tally_dat$region),
+#                                    year = unique(tally_dat$year),
+#                                    release = unique(tally_dat$release),
+#                                    month_n = unique(tally_dat$month_n)) %>% 
+#   arrange(region, year, release, month_n) %>% 
+#   left_join(., tally_dat, by = c("region", "year", "release", "month_n")) %>% 
+#   mutate(month = as.factor(month_n))
+# 
+# kept_released <- ggplot(kept_released_tally) +
+#   geom_bar(aes(x = year, y = sampled_ind, fill = release), 
+#                position = position_dodge(0.9),
+#            stat = "identity"
+#            ) +
+#   labs(x = "Year", y = "Number of Individuals") +
+#   scale_fill_manual(values = c("#999999", "#E69F00"),
+#                     name = "") +
+#   facet_wrap(~region) +
+#   ggsidekick::theme_sleek()
+# 
+# png(here::here("figs", "ms_figs", "kept_retained_samples.png"), res = 400, 
+#     units = "in",
+#     height = 5.5, width = 7)
+# kept_released
+# dev.off()
