@@ -38,8 +38,11 @@ scripts/*cache*
 *.so
 
 R/defunct/
+R/hidden/
+data/gsiCatchData/commTroll/hidden/
 data/gsiCatchData/commTroll/defunct/
 data/gsiCatchData/rec/defunct/
+data/gsiCatchData/rec/hidden/
 data/stockKeys/old/
 R/hargreaves/
 #Rmd/old/
