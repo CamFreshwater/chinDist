@@ -1,0 +1,164 @@
+---
+title: "Chinook Marine Distribution Supplement--Implications of Management Actions"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+Since 2008 Fisheries and Oceans Canada (DFO) has implemented a variety of fisheries restrictions to minimize harvest impacts on stream-type Fraser River Chinook salmon. The actions have included mark-selective fisheries, slot limits, and spatio-temporal closures for retention, and were specifically targeted at Spring 4.2, Spring 5.2, and Summer 5.2 management units (Dobson et al. 2020). Restrictions, even within a given catch region, are not uniform, but vary among years, weeks, and statistical areas. Here we consider how these restrictions may have impacted our conclusions on stock composition and abundance. Although the restrictions focused on marine and freshwater fisheries throughout British Columbia, their impacts to our analysis are most applicable to portions of the Juan de Fuca Strait and southern Strait of Georgia regions. Thus we exclude other regions in southern BC. The scope of the fisheries restrictions also expanded substantially in 2019; however, we do not consider these latter adjustments here since they impact only one data year.  
+
+Most broadly, fishery restrictions could impact our results by decoupling estimates of stock-specific standardized CPUE (a fisheries-dependent index) from true abundance. A technical review of DFO's fisheries restrictions suggests that broadly they reduced harvest impacts on stream-type Chinook salmon across multiple sectors; however, their impact on catches in Juan de Fuca Strait recreational fisheries specifically ranged from negligible to considerable (14% increase to 48% decrease relative to a reference period), depending on the year and management unit (equivalent data in the southern Strait of Georgia were not available; Dobson et al. 2020). Thus it appears likely, but not certain, that abundance could be underestimated when fisheries restrictions are in place, relative to when they are not. Ideally bias in estimates of abundance could be quantified using fisheries independent data; however, comprehensive sampling of Fraser River Chinook salmon is restricted to freshwater test fisheries. 
+
+Fisheries restrictions may also impact estimates of composition from our model independently of abundance if genetic samples become less representative of catch in an area. Due to management restrictions on retention of unclipped (presumed wild-origin) and large (presumed likely to be stream-type) individuals during March to July, fish that are considered “legal” in other areas are more likely to be released in Juan de Fuca and southern Strait of Georgia fisheries. Although we included genetic samples from such released individuals in our analysis, these samples are relatively rare because they cannot be collected by dockside creel observers and volunteers appear less likely to collect or submit them. 
+
+To qualitatively assess how well genetic sampling matched estimated catches we grouped Juan de Fuca Strait and southern Strait of Georgia genetic and catch data into three management categories reflecting relative exposure to fisheries restrictions (and accounting for temporal and spatial variation in the application of restrictions). The first category, "status quo", refers to data belonging to a spatial (statistical area within a catch region) or temporal strata to which the fisheries restrictions do not apply. The second category, "exempted", includes data from catch taken in spatio-temporal strata where restrictions occurred, but which met those mark or size restrictions (i.e., "legal" catch, such as adipose clipped fish caught in a strata with mark-selective fisheries). In the case of catch data, exempted data are *landed* catch estimates (estimated from creel surveys), which we assume met mark or size restrictions. In the case of composition data, exempted data were samples collected from fish that met mark or size restrictions. The third category, "restricted", includes data from catch taken in spatio-temporal strata where restrictions occurred which do not meet mark or size restrictions (or where blanket non-retention measures were in place). For catch data, restricted data are catch estimates for *released*, legal-sized fish (again, estimated from creel surveys). For composition data, restricted data are samples collected from fish that were released or from fish that were landed, but did not meet mark or size restrictions (i.e., should have been released). We note that these are relatively ad hoc comparisons and several assumptions apply. For example, landed catch estimates likely include fish that should have been released and released catch estimates likely include fish that met mark or size restrictions, but were not retained for other reasons.
+
+To simplify comparisons we excluded months where the relevant restrictions never applied. Catch data were not available for all statistical areas in March-May for Juan de Fuca Strait (see Figure S1 for details), resulting in no status quo catches for these months and their exclusion from estimates of stock-specific standardized CPUE in the main text. The partial data were included in this comparison, however, because all GSI samples for those months originated from the same statistical area.  
+
+```{r prep-catch, include=FALSE}
+rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
+                                "month_subarea_recCatch.RDS")) %>% 
+  #drop sublegal fish and regions without genetics
+  filter(legal == "legal",
+         region %in% c("Juan de Fuca Strait", "S. Strait of Georgia")) %>% 
+  #group by subarea to get rid of adipose and released legal duplicates
+  group_by(month, month_n, year, area, subarea, region, kept_legal) %>% 
+  summarize(subarea_catch = sum(mu_catch, na.rm = T),
+            subarea_eff = mean(mu_boat_trips, na.rm = T),
+            .groups = "drop") %>% 
+  filter(!is.na(subarea_eff)) %>% 
+  mutate(restriction_group = case_when(
+    subarea %in% c("19C", "19D", "19E") ~ "a",
+    subarea %in% c("20C", "20D") ~ "b",
+    subarea == "29DE" ~ "c",
+    subarea == "20B" ~ "d",
+    TRUE ~ NA_character_
+  ),
+  restriction_time = case_when(
+    restriction_group == "a" & month_n > 2 & month_n < 7 ~ "y",
+    restriction_group == "b" & month_n > 2 & month_n < 7 & year < 2018 ~ "y",
+    restriction_group == "c" & month_n > 4 & month_n < 8 & year < 2016 ~ "y",
+    restriction_group == "c" & month_n > 2 & month_n < 8 & year < 2019 ~ "y",
+    restriction_group == "c" & month_n > 2 & month_n < 9 & year < 2020 ~ "y",
+    restriction_group %in% c("b", "d") & month_n > 6 & month_n < 7 & 
+      year >= 2018 ~ "y",
+    TRUE ~ NA_character_
+  ),
+  man_category = case_when(
+    is.na(restriction_group) ~ "status quo",
+    kept_legal == "y_legal" ~ "exempted",
+    kept_legal == "n_legal" ~ "restricted"
+  )
+  )
+```
+
+Catches from spatio-temporal strata with restrictions in place were the greatest proportion of total catch early in the year, declining after May in Juan de Fuca Strait and April in the southern Strait of Georgia as restrictions were removed or catches began to incorporate unrestricted statistical areas (Figure 1, green and yellow bars). While the majority of the catch during these months was categorized as exempted, suggesting most individuals met size and mark related restrictions, restricted catches were still considerable. This was particularly true in 2019 when Juan de Fuca management restrictions were most severe.
+
+```{r catch-plot, echo=FALSE, fig.cap="Proportion of catch assigned to management categories based on year-specific fisheries restrictions (defined in text) showing relatively large proportion of released catch early in year, as well as minimal catch data from areas with status quo management restrictions until mid-summer. Only months and regions impacted by fisheries restrictions are shown. Blank spaces represent strata without data.", messages=FALSE, warnings=FALSE}
+catch_plot <- rec_catch %>% 
+  filter(month_n > 2, month_n < 9,
+         year > 2013) %>% 
+  group_by(year, month_n, region, man_category) %>% 
+  summarize(catch = sum(subarea_catch), .groups = "drop") %>% 
+  ggplot(., aes(x = as.factor(month_n), y = catch, 
+                fill = fct_reorder(man_category, -catch))) + 
+  geom_bar(position = "fill", stat  = "identity") +
+  ggsidekick::theme_sleek() +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = "Month", y = "Proportion of Catch", 
+       fill = "Management\nCategory") +
+  facet_grid(year ~ region)
+catch_plot
+
+supp_file_path <- paste("figs", "ms_figs", "supp", sep = "/")
+
+png(here::here(supp_file_path, "catch_man_implications.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
+catch_plot
+dev.off()
+```
+
+```{r prep-composition, include=FALSE}
+rec <- readRDS(here::here("data", "gsiCatchData", "rec", 
+                          "recIndProbsLong.rds")) %>% 
+  filter(legal == "legal",
+         region %in% c("Juan de Fuca Strait", "S. Strait of Georgia")) %>% 
+  select(id, region, area, subarea, year, month = month_n, year_day = jDay,
+         week, fl, ad_clip, legal, release, sampler) %>% 
+  distinct() %>% 
+  droplevels() %>% 
+  mutate(year_n = as.numeric(as.character(year)),
+         fl = fl / 10
+  ) %>% 
+  #add restrictions based on size + clipping + spatio-temporal closures 
+  #described in figure b4 in Dobson et al 2020
+  mutate(
+    restriction_group = case_when(
+      subarea %in% c("19C", "19D", "19E") ~ "a",
+      subarea %in% c("20C", "20D") ~ "b",
+      subarea == "29DE" ~ "c",
+      subarea == "20B" ~ "d",
+      TRUE ~ NA_character_
+    ),
+    restriction_size = ifelse(fl > 67, "y", "n"),
+    restriction_time = case_when(
+      restriction_group == "a" & month > 2 & month < 7 ~ "y",
+      restriction_group == "b" & month > 2 & month < 7 & year_n < 2018 ~ "y",
+      restriction_group == "c" & month > 4 & month < 8 & year_n < 2016 ~ "y",
+      restriction_group == "c" & month > 2 & month < 8 & year_n < 2019 ~ "y",
+      restriction_group == "c" & month > 2 & month < 9 & year_n < 2020 ~ "y",
+      restriction_group %in% c("b", "d") & month > 6 & month < 7 & 
+        year_n >= 2018 ~ "y",
+      TRUE ~ NA_character_
+    ),
+    restricted = case_when(
+      restriction_group == "a" & restriction_time == "y" &  
+        restriction_size == "y" & ad_clip == "N" ~ "y",
+      restriction_group == "b" & restriction_time == "y" &  
+        restriction_size == "y" & ad_clip == "N" ~ "y",
+      restriction_group == "c" & restriction_time == "y" ~ "y",
+      # to account for more extreme restrictions in last two years
+      restriction_group %in% c("b", "d") & restriction_time == "y" & 
+        year_n >= 2018 ~ "y",
+      TRUE ~ "n"
+    ),
+    man_category = case_when(
+      is.na(restriction_group) ~ "status quo",
+      !is.na(restriction_group) & restricted == "n" ~ "exempted",
+      restricted == "y" ~ "restricted"
+    )
+  )
+
+```
+
+Although samples from restricted individuals were collected, they made up a relatively small proportion of the total for these catch regions (Figure 2). Coverage was particularly poor in the southern Strait of Georgia in March and April, where the majority of samples originated in statistical areas that were not impacted by the restrictions, while catch estimates originated in statistical areas where they did. Juan de Fuca Strait samples predominantly originated in similar strata to the catch; however, they largely consisted of samples from individuals that were exempted from the restrictions. 
+
+```{r composition-plot, echo=FALSE, fig.cap="Proportion of genetic stock indetification samples assigned to management categories based on year-specific fisheries restrictions (defined in text). Note minimal sampling of released catches and large contribution of status quo areas in southern Strait of Georgia to estimates. Only months and regions impacted by fisheries restrictions are shown. Blank spaces represent strata without data.", messages=FALSE, warnings=FALSE}
+comp_plot <- rec %>% 
+  filter(month > 2, month < 9) %>% 
+  group_by(year, month, region, man_category) %>% 
+  tally(name = "count") %>% 
+  ggplot(., aes(x = as.factor(month), y = count, 
+                fill = fct_reorder(man_category, -count))) + 
+  geom_bar(position = "fill", stat  = "identity") +
+  ggsidekick::theme_sleek() +
+  scale_fill_viridis_d() +
+  labs(x = "Month", y = "Proportion of Genetic Samples", 
+       fill = "Management\nCategory") +
+  facet_grid(year ~ region)
+
+png(here::here(supp_file_path, "comp_man_implications.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
+comp_plot
+dev.off()
+
+```
+
+The small number of genetic samples from individuals in the restricted management category, relative to their proportional contribution to catch, suggests that certain stocks may be underestimated in composition predictions. Presumably this is most likely for Fraser River early run stocks, which contain the majority of stream-type populations of conservation concern. It is difficult to evaluate the magnitude of these effects without additional data; however, we chose to model composition at the scale of catch regions, not statistical areas, precisely due to limited data at finer spatial scales. Effectively this approach assumes that composition is homogeneous within a catch region and should mute differences between estimated and true composition by integrating data from multiple statistical areas, only a subset of which are impacted by restrictions. While such an assumption is likely untrue, it is not possible to robustly evaluate, or remedy, without a more comprehensive genetic sampling program.
+
+Despite these issues, our predictions of stock-specific standardized CPUE appear consistent with data from Fraser River freshwater test fisheries, the least biased and longest running data available on adult migration timing. In both datasets, predicted peak Fraser Spring 4.2 abundance in Juan de Fuca Strait is immediately followed by the Spring 5.2 peak, followed by peaks in Summer 5.2 and Summer 4.1 abundance about a month later (Figure S14; Dobson et al. 2020). Furthermore, the relative abundance of each of these stock groups is approximately equivalent to the proportional mean return of each to Fraser River test fisheries. Thus even if the contribution of these stocks is underestimated in certain statistical areas, it appears unlikely to influence our general conclusions. Nevertheless, to inform future fisheries management decisions, composition and catch data should be matched at the finest resolution possible.
+
+### Literature Cited ###
+Dobson, D., Holt, K., and Davis, B. 2020. A technical review of the management approach for stream-type Fraser River Chinook. DFO Can. Sci. Advis. Sec. Res. Doc. 2020/027. x. + 280 p.

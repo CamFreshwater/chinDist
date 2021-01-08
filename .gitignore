@@ -45,7 +45,6 @@ data/gsiCatchData/rec/defunct/
 data/gsiCatchData/rec/hidden/
 data/stockKeys/old/
 R/hargreaves/
-#Rmd/old/
-Rmd/
+Rmd/hidden
 figs/hidden/
 data/coast_shapefiles/
