@@ -6,7 +6,6 @@
 # Most recent update: Dec. 5 2020
 
 library(tidyverse)
-library(ggplot2)
 
 # recreational data
 rec <- readRDS(here::here("data", "gsiCatchData", "rec", 

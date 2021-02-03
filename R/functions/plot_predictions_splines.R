@@ -67,7 +67,7 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
               aes(x = month_n)) +
     scale_fill_manual(name = "Region", values = pal) +
     scale_colour_manual(name = "Region", values = pal) +
-    labs(y = "Predicted Stock Composition", x = "Month") +
+    labs(y = "Predicted Stock Proportion", x = "Month") +
     facet_wrap(~ stock, ncol = ncol, scales = facet_scales) +
     ggsidekick::theme_sleek() +
     theme(legend.position = "top",
