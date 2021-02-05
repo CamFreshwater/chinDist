@@ -143,6 +143,7 @@ dat <- comp %>%
     pred_dat_comp = purrr::map(tmb_list, ~ .$pred_dat_comp)
   ) 
 
+
 # FIT --------------------------------------------------------------------------
  
 # #use fix optim inits except rec_pst (convergence issues)
@@ -159,7 +160,9 @@ dat <- comp %>%
 # saveRDS(dat2 %>% select(-sdr),
 #         here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
 
-dat2 <- readRDS(here::here("generated_data", "model_fits", "composition_model_dir.RDS"))
+dat2 <- readRDS(here::here("generated_data", "model_fits", 
+                           "composition_model_dir.RDS"))
+
 
 ## GENERATE OBS AND PREDICTIONS ------------------------------------------------
 
