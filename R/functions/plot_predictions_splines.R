@@ -63,6 +63,12 @@ plot_catch_yr <- function(dat, facet_scale = "area") {
 # Plot composition data 
 plot_comp <- function(comp_pred, raw_prop, raw = TRUE, 
                       ncol = NULL, facet_scales = "fixed") {
+  facet_labs <- data.frame(
+    stock = factor(levels(comp_pred$stock),
+                   levels = levels(comp_pred$stock)),
+    label = paste(" ", LETTERS[1:length(levels(comp_pred$stock))], sep = "")
+  )
+  
   p <- ggplot(data = comp_pred %>% filter(!is.na(pred_prob_est)), 
               aes(x = month_n)) +
     scale_fill_manual(name = "Region", values = pal) +
@@ -75,7 +81,9 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
           plot.margin = unit(c(5.5, 10.5, 5.5, 5.5), "points"),
           panel.spacing = unit(0.75, "lines")) +
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
-                       labels = month_labs, expand = c(0, 0))
+                       labels = month_labs, expand = c(0, 0)) +
+    geom_text(data = facet_labs, aes(label = label),
+              x = -Inf, y = Inf, hjust = 0, vjust = 1)
     
   if (raw == TRUE) {
     p2 <- p +
@@ -101,7 +109,12 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
 plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2, 
                               palette_name = c("sunset", "midnight", 
                                                "rainbow")) {
-  # palette_name <- ifelse(grouping_col == "pst_agg", "sunset", "midnight")
+  facet_labs <- data.frame(
+    region_c = factor(levels(comp_pred$region_c),
+                   levels = levels(comp_pred$region_c)),
+    label = paste(" ", LETTERS[1:length(levels(comp_pred$region_c))], sep = "")
+  )
+  
   stock_pal <- disco::disco(palette_name, n = length(unique(comp_pred$stock)))
   
   ggplot(data = comp_pred, aes(x = month_n)) +
@@ -118,8 +131,10 @@ plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2,
     scale_x_continuous(breaks = seq(2, 12, by = 2), 
                        limits = c(1, 12),
                        labels = month_labs) +
+    geom_text(data = facet_labs, aes(x = -Inf, y = Inf, label = label),
+               hjust = 0, vjust = 1) +
     facet_wrap(~region_c, ncol = ncol) +
-    coord_cartesian(expand = FALSE, ylim = c(0, NA))
+    coord_cartesian(expand = FALSE, ylim = c(0, NA)) 
 }
 
 

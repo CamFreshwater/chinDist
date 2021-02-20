@@ -194,22 +194,23 @@ source(here::here("R", "functions", "plot_predictions_splines.R"))
 #color palette
 pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
 
-#pfma map (used to steal legend)
-pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
-
 # generic settings
 file_path <- here::here("figs", "model_pred", "dirichlet_only")
 
 # Composition spline prediction
-comp_plots <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, plot_comp,
+comp_plots <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, 
+                   plot_comp,
                    raw = TRUE)
-comp_plots_fix <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, plot_comp,
+comp_plots_fix <- map2(comp_pred_dat$comp_pred_ci, comp_pred_dat$raw_prop, 
+                       plot_comp,
                        raw = TRUE, facet_scales = "fixed")
 
 pdf(paste(file_path, "composition_splines.pdf", sep = "/"))
 comp_plots
 comp_plots_fix
 dev.off()
+
+plot_comp(comp_pred_dat$comp_pred_ci[[1]], comp_pred_dat$raw_prop[[1]], raw = T)
 
 
 ## Composition stacked ribbon prediction

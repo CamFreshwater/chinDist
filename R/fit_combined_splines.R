@@ -263,12 +263,12 @@ comm1 <- pred_dat %>%
   filter(dataset == "gsi_troll_pst") 
 comm_abund <- plot_abund(comm1$abund_pred_ci[[1]], 
                          ylab = "Commercial Predicted\nStandardized CPUE") +
-  annotate("text", x = -Inf, y = Inf, label = "a)", hjust = -1, vjust = 2)
+  annotate("text", x = -Inf, y = Inf, label = "A", hjust = -1, vjust = 2)
 rec1 <- pred_dat %>% 
   filter(dataset == "gsi_sport_pst") 
 rec_abund <- plot_abund(rec1$abund_pred_ci[[1]], 
                         ylab = "Recreational Predicted\nStandardized CPUE") +
-  annotate("text", x = -Inf, y = Inf, label = "b)", hjust = -1, vjust = 2)
+  annotate("text", x = -Inf, y = Inf, label = "B", hjust = -1, vjust = 2)
 
 combo_abund <- cowplot::plot_grid(comm_abund, rec_abund, nrow = 2, 
                                   align = "v") %>% 
