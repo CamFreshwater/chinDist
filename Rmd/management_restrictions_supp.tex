@@ -1,0 +1,234 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\hypersetup{
+  pdftitle={Chinook Marine Distribution Supplement--Implications of Management Actions},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+\urlstyle{same} % disable monospaced font for URLs
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+
+\title{Chinook Marine Distribution Supplement--Implications of Management
+Actions}
+\author{}
+\date{\vspace{-2.5em}}
+
+\begin{document}
+\maketitle
+
+Since 2008 Fisheries and Oceans Canada (DFO) has implemented a variety
+of fisheries restrictions to minimize harvest impacts on stream-type
+Fraser River Chinook salmon. The actions have included mark-selective
+fisheries, slot limits, and spatio-temporal closures for retention, and
+were specifically targeted at Spring 4.2, Spring 5.2, and Summer 5.2
+management units (Dobson et al.~2020). Restrictions, even within a given
+catch region, are not uniform, but vary among years, weeks, and
+statistical areas. Here we consider how these restrictions may have
+impacted our conclusions on stock composition and abundance. Although
+the restrictions focused on marine and freshwater fisheries throughout
+British Columbia, their impacts to our analysis are most applicable to
+portions of the Juan de Fuca Strait and southern Strait of Georgia
+regions. Thus we exclude other regions in southern BC. The scope of the
+fisheries restrictions also expanded substantially in 2019; however, we
+do not consider these latter adjustments here since they impact only one
+data year.
+
+Most broadly, fishery restrictions could impact our results by
+decoupling estimates of stock-specific standardized CPUE (a
+fisheries-dependent index) from true abundance. A technical review of
+DFO's fisheries restrictions suggests that broadly they reduced harvest
+impacts on stream-type Chinook salmon across multiple sectors; however,
+their impact on catches in Juan de Fuca Strait recreational fisheries
+specifically ranged from negligible to considerable (14\% increase to
+48\% decrease relative to a reference period), depending on the year and
+management unit (equivalent data in the southern Strait of Georgia were
+not available; Dobson et al.~2020). Thus it appears likely, but not
+certain, that abundance could be underestimated when fisheries
+restrictions are in place, relative to when they are not. Ideally bias
+in estimates of abundance could be quantified using fisheries
+independent data; however, comprehensive sampling of Fraser River
+Chinook salmon is restricted to freshwater test fisheries.
+
+Fisheries restrictions may also impact estimates of composition from our
+model independently of abundance if genetic samples become less
+representative of catch in an area. Due to management restrictions on
+retention of unclipped (presumed wild-origin) and large (presumed likely
+to be stream-type) individuals during March to July, fish that are
+considered ``legal'' in other areas are more likely to be released in
+Juan de Fuca and southern Strait of Georgia fisheries. Although we
+included genetic samples from such released individuals in our analysis,
+these samples are relatively rare because they cannot be collected by
+dockside creel observers and volunteers appear less likely to collect or
+submit them.
+
+To qualitatively assess how well genetic sampling matched estimated
+catches we grouped Juan de Fuca Strait and southern Strait of Georgia
+genetic and catch data into three management categories reflecting
+relative exposure to fisheries restrictions (and accounting for temporal
+and spatial variation in the application of restrictions). The first
+category, ``status quo'', refers to data belonging to a spatial
+(statistical area within a catch region) or temporal strata to which the
+fisheries restrictions do not apply. The second category, ``exempted'',
+includes data from catch taken in spatio-temporal strata where
+restrictions occurred, but which met those mark or size restrictions
+(i.e., ``legal'' catch, such as adipose clipped fish caught in a strata
+with mark-selective fisheries). In the case of catch data, exempted data
+are \emph{landed} catch estimates (estimated from creel surveys), which
+we assume met mark or size restrictions. In the case of composition
+data, exempted data were samples collected from fish that met mark or
+size restrictions. The third category, ``restricted'', includes data
+from catch taken in spatio-temporal strata where restrictions occurred
+which do not meet mark or size restrictions (or where blanket
+non-retention measures were in place). For catch data, restricted data
+are catch estimates for \emph{released}, legal-sized fish (again,
+estimated from creel surveys). For composition data, restricted data are
+samples collected from fish that were released or from fish that were
+landed, but did not meet mark or size restrictions (i.e., should have
+been released). We note that these are relatively ad hoc comparisons and
+several assumptions apply. For example, landed catch estimates likely
+include fish that should have been released and released catch estimates
+likely include fish that met mark or size restrictions, but were not
+retained for other reasons.
+
+To simplify comparisons we excluded months where the relevant
+restrictions never applied. Catch data were not available for all
+statistical areas in March-May for Juan de Fuca Strait (see Figure S1 in
+main text for details), resulting in no status quo catches for these
+months and their exclusion from estimates of stock-specific standardized
+CPUE in the main text. The partial data were included in this
+comparison, however, because all GSI samples for those months originated
+from the same statistical area.
+
+Catches from spatio-temporal strata with restrictions in place were the
+greatest proportion of total catch early in the year, declining after
+May in Juan de Fuca Strait and April in the southern Strait of Georgia
+as restrictions were removed or catches began to incorporate
+unrestricted statistical areas (Figure 1, green and yellow bars). While
+the majority of the catch during these months was categorized as
+exempted, suggesting most individuals met size and mark related
+restrictions, restricted catches were still considerable. This was
+particularly true in 2019 when Juan de Fuca management restrictions were
+most severe.
+
+\begin{figure}
+\centering
+\includegraphics{management_restrictions_supp_files/figure-latex/catch-plot-1.pdf}
+\caption{Proportion of catch assigned to management categories based on
+year-specific fisheries restrictions (defined in text) showing
+relatively large proportion of released catch early in year, as well as
+minimal catch data from areas with status quo management restrictions
+until mid-summer. Only months and regions impacted by fisheries
+restrictions are shown. Blank spaces represent strata without data.}
+\end{figure}
+
+Although samples from restricted individuals were collected, they made
+up a relatively small proportion of the total for these catch regions
+(Figure 2). Coverage was particularly poor in the southern Strait of
+Georgia in March and April, where the majority of samples originated in
+statistical areas that were not impacted by the restrictions, while
+catch estimates originated in statistical areas where they did. Juan de
+Fuca Strait samples predominantly originated in similar strata to the
+catch; however, they largely consisted of samples from individuals that
+were exempted from the restrictions.
+
+\begin{figure}
+\centering
+\includegraphics{management_restrictions_supp_files/figure-latex/composition-plot-1.pdf}
+\caption{Proportion of genetic stock indetification samples assigned to
+management categories based on year-specific fisheries restrictions
+(defined in text). Note minimal sampling of released catches and large
+contribution of status quo areas in southern Strait of Georgia to
+estimates. Only months and regions impacted by fisheries restrictions
+are shown. Blank spaces represent strata without data.}
+\end{figure}
+
+The small number of genetic samples from individuals in the restricted
+management category, relative to their proportional contribution to
+catch, suggests that certain stocks may be underestimated in composition
+predictions. Presumably this is most likely for Fraser River early run
+stocks, which contain the majority of stream-type populations of
+conservation concern. It is difficult to evaluate the magnitude of these
+effects without additional data; however, we chose to model composition
+at the scale of catch regions, not statistical areas, precisely due to
+limited data at finer spatial scales. Effectively this approach assumes
+that composition is homogeneous within a catch region and should mute
+differences between estimated and true composition by integrating data
+from multiple statistical areas, only a subset of which are impacted by
+restrictions. While such an assumption is likely untrue, it is not
+possible to robustly evaluate, or remedy, without a more comprehensive
+genetic sampling program.
+
+Despite these issues, our predictions of stock-specific standardized
+CPUE appear consistent with data from Fraser River freshwater test
+fisheries, the least biased and longest running data available on adult
+migration timing. In both datasets, predicted peak Fraser Spring 4.2
+abundance in Juan de Fuca Strait is immediately followed by the Spring
+5.2 peak, followed by peaks in Summer 5.2 and Summer 4.1 abundance about
+a month later (Figure S14; Dobson et al.~2020). Furthermore, the
+relative abundance of each of these stock groups is approximately
+equivalent to the proportional mean return of each to Fraser River test
+fisheries. Thus even if the contribution of these stocks is
+underestimated in certain statistical areas, it appears unlikely to
+influence our general conclusions. Nevertheless, to inform future
+fisheries management decisions, composition and catch data should be
+matched at the finest resolution possible.
+
+\hypertarget{literature-cited}{%
+\subsubsection{Literature Cited}\label{literature-cited}}
+
+Dobson, D., Holt, K., and Davis, B. 2020. A technical review of the
+management approach for stream-type Fraser River Chinook. DFO Can. Sci.
+Advis. Sec. Res. Doc. 2020/027. x. + 280 p.
+
+\end{document}

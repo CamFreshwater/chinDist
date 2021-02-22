@@ -216,31 +216,32 @@ dat2 <- readRDS(here::here("generated_data", "model_fits",
 
 source(here::here("R", "functions", "plot_cleaning_functions.R"))
 
-pred_dat <- dat2 %>%
-  mutate(
-    #predictions assuming mean effort
-    abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
-                                          .f = gen_abund_pred)),
-    cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr),
-                        gen_abund_pred_area),
-    abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
-                         gen_rand_int_pred),
-    comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
-                        .f = gen_comp_pred)),
-    raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
-    raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-                          spatial_scale = "area"),
-    raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
-                         spatial_scale = "region")
-    ) %>%
-  select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>%
-  mutate(
-    comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
-    raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
-  )
+# pred_dat <- dat2 %>%
+#   mutate(
+#     #predictions assuming mean effort
+#     abund_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+#                                           .f = gen_abund_pred)),
+#     cpue_pred_ci = pmap(list(pred_dat_catch, comp_long, ssdr),
+#                         gen_abund_pred_area),
+#     abund_year_ci = pmap(list(ssdr, catch_data, pred_dat_catch, cpue_pred_ci),
+#                          gen_rand_int_pred),
+#     comp_pred_ci = suppressWarnings(pmap(list(comp_long, pred_dat_comp, ssdr),
+#                         .f = gen_comp_pred)),
+#     raw_prop = purrr::map2(comp_long, comp_wide, make_raw_prop_dat),
+#     raw_abund_area = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+#                           spatial_scale = "area"),
+#     raw_abund_reg = pmap(list(catch_data, raw_prop), .f = make_raw_abund_dat,
+#                          spatial_scale = "region")
+#     ) %>%
+#   select(dataset:catch_data, abund_pred_ci:raw_abund_reg) %>%
+#   mutate(
+#     comp_pred_ci = map2(grouping_col, comp_pred_ci, .f = stock_reorder),
+#     raw_prop = map2(grouping_col, raw_prop, .f = stock_reorder)
+#   )
+# 
+# saveRDS(pred_dat, here::here("generated_data",
+#                              "combined_model_predictions.RDS"))
 
-saveRDS(pred_dat, here::here("generated_data",
-                             "combined_model_predictions.RDS"))
 pred_dat <- readRDS(here::here("generated_data",
                                "combined_model_predictions.RDS"))
 
@@ -354,8 +355,8 @@ dev.off()
 
 
 ## Manuscript figures   
-png(here::here("figs", "ms_figs", "abund_pred.png"), res = 400, units = "in",
-    height = 5, width = 5)
+png(here::here("figs", "ms_figs", "main", "abund_pred.png"), res = 400, 
+    units = "in", height = 5, width = 5)
 combo_abund2
 dev.off()
 
@@ -380,48 +381,49 @@ dev.off()
 # comp_plots_fix[[4]]
 # dev.off()
 
-png(here::here("figs", "ms_figs", "abund_pst_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
+png(here::here("figs", "ms_figs", "main", "abund_pst_comm.png"), 
+    res = 400, units = "in", height = 5.5, width = 7.5)
 ss_abund_plots_free[[1]] +
   labs(y = "Commercial Predicted Standardized CPUE")
 dev.off()
 
-png(here::here("figs", "ms_figs", "abund_pst_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7.5)
+png(here::here("figs", "ms_figs", "main", "abund_pst_rec.png"), 
+    res = 400, units = "in", height = 5.5, width = 7.5)
 ss_abund_plots_free[[2]] +
   labs(y = "Recreational Predicted Standardized CPUE")
 dev.off()
 
-png(here::here("figs", "ms_figs", "abund_can_comm.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+
+# supplemental figures
+png(here::here("figs", "ms_figs", "supp", "abund_can_comm.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 ss_abund_plots_free[[3]] +
   labs(y = "Commercial Predicted Standardized CPUE")
 dev.off()
 
-png(here::here("figs", "ms_figs", "abund_can_rec.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here("figs", "ms_figs", "supp", "abund_can_rec.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 ss_abund_plots_free[[4]] +
   labs(y = "Recreational Predicted Standardized CPUE")
 dev.off()
 
-# supplemental figures
-png(here::here("figs", "ms_figs", "comm_cpue_fits.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here("figs", "ms_figs", "supp", "comm_cpue_fits.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 comm_area_cpue
 dev.off()
 
-png(here::here("figs", "ms_figs", "rec_cpue_fits.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here("figs", "ms_figs", "supp", "rec_cpue_fits.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 rec_area_cpue
 dev.off()
 
-png(here::here("figs", "ms_figs", "comm_yr_catch.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here("figs", "ms_figs", "supp", "comm_yr_catch.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 comm_yr_catch
 dev.off()
 
-png(here::here("figs", "ms_figs", "rec_yr_catch.png"), res = 400, units = "in",
-    height = 5.5, width = 7)
+png(here::here("figs", "ms_figs", "supp", "rec_yr_catch.png"), 
+    res = 400, units = "in", height = 5.5, width = 7)
 rec_yr_catch
 dev.off()
 

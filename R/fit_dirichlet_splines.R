@@ -210,7 +210,6 @@ comp_plots
 comp_plots_fix
 dev.off()
 
-plot_comp(comp_pred_dat$comp_pred_ci[[1]], comp_pred_dat$raw_prop[[1]], raw = T)
 
 
 ## Composition stacked ribbon prediction

@@ -15,7 +15,7 @@ Fisheries restrictions may also impact estimates of composition from our model i
 
 To qualitatively assess how well genetic sampling matched estimated catches we grouped Juan de Fuca Strait and southern Strait of Georgia genetic and catch data into three management categories reflecting relative exposure to fisheries restrictions (and accounting for temporal and spatial variation in the application of restrictions). The first category, "status quo", refers to data belonging to a spatial (statistical area within a catch region) or temporal strata to which the fisheries restrictions do not apply. The second category, "exempted", includes data from catch taken in spatio-temporal strata where restrictions occurred, but which met those mark or size restrictions (i.e., "legal" catch, such as adipose clipped fish caught in a strata with mark-selective fisheries). In the case of catch data, exempted data are *landed* catch estimates (estimated from creel surveys), which we assume met mark or size restrictions. In the case of composition data, exempted data were samples collected from fish that met mark or size restrictions. The third category, "restricted", includes data from catch taken in spatio-temporal strata where restrictions occurred which do not meet mark or size restrictions (or where blanket non-retention measures were in place). For catch data, restricted data are catch estimates for *released*, legal-sized fish (again, estimated from creel surveys). For composition data, restricted data are samples collected from fish that were released or from fish that were landed, but did not meet mark or size restrictions (i.e., should have been released). We note that these are relatively ad hoc comparisons and several assumptions apply. For example, landed catch estimates likely include fish that should have been released and released catch estimates likely include fish that met mark or size restrictions, but were not retained for other reasons.
 
-To simplify comparisons we excluded months where the relevant restrictions never applied. Catch data were not available for all statistical areas in March-May for Juan de Fuca Strait (see Figure S1 for details), resulting in no status quo catches for these months and their exclusion from estimates of stock-specific standardized CPUE in the main text. The partial data were included in this comparison, however, because all GSI samples for those months originated from the same statistical area.  
+To simplify comparisons we excluded months where the relevant restrictions never applied. Catch data were not available for all statistical areas in March-May for Juan de Fuca Strait (see Figure S1 in main text for details), resulting in no status quo catches for these months and their exclusion from estimates of stock-specific standardized CPUE in the main text. The partial data were included in this comparison, however, because all GSI samples for those months originated from the same statistical area.   
 
 ```{r prep-catch, include=FALSE}
 rec_catch <- readRDS(here::here("data", "gsiCatchData", "rec",
@@ -72,12 +72,12 @@ catch_plot <- rec_catch %>%
   facet_grid(year ~ region)
 catch_plot
 
-supp_file_path <- paste("figs", "ms_figs", "supp", sep = "/")
-
-png(here::here(supp_file_path, "catch_man_implications.png"), 
-    res = 400, units = "in", height = 5.5, width = 7)
-catch_plot
-dev.off()
+# supp_file_path <- paste("figs", "ms_figs", "supp", sep = "/")
+# 
+# png(here::here(supp_file_path, "catch_man_implications.png"), 
+#     res = 400, units = "in", height = 5.5, width = 7)
+# catch_plot
+# dev.off()
 ```
 
 ```{r prep-composition, include=FALSE}
@@ -149,10 +149,10 @@ comp_plot <- rec %>%
        fill = "Management\nCategory") +
   facet_grid(year ~ region)
 
-png(here::here(supp_file_path, "comp_man_implications.png"), 
-    res = 400, units = "in", height = 5.5, width = 7)
+# png(here::here(supp_file_path, "comp_man_implications.png"), 
+#     res = 400, units = "in", height = 5.5, width = 7)
 comp_plot
-dev.off()
+# dev.off()
 
 ```
 

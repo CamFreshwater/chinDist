@@ -83,7 +83,7 @@ plot_comp <- function(comp_pred, raw_prop, raw = TRUE,
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
                        labels = month_labs, expand = c(0, 0)) +
     geom_text(data = facet_labs, aes(label = label),
-              x = -Inf, y = Inf, hjust = 0, vjust = 1)
+              x = -Inf, y = Inf, hjust = 0, vjust = 1.25)
     
   if (raw == TRUE) {
     p2 <- p +
@@ -132,7 +132,7 @@ plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2,
                        limits = c(1, 12),
                        labels = month_labs) +
     geom_text(data = facet_labs, aes(x = -Inf, y = Inf, label = label),
-               hjust = 0, vjust = 1) +
+               hjust = 0, vjust = 1.25) +
     facet_wrap(~region_c, ncol = ncol) +
     coord_cartesian(expand = FALSE, ylim = c(0, NA)) 
 }
@@ -141,6 +141,12 @@ plot_comp_stacked <- function(comp_pred, grouping_col, ncol = 2,
 # Plot stock-specific abundance
 plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
                           ncol = NULL, facet_scales = "free_y") {
+  facet_labs <- data.frame(
+    stock = factor(levels(comp_pred$stock),
+                   levels = levels(comp_pred$stock)),
+    label = paste(" ", LETTERS[1:length(levels(comp_pred$stock))], sep = "")
+  )
+  
   #adjustment to account for massive CIs on certain stocks in NSoG
   if ("NSoG" %in% comp_pred$region) {
     comp_pred <- comp_pred %>%
@@ -163,7 +169,9 @@ plot_ss_abund <- function(comp_pred, raw_abund, raw = FALSE,
           axis.text=element_text(size=9),
           plot.margin=unit(c(5.5, 10.5, 5.5, 5.5), "points")) +
     scale_x_continuous(breaks = seq(2, 12, by = 2), limits = c(1, 12),
-                       labels = month_labs, expand = c(0, 0))
+                       labels = month_labs, expand = c(0, 0)) +
+    geom_text(data = facet_labs, aes(label = label),
+              x = -Inf, y = Inf, hjust = 0, vjust = 1.25)
 
   if (raw == TRUE) {
     p <- p +
