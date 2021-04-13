@@ -116,7 +116,7 @@ alpha_vals <- rep(seq(0.6, 1, length = (length(alpha_labs) / length(col.reg))),
                   length(col.reg))
 
 pfma_map <- ggplot() +
-  coord_quickmap(xlim = c(-128.75, -122.2), ylim = c(48.25, 51), expand = TRUE,
+  coord_quickmap(xlim = c(-128.75, -122.8), ylim = c(48.25, 51), expand = TRUE,
                  clip = "on") +
   geom_polygon(data = pfma_simp_df2, aes(x = long, y = lat, group = group,
                                          colour = region,
@@ -132,8 +132,8 @@ pfma_map <- ggplot() +
   theme(plot.margin=unit(c(0.1,0,0,0), "mm"),
         legend.position = "top")
 
-png(here::here("figs", "ms_figs", "pfma_map.png"), res = 400, units = "in",
-    height = 4, width = 6)
+png(here::here("figs", "ms_figs", "main", "pfma_map.png"), 
+    res = 400, units = "in", height = 4, width = 6)
 pfma_map
 dev.off()
 
