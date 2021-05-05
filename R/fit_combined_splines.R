@@ -250,7 +250,7 @@ pred_dat <- readRDS(here::here("generated_data",
 source(here::here("R", "functions", "plot_predictions_splines.R"))
 
 #color palette
-pal <- readRDS(here::here("generated_data", "disco_color_pal.RDS"))
+pal <- readRDS(here::here("data", "disco_color_pal.RDS"))
 
 #pfma map (used to steal legend)
 pfma_map <- readRDS(here::here("generated_data", "pfma_map.rds"))
