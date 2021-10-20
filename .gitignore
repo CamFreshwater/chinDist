@@ -22,6 +22,8 @@ knitr-cache
 !data/gsiCatchData/commTroll/*.rds
 !data/gsiCatchData/rec/*.rds
 !data/gsiCatchData/pfma/*.rds
+!data/color_pal.rds
+!data/disco_color_pal.rds
 data/gsiCatchData/pfma/shape_files/
 R/southCoast/defunct/
 
