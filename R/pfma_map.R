@@ -82,7 +82,7 @@ pfma_simp_df2 <- pfma_simp_df %>%
   )
 
 pfma_simp_df2 %>% 
-  select(region, statArea) %>% 
+  dplyr::select(region, statArea) %>% 
   distinct() %>% 
   arrange(region)
 
@@ -106,10 +106,10 @@ coast2b <- readRDS(here::here("data", "gsiCatchData", "pfma",
 col.reg <- levels(pfma_simp_df2$region)
 brew_pal <- RColorBrewer::brewer.pal(n = length(col.reg), "Dark2")
 names(brew_pal) <- col.reg
-saveRDS(brew_pal, here::here("generated_data", "color_pal.RDS"))
+saveRDS(brew_pal, here::here("data", "color_pal.RDS"))
 disco_pal <- disco::disco(palette = "bright", n = length(col.reg))[c(2,1,3:6)]
 names(disco_pal) <- col.reg
-saveRDS(disco_pal, here::here("generated_data", "disco_color_pal.RDS"))
+saveRDS(disco_pal, here::here("data", "disco_color_pal.RDS"))
 
 alpha_labs <- levels(pfma_simp_df2$statArea)
 alpha_vals <- rep(seq(0.6, 1, length = (length(alpha_labs) / length(col.reg))),
